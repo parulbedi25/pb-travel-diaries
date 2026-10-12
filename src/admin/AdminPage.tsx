@@ -8,8 +8,14 @@ import {
   Eye,
   FileText,
   Crosshair,
+  FileArchive,
+  FileImage,
+  FileSpreadsheet,
+  FileType,
   FolderOpen,
   GripVertical,
+  ImageOff,
+  Presentation,
   History,
   Image as ImageIcon,
   Images,
@@ -83,10 +89,15 @@ import { BikeLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loade
 import {
   addAnyMediaFile,
   formatBytes,
+  kindOf,
+  KIND_META,
+  type MediaKind,
   listMedia,
+  MEDIA_ACCEPT,
   removeMedia,
   type MediaItem,
 } from "./mediaLibrary";
+import ConfirmDialog from "./ConfirmDialog";
 
 /* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
 
@@ -2551,10 +2562,29 @@ function RevisionsPanel() {
 
 /* ═══════════════ Media folder tab ═══════════════ */
 
+/** Icon for a stored file, by format family. */
+function KindIcon({ kind, broken }: { kind: MediaKind; broken?: boolean }) {
+  const cls = "h-8 w-8 text-saffron-300";
+  if (broken) return <ImageOff className={cls} />;
+  switch (kind) {
+    case "image": return <FileImage className={cls} />;
+    case "excel": return <FileSpreadsheet className={cls} />;
+    case "powerpoint": return <Presentation className={cls} />;
+    case "archive": return <FileArchive className={cls} />;
+    case "pdf": return <FileType className={cls} />;
+    default: return <FileText className={cls} />;
+  }
+}
+
 function MediaPanel() {
+  const { draft } = useSite();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** Item awaiting delete confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<MediaItem | null>(null);
+  /** Images the browser could not paint — shown as files instead of broken frames. */
+  const [broken, setBroken] = useState<Record<string, true>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => listMedia().then(setItems);
@@ -2566,16 +2596,41 @@ function MediaPanel() {
   const uploadFiles = async (files: FileList | File[]) => {
     setBusy(true);
     setError("");
+    const failed: string[] = [];
     try {
       for (const file of Array.from(files)) {
-        await addAnyMediaFile(file);
+        try {
+          await addAnyMediaFile(file);
+        } catch (e) {
+          failed.push(`${file.name}: ${e instanceof Error ? e.message : "upload failed"}`);
+        }
       }
       await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);
     }
+    if (failed.length) setError(failed.join(" · "));
+  };
+
+  /**
+   * Deleting is confirmed first. Anything already placed on the site is called
+   * out, because removing the file leaves that field pointing at nothing.
+   */
+  const confirmedDelete = async (item: MediaItem) => {
+    const ref = `idb:${item.id}`;
+    const usedEverywhere = JSON.stringify(draft).split(ref).length - 1;
+    setPendingDelete(null);
+    await removeMedia(item.id);
+    await refresh();
+    if (usedEverywhere > 0) {
+      setError(
+        `Deleted ${item.name}. It was in use in ${usedEverywhere} place${usedEverywhere === 1 ? "" : "s"} — those fields now point at a missing file.`
+      );
+    }
+  };
+
+  const usageCount = (item: MediaItem) => {
+    return JSON.stringify(draft).split(`idb:${item.id}`).length - 1;
   };
 
   return (
@@ -2590,19 +2645,20 @@ function MediaPanel() {
       >
         <FolderOpen className="mx-auto h-8 w-8 text-saffron-300" />
         <h3 className="mt-3 font-display text-lg font-semibold text-white">Media folder</h3>
-        <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-          Upload photos or documents (PDF, Word, Excel…) from your computer. They stay in this
-          browser and can be picked on any image or file field. You can also drop files into{" "}
+        <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
+          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG) and documents (PDF, Word, Excel,
+          PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
+          picked on any image or file field. You can also drop files into{" "}
           <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-saffron-300">
             public/media/
           </code>{" "}
-          and use <code className="font-mono text-[11px] text-zinc-300">/media/filename.jpg</code>.
+          and use <code className="font-mono text-[11px] text-zinc-300">/media/filename.pdf</code>.
         </p>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-saffron-400/25 disabled:opacity-60"
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 disabled:opacity-60"
         >
           <Upload className="h-4 w-4" />
           {busy ? "Uploading…" : "Upload files"}
@@ -2610,7 +2666,7 @@ function MediaPanel() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.gpx"
+          accept={MEDIA_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {
@@ -2618,49 +2674,101 @@ function MediaPanel() {
             e.target.value = "";
           }}
         />
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && (
+          <p role="alert" className="mx-auto mt-3 max-w-lg text-xs leading-relaxed text-red-400">
+            {error}
+          </p>
+        )}
       </div>
 
       {items.length === 0 ? (
         <p className="mt-8 text-center text-xs text-zinc-500">No files in the media library yet.</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((m) => (
-            <figure
-              key={m.id}
-              className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
-            >
-              {m.type.startsWith("image/") ? (
-                <img src={m.dataUrl} alt={m.name} className="aspect-[4/3] w-full object-cover" />
-              ) : (
-                <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
-                  <span className="flex flex-col items-center gap-1.5">
-                    <FileText className="h-8 w-8 text-saffron-300" />
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                      {m.name.split(".").pop() || "file"}
+          {items.map((m) => {
+            const kind = kindOf(m);
+            const meta = KIND_META[kind];
+            const isImage = kind === "image" && !broken[m.id];
+            const inUse = usageCount(m);
+            return (
+              <figure
+                key={m.id}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+              >
+                <span className="relative block">
+                  {isImage ? (
+                    <img
+                      src={m.dataUrl}
+                      alt={m.name}
+                      loading="lazy"
+                      onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                  ) : (
+                    <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
+                      <span className="flex flex-col items-center gap-2">
+                        <KindIcon kind={kind} broken={isImage === false && broken[m.id] === true} />
+                        <span className="rounded-full bg-saffron-400/15 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-saffron-300">
+                          {(m.ext || meta.badge).toUpperCase()}
+                        </span>
+                      </span>
                     </span>
+                  )}
+                  {inUse > 0 && (
+                    <span
+                      className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-bold text-saffron-300 backdrop-blur-md"
+                      title={`Used in ${inUse} place${inUse === 1 ? "" : "s"} on the site`}
+                    >
+                      IN USE
+                    </span>
+                  )}
+                </span>
+
+                <figcaption className="flex flex-1 flex-col p-3">
+                  <span className="block truncate text-xs font-medium text-zinc-200" title={m.name}>
+                    {m.name}
                   </span>
-                </span>
-              )}
-              <figcaption className="flex items-start justify-between gap-2 p-3">
-                <span>
-                  <span className="block truncate text-xs font-medium text-zinc-200">{m.name}</span>
-                  <span className="text-[10px] text-zinc-500">{formatBytes(m.size)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void removeMedia(m.id).then(refresh);
-                  }}
-                  aria-label={`Delete ${m.name}`}
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </figcaption>
-            </figure>
-          ))}
+                  <span className="mt-0.5 text-[10px] text-zinc-500">
+                    {meta.label} · {formatBytes(m.size)}
+                  </span>
+                  <span className="mt-3 flex items-center gap-1.5">
+                    <a
+                      href={m.dataUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Open
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(m)}
+                      aria-label={`Delete ${m.name}`}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                </figcaption>
+              </figure>
+            );
+          })}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this file?"
+          message={`“${pendingDelete.name}” (${KIND_META[kindOf(pendingDelete)].label.toLowerCase()}, ${formatBytes(pendingDelete.size)}) will be removed from the media folder. This cannot be undone.`}
+          detail={
+            usageCount(pendingDelete) > 0
+              ? `It is currently used in ${usageCount(pendingDelete)} place${usageCount(pendingDelete) === 1 ? "" : "s"} on the site — those fields will point at a missing file.`
+              : undefined
+          }
+          confirmLabel="Delete file"
+          onConfirm={() => void confirmedDelete(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );
