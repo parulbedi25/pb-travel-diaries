@@ -129,7 +129,7 @@ export default function FileField({
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-saffron-400 px-3.5 py-2 text-xs font-bold text-white disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-saffron-400 px-3.5 py-2 text-xs font-bold text-on-gold disabled:opacity-60"
         >
           <Upload className="h-3.5 w-3.5" />
           {busy ? "Uploading…" : "Upload file"}

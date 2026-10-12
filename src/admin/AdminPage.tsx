@@ -733,7 +733,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         </button>
         <div className="rounded-3xl glass p-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-white shadow-lg shadow-saffron-400/30">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
               PB
             </span>
             <div>
@@ -769,7 +769,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
             <button
               type="submit"
               disabled={busy}
-              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-white shadow-lg shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
+              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
             >
               {busy ? "Checking…" : "Enter dashboard"}
             </button>
@@ -1499,7 +1499,7 @@ function SectionsPanel() {
           </div>
           <button
             onClick={addSection}
-            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> Add section
           </button>
@@ -1858,7 +1858,7 @@ function MenuPanel() {
             ],
           }));
         }}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+        className="mt-4 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-5 py-2.5 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
       >
         <Plus className="h-3.5 w-3.5" /> Add menu item
       </button>
@@ -2689,7 +2689,7 @@ function FooterPanel() {
                 <button
                   type="button"
                   onClick={addColumn}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add column
                 </button>
@@ -3027,9 +3027,8 @@ export default function AdminPage() {
             Site
           </a>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-white shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               PB
-              <span className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
             </span>
             <div>
               <h1 className="font-display text-sm font-semibold text-white">PB Control</h1>
@@ -3048,7 +3047,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => openSaveModal()}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
                 >
                   <Save className="h-3.5 w-3.5" /> Save Changes
                 </button>

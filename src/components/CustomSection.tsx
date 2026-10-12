@@ -32,7 +32,7 @@ export default function CustomSection({ data }: { data: CustomData }) {
             {data.buttonLabel && (
               <a
                 href={data.buttonHref || "#"}
-                className="group mt-8 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-[15px] font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+                className="group mt-8 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-[15px] font-semibold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
               >
                 {data.buttonLabel}
                 <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />

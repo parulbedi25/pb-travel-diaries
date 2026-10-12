@@ -69,9 +69,8 @@ export default function Hero({ data }: { data: HeroData }) {
             <motion.div variants={item} className="mt-9 flex flex-wrap items-center gap-4">
               <a
                 href={data.cta1Href || "#"}
-                className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full bg-saffron-400 px-7 py-4 font-display text-[15px] font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(255,77,109,0.5)] hover:brightness-110 active:scale-95"
+                className="group relative inline-flex items-center gap-2.5 rounded-full bg-saffron-400 px-7 py-4 font-display text-[15px] font-semibold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(245,179,1,0.45)] hover:brightness-110 active:scale-95"
               >
-                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
                 <MapPin className="h-4.5 w-4.5" />
                 {data.cta1}
               </a>
@@ -91,12 +90,9 @@ export default function Hero({ data }: { data: HeroData }) {
                 {["AM", "RK", "IS", "KB"].map((n, i) => (
                   <span
                     key={n}
-                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-gradient-to-br text-[10px] font-bold text-white"
+                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[10px] font-bold text-on-gold"
                     style={{
                       marginLeft: i === 0 ? 0 : -10,
-                      backgroundImage: `linear-gradient(135deg, ${
-                        ["#ffab5e", "#ff5d7e", "#8b5cf6", "#2dd4bf"][i]
-                      }, ${["#ff5d7e", "#8b5cf6", "#2dd4bf", "#ffab5e"][i]})`,
                       zIndex: 4 - i,
                     }}
                   >

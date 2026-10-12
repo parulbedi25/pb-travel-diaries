@@ -34,7 +34,7 @@ export default function FAQ({ data }: { data: FaqData }) {
                   href="#cta"
                   className="group inline-flex items-center gap-3 rounded-2xl glass px-5 py-4 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06]"
                 >
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-saffron-400 text-white">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-saffron-400 text-on-gold">
                     <MessageCircle className="h-4.5 w-4.5" />
                   </span>
                   <span>
@@ -91,7 +91,7 @@ export default function FAQ({ data }: { data: FaqData }) {
                         className={cn(
                           "grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors duration-300",
                           isOpen
-                            ? "bg-saffron-400 text-white"
+                            ? "bg-saffron-400 text-on-gold"
                             : "bg-white/[0.06] text-zinc-400"
                         )}
                       >

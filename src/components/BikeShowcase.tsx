@@ -93,7 +93,7 @@ function AccessoryBubble({
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-saffron-400 px-3 py-2 text-[11px] font-bold text-white shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-saffron-400 px-3 py-2 text-[11px] font-bold text-on-gold shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
           >
             View product
             <ExternalLink className="h-3 w-3" />
@@ -412,7 +412,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                                       target="_blank"
                                       rel="noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-[11px] font-bold text-white shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
+                                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-[11px] font-bold text-on-gold shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
                                     >
                                       View product
                                       <ExternalLink className="h-3 w-3" />
@@ -447,7 +447,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
         {/* ---------- story + mods + CTA ---------- */}
         <div className="mt-6 grid gap-5 lg:grid-cols-3">
           <Reveal className="h-full">
-            <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.07] to-transparent p-7">
+            <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.05] p-7">
               <div>
                 <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400/15 text-saffron-300">
                   <MoonStar className="h-5 w-5" />
@@ -490,7 +490,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
               <div className="mt-5 flex flex-1 flex-col gap-3">
                 <a
                   href="#showreel"
-                  className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   <Play className="h-4 w-4 fill-current" />
                   {data.filmCta}

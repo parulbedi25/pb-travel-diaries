@@ -196,7 +196,7 @@ export function DigitalClock({ target, size = "md" }: { target: string; size?: "
         aria-live="off"
         aria-label={`${c.days} days ${c.hours} hours ${c.minutes} minutes ${c.seconds} seconds remaining`}
         className={cn(
-          "inline-flex items-start rounded-[1.4rem] border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent backdrop-blur-xl",
+          "inline-flex items-start rounded-[1.4rem] border border-white/10 bg-white/[0.04] backdrop-blur-xl",
           size === "lg" ? "gap-1 px-4 py-4 sm:gap-2 sm:px-6 sm:py-5" : "gap-0.5 px-3 py-3 sm:gap-1 sm:px-4"
         )}
       >
@@ -273,7 +273,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
           {data.ctaLabel && (
             <a
               href={data.ctaHref || "#"}
-              className="group mt-8 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+              className="group mt-8 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
             >
               {data.ctaLabel}
               <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
@@ -322,7 +322,7 @@ export function CountdownPage({ data }: { data: CountdownData }) {
         {data.ctaLabel && (
           <a
             href={data.ctaHref || "#"}
-            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-8 py-4 font-display text-base font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-8 py-4 font-display text-base font-semibold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             {data.ctaLabel}
             <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>

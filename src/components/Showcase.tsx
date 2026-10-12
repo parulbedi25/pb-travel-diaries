@@ -71,7 +71,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                   className={cn(
                     "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-300",
                     i === safe
-                      ? "bg-saffron-400 text-white shadow-lg shadow-saffron-400/25"
+                      ? "bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/25"
                       : "glass text-zinc-400"
                   )}
                 >
@@ -118,7 +118,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                           className={cn(
                             "grid h-9 w-9 shrink-0 place-items-center rounded-xl font-display text-xs font-bold transition-all duration-300",
                             isActive
-                              ? "bg-saffron-400 text-white"
+                              ? "bg-saffron-400 text-on-gold"
                               : "bg-white/[0.06] text-zinc-500 group-hover:text-zinc-300"
                           )}
                         >

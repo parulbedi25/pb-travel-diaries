@@ -66,7 +66,6 @@ export default function BrandLogo({
           style={{ height, width: height, background: b.iconBg || undefined }}
         >
           PB
-          <span className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
         </span>
       )}
       {showText && (

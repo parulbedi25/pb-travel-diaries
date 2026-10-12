@@ -595,7 +595,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="machine-parts-product mt-2 inline-flex items-center gap-1 rounded-full bg-saffron-400 px-3 py-1.5 text-[10px] font-bold text-white transition-all hover:brightness-110"
+                                  className="machine-parts-product mt-2 inline-flex items-center gap-1 rounded-full bg-saffron-400 px-3 py-1.5 text-[10px] font-bold text-on-gold transition-all hover:brightness-110"
                                 >
                                   View product <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
@@ -669,7 +669,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const story = (
-    <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.07] to-transparent p-7"><div><span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400/15 text-saffron-300"><MoonStar className="h-5 w-5" /></span><h3 className="mt-5 font-display text-xl font-semibold text-white">{data.whyTitle}</h3><p className="mt-3 text-sm leading-relaxed text-zinc-400">{data.whyText}</p></div><p className="font-mono text-[11px] tracking-[0.18em] text-zinc-500">{data.whyFoot}</p></div>
+    <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.05] p-7"><div><span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400/15 text-saffron-300"><MoonStar className="h-5 w-5" /></span><h3 className="mt-5 font-display text-xl font-semibold text-white">{data.whyTitle}</h3><p className="mt-3 text-sm leading-relaxed text-zinc-400">{data.whyText}</p></div><p className="font-mono text-[11px] tracking-[0.18em] text-zinc-500">{data.whyFoot}</p></div>
   );
 
   const expedition = (
@@ -677,7 +677,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const review = (
-    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
+    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
   );
 
   const galleryBlocks = gallery.map(({ photo: g, sourceIndex }) => ({

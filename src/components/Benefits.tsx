@@ -121,7 +121,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                 </p>
                 <div className="mt-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-white">
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold">
                       PB
                     </span>
                     <div>

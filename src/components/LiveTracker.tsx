@@ -80,17 +80,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 className="absolute inset-0 h-full w-full"
                 aria-hidden
               >
-                <defs>
-                  <linearGradient id="routeGrad" x1="0" y1="1" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#ffab5e" stopOpacity="0.35" />
-                    <stop offset="55%" stopColor="#ff4d6d" />
-                    <stop offset="100%" stopColor="#b79cff" stopOpacity="0.5" />
-                  </linearGradient>
-                </defs>
                 <path
                   d="M 36 246 C 100 232, 118 208, 158 190 S 226 168, 256 132 S 316 96, 362 46"
                   fill="none"
-                  stroke="url(#routeGrad)"
+                  stroke="var(--color-saffron-400)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeDasharray="9 7"
