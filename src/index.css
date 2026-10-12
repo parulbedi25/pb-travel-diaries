@@ -11,18 +11,12 @@
   --color-ink-800: #151514;
   --color-ink-700: #22211e;
 
-  /* ── Hanle gold · tank decal + rim stripe ── */
+  /* ── One gold, three shades ──
+     saffron-300 = soft accent text, 400 = solid fills (the primary accent),
+     500 = the deeper shade behind the soft background glows. */
   --color-saffron-300: #ffdf8a;
   --color-saffron-400: #f5b301;
   --color-saffron-500: #d99700;
-
-  /* ── Amber · deeper gold shade ── */
-  --color-flame-400: #ffc94d;
-  --color-flame-500: #e8a200;
-
-  /* ── Bronze · aged brass lowlight ── */
-  --color-orchid-400: #d2a548;
-  --color-orchid-500: #9c7414;
 
   --animate-marquee: marquee 46s linear infinite;
   --animate-pulse-soft: pulse-soft 5.5s ease-in-out infinite;
@@ -172,14 +166,9 @@
   --color-zinc-400: #5a5245;
   --color-zinc-500: #776d5d;
   --color-zinc-600: #938877;
-  /* Same Hanle gold as the dark theme — no golden brown in light mode. */
-  --color-saffron-300: #ffdf8a;
-  --color-saffron-400: #f5b301;
-  --color-saffron-500: #d99700;
-  --color-flame-400: #ffc94d;
-  --color-flame-500: #e8a200;
-  --color-orchid-400: #d2a548;
-  --color-orchid-500: #9c7414;
+  /* The accent family is deliberately not redeclared here: light mode uses the
+     same gold as dark, and the dashboard palette sets these variables at
+     runtime. Only --gold-ink differs between modes, further down. */
 }
 [data-theme="light"] .glass {
   background: rgba(255, 255, 255, 0.72);
@@ -252,12 +241,15 @@
 }
 
 /* ── Accent text colour ────────────────────────────────────────────────────
-   One solid yellow drives every gold accent. Dark mode follows the accent
-   token (so a custom admin palette still applies). Light mode uses a deeper
-   gold: pure #f5b301 on the cream background is only 1.7:1, so yellow text
-   would be unreadable there — #8f6700 keeps it solid yellow-gold at 4.7:1. */
+   The "Accent text" token in the dashboard's Theme colours panel drives this
+   variable, so these are only the pre-hydration fallbacks — they mirror
+   DEFAULT_THEME_COLORS in src/store/siteContent.tsx.
+
+   Dark mode: the accent itself is readable on matte black, so it tracks the
+   primary accent. Light mode: #f5b301 on the cream background is only 1.7:1,
+   so a deeper gold keeps accent text readable at 4.7:1. */
 :root {
-  --gold-ink: var(--color-saffron-400);
+  --gold-ink: #f5b301;
 }
 [data-theme="light"] {
   --gold-ink: #8f6700;
@@ -271,9 +263,7 @@
 
 /* Solid yellow accents in both modes — no graphite/brown substitution. */
 [data-theme="light"] .text-saffron-300,
-[data-theme="light"] .text-saffron-400,
-[data-theme="light"] .text-flame-400,
-[data-theme="light"] .text-orchid-400 {
+[data-theme="light"] .text-saffron-400 {
   color: var(--gold-ink);
 }
 /* .text-gradient needs no light-mode override: it is already solid yellow
