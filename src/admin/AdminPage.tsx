@@ -3085,7 +3085,22 @@ export default function AdminPage() {
 
       {/* ---------- Main dashboard content ---------- */}
       <div className="relative mx-auto flex max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:flex-row">
-        <nav aria-label="Dashboard" className="flex shrink-0 gap-2 overflow-x-auto no-scrollbar lg:w-48 lg:flex-col">
+        {/*
+          The option list sticks below the header on wide screens, so switching
+          tabs never requires scrolling back up. `self-start` stops the flex row
+          from stretching it to the full column height (which would leave no
+          room to stick).
+
+          The max-height is deliberately more conservative than the raw viewport
+          space: a sticky box is also capped by its container's bottom edge, so
+          at the very end of the page a too-tall list gets pushed up behind the
+          header. Leaving the extra `rem` of slack keeps every option visible,
+          and the list scrolls on its own when it is taller than that.
+        */}
+        <nav
+          aria-label="Dashboard"
+          className="flex shrink-0 gap-2 overflow-x-auto no-scrollbar lg:sticky lg:top-24 lg:max-h-[calc(100dvh-13rem)] lg:w-48 lg:flex-col lg:self-start lg:overscroll-contain"
+        >
           {TABS.map((t) => (
             <button
               key={t.id}

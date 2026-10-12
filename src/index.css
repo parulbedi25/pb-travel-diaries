@@ -70,9 +70,10 @@
     @apply bg-ink-950 text-zinc-300 font-sans antialiased overflow-x-hidden;
     text-rendering: optimizeSpeed;
   }
-  img,
   video {
-    /* Reserve space + skip offscreen decode work */
+    /* Skip offscreen decode work. Deliberately not applied to images: an
+       image's own height sizes the Machine and Journey blocks, and a skipped
+       offscreen image is treated as zero-sized, which collapsed those blocks. */
     content-visibility: auto;
   }
   ::selection {

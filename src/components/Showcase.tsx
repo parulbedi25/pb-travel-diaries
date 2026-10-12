@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { JourneyData, Destination } from "../store/siteContent";
 import { EASE, SectionHeader, Reveal } from "./ui/motion";
+import Photo from "./ui/Photo";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
 
@@ -163,11 +164,11 @@ export default function Showcase({ data }: { data: JourneyData }) {
                       exit={{ opacity: 0, scale: 0.99 }}
                       transition={{ duration: 0.7, ease: EASE }}
                     >
-                      <img
+                      <Photo
                         src={dest.image}
                         alt={`${dest.name} — ${dest.tagline}`}
                         className="aspect-[4/3.2] w-full object-cover sm:aspect-[16/9]"
-                        loading="lazy"
+                        label="Journey photo unavailable"
                       />
                     </motion.div>
                   </AnimatePresence>

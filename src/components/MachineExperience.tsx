@@ -25,6 +25,7 @@ import { isAdminSession, useSite } from "../store/siteContent";
 import { getMedia } from "../admin/mediaLibrary";
 import { isOn } from "../utils/enabled";
 import { SectionHeader, CountUp, EASE } from "./ui/motion";
+import Photo from "./ui/Photo";
 import { cn } from "../utils/cn";
 
 type Block = { id: string; label: string; content: ReactNode; width: number };
@@ -370,7 +371,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const bike = (
     <div
       ref={stageRef}
-      className="machine-stage panel-shadow relative overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/40"
+      className="machine-stage panel-shadow relative min-h-[240px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/40"
       style={
         {
           "--parts-reserve": `${partsPanel.width + partsPanel.right + PANEL_GAP}px`,
@@ -386,12 +387,12 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         ref={imageAreaRef}
         className="machine-image-area relative w-full"
       >
-      <img
+      <Photo
         src={data.mainImage}
         alt={data.mainImageAlt}
-        className="block h-auto w-full"
-        loading="lazy"
-        decoding="async"
+        className="h-auto"
+        aspect="1200 / 627"
+        label="Bike photo unavailable"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
       <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
@@ -684,7 +685,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     id: `gallery-${sourceIndex}`,
     label: `Gallery: ${g.cap || `Photo ${sourceIndex + 1}`}`,
     width: 4,
-    content: <figure className="group relative overflow-hidden rounded-[1.75rem] border border-white/10"><img src={g.src} alt={g.alt} loading="lazy" decoding="async" className="aspect-[16/10] w-full object-cover transition-transform duration-700 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-transparent" aria-hidden /><figcaption className="absolute bottom-4 left-4 rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-white backdrop-blur-md">{g.cap}</figcaption></figure>,
+    content: <figure className="group relative overflow-hidden rounded-[1.75rem] border border-white/10"><Photo src={g.src} alt={g.alt} className="aspect-[16/10] w-full object-cover transition-transform duration-700 group-hover:scale-105" label="Photo unavailable" /><div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-transparent" aria-hidden /><figcaption className="absolute bottom-4 left-4 rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-white backdrop-blur-md">{g.cap}</figcaption></figure>,
   }));
 
   const blocks: Block[] = [

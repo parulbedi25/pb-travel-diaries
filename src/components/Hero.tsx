@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation } from "lucide-react";
 import type { HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
+import Photo from "./ui/Photo";
 
 const container = {
   hidden: {},
@@ -129,15 +130,12 @@ export default function Hero({ data }: { data: HeroData }) {
             >
               {/* main image */}
               <div className="relative overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-black/60">
-                <img
+                <Photo
                   src={data.mainImage}
                   alt="Winding mountain road through the snowcapped Himalayas of Leh, Ladakh"
                   className="aspect-[4/3.4] w-full object-cover sm:aspect-[4/3]"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  width={1200}
-                  height={627}
+                  priority
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-ink-950/10" />
                 {/* location chip */}
@@ -165,11 +163,11 @@ export default function Hero({ data }: { data: HeroData }) {
                 {...float(0.4, 12)}
                 className="absolute -left-6 top-14 hidden w-44 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-12"
               >
-                <img
+                <Photo
                   src={data.cardAImage}
                   alt={data.cardATitle}
                   className="aspect-square w-full object-cover"
-                  loading="lazy"
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-950/90 to-transparent p-2.5 pt-6">
                   <p className="text-[11px] font-semibold text-white">{data.cardATitle}</p>
@@ -182,11 +180,11 @@ export default function Hero({ data }: { data: HeroData }) {
                 {...float(1.1, 14)}
                 className="absolute -right-4 bottom-24 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-right-10"
               >
-                <img
+                <Photo
                   src={data.cardBImage}
                   alt={data.cardBTitle}
                   className="aspect-square w-full object-cover"
-                  loading="lazy"
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-950/90 to-transparent p-2.5 pt-6">
                   <p className="text-[11px] font-semibold text-white">{data.cardBTitle}</p>
