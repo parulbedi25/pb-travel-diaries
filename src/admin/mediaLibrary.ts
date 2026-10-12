@@ -216,6 +216,109 @@ function fileToRawDataUrl(file: File): Promise<string> {
   });
 }
 
+/* ── Compression ──────────────────────────────────────────────────────────
+   Large uploads are never rejected. They are re-encoded down to a byte budget
+   and the compressed result is what gets stored and displayed. */
+
+/** Rough decoded size of a data URL, in bytes. */
+export function dataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return dataUrl.length;
+  return Math.ceil((dataUrl.length - comma - 1) * 0.75);
+}
+
+export interface CompressBudget {
+  /** Ceiling for the stored image. */
+  maxBytes: number;
+  /** Longest edge in px to start from. */
+  maxEdge: number;
+  /** Never shrink past this, however tight the budget. */
+  minEdge?: number;
+}
+
+/** The loader mark renders at ~80px tall, so this is generous headroom. */
+export const LOADER_LOGO_BUDGET: CompressBudget = {
+  maxBytes: 2 * 1024 * 1024,
+  maxEdge: 1024,
+  minEdge: 128,
+};
+
+function loadImageFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read that image"));
+    };
+    img.src = url;
+  });
+}
+
+export interface CompressedImage {
+  dataUrl: string;
+  bytes: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Re-encodes an image to fit `budget.maxBytes`: quality is lowered first, then
+ * the dimensions, and the smallest attempt is returned if the budget still
+ * cannot be met. Transparency is preserved for PNG/SVG sources by keeping the
+ * PNG format — a logo flattened onto black would look broken on the loader.
+ */
+export async function compressImageToBudget(
+  file: File,
+  budget: CompressBudget
+): Promise<CompressedImage> {
+  const img = await loadImageFile(file);
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+  if (!sourceW || !sourceH) throw new Error("That image has no size to read.");
+
+  const keepAlpha =
+    file.type === "image/png" ||
+    file.type === "image/svg+xml" ||
+    file.type === "image/gif" ||
+    file.type === "image/webp";
+  const mime = keepAlpha ? "image/png" : "image/jpeg";
+  const qualities = keepAlpha ? [1] : [0.92, 0.82, 0.7, 0.58];
+  const minEdge = Math.min(budget.minEdge ?? 64, budget.maxEdge);
+
+  let edge = budget.maxEdge;
+  let best: CompressedImage | null = null;
+
+  while (true) {
+    const scale = Math.min(1, edge / Math.max(sourceW, sourceH));
+    const width = Math.max(1, Math.round(sourceW * scale));
+    const height = Math.max(1, Math.round(sourceH * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas not available");
+    ctx.drawImage(img, 0, 0, width, height);
+
+    for (const quality of qualities) {
+      const dataUrl = canvas.toDataURL(mime, quality);
+      const bytes = dataUrlBytes(dataUrl);
+      if (!best || bytes < best.bytes) best = { dataUrl, bytes, width, height };
+      if (bytes <= budget.maxBytes) return { dataUrl, bytes, width, height };
+    }
+
+    if (edge <= minEdge) break;
+    edge = Math.max(minEdge, Math.round(edge * 0.75));
+  }
+
+  return best!;
+}
+
 const newId = () => `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 /**
@@ -265,12 +368,40 @@ export async function addAnyMediaFile(file: File): Promise<MediaItem> {
   return item;
 }
 
-/** Kept for the image fields: rejects anything that is not a photo. */
-export async function addMediaFile(file: File): Promise<MediaItem> {
-  if (kindFor(file.name, file.type) !== "image") {
-    throw new Error("Please choose an image file (JPG, PNG, WEBP, GIF).");
+/**
+ * Kept for the image fields: rejects anything that is not a photo.
+ *
+ * With a `budget`, the upload is never refused for being too big — the image is
+ * compressed to fit and the compressed version is what gets stored.
+ */
+export async function addMediaFile(file: File, budget?: CompressBudget): Promise<MediaItem> {
+  const kind = kindFor(file.name, file.type);
+  if (kind !== "image") {
+    throw new Error("Please choose an image file (PNG, JPG, WEBP, GIF, SVG).");
   }
-  return addAnyMediaFile(file);
+  if (!budget) return addAnyMediaFile(file);
+
+  const ext = extOf(file.name);
+  const type = file.type || EXT_MIME[ext] || "image/png";
+  // The source may be far over the budget; compression brings it down, so only
+  // a genuinely absurd file is refused.
+  if (file.size > 60 * 1024 * 1024) {
+    throw new Error(`That image is ${formatBytes(file.size)} — please use one under 60 MB.`);
+  }
+
+  const compressed = await compressImageToBudget(file, budget);
+  const item: MediaItem = {
+    id: newId(),
+    name: file.name.replace(/\s+/g, "-"),
+    type,
+    size: compressed.bytes,
+    dataUrl: compressed.dataUrl,
+    addedAt: new Date().toISOString(),
+    kind: "image",
+    ext,
+  };
+  await saveMedia(item);
+  return item;
 }
 
 export function formatBytes(n: number): string {

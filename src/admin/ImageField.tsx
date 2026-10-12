@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { FolderOpen, ImagePlus, Link2, Upload, X } from "lucide-react";
-import { addMediaFile, listMedia, type MediaItem } from "./mediaLibrary";
+import {
+  addMediaFile,
+  listMedia,
+  type CompressBudget,
+  type MediaItem,
+} from "./mediaLibrary";
+import ImagePreview from "./ImagePreview";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -73,10 +79,19 @@ export default function ImageField({
   value,
   onChange,
   hint,
+  budget,
+  previewNote,
 }: {
   value: string;
   onChange: (v: string) => void;
   hint?: string;
+  /**
+   * When set, uploads are compressed to fit this budget instead of being
+   * rejected for being large. The compressed image is what gets stored.
+   */
+  budget?: CompressBudget;
+  /** Caption shown over the preview, e.g. where the image is used. */
+  previewNote?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -89,7 +104,7 @@ export default function ImageField({
     setBusy(true);
     setError("");
     try {
-      const item = await addMediaFile(file);
+      const item = await addMediaFile(file, budget);
       onChange(item.dataUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -148,21 +163,13 @@ export default function ImageField({
       )}
       {error && <p className="mt-1.5 text-[11px] text-red-400">{error}</p>}
       {value ? (
-        <div className="relative mt-2">
-          <img
-            src={value}
-            alt=""
-            className="block h-auto max-h-[420px] w-full rounded-xl border border-white/10 bg-black/40 object-contain"
-          />
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white hover:bg-red-500"
-            aria-label="Clear image"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ImagePreview
+          src={value}
+          onClear={() => onChange("")}
+          ratio="16 / 9"
+          showSize={Boolean(budget)}
+          note={previewNote}
+        />
       ) : (
         <div className="mt-2 flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10 text-zinc-600">
           <ImagePlus className="h-5 w-5" />

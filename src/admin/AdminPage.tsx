@@ -91,6 +91,7 @@ import {
   formatBytes,
   kindOf,
   KIND_META,
+  LOADER_LOGO_BUDGET,
   type MediaKind,
   listMedia,
   MEDIA_ACCEPT,
@@ -2286,25 +2287,40 @@ function SettingsPanel() {
           <h3 className="font-display text-base font-semibold text-white">Loader screen</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             Shown while the site loads. Upload your own mark, pick one from the media folder, or
-            leave it empty for the default rider crossing the mountains.
+            leave it empty for the default rider crossing the mountains. Large images are
+            accepted and compressed to under 2 MB automatically, and the compressed copy is what
+            the loader displays.
           </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-[180px_1fr] sm:items-start">
-            <div className="grid h-28 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-              <span
-                className={cn(
-                  "grid place-items-center",
-                  loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
-                )}
-              >
-                {loaderDraft ? (
-                  <img src={loaderDraft} alt="" className="max-h-24 max-w-full object-contain" />
-                ) : (
-                  <BikeLoaderMark />
-                )}
-              </span>
+          <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr] sm:items-start">
+            {/* Fixed 16/9 viewport, so a very tall or very wide logo still
+                previews in the same space as everything else. */}
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+              <div className="grid place-items-center p-3" style={{ aspectRatio: "16 / 9" }}>
+                <span
+                  className={cn(
+                    "grid place-items-center",
+                    loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
+                  )}
+                >
+                  {loaderDraft ? (
+                    <img
+                      src={loaderDraft}
+                      alt=""
+                      className="max-h-[64px] max-w-[150px] object-contain"
+                    />
+                  ) : (
+                    <BikeLoaderMark />
+                  )}
+                </span>
+              </div>
             </div>
             <div>
-              <ImageField value={loaderDraft} onChange={setLoaderDraft} />
+              <ImageField
+                value={loaderDraft}
+                onChange={setLoaderDraft}
+                budget={LOADER_LOGO_BUDGET}
+                previewNote="Loader mark · compressed on upload"
+              />
               {loaderDraft && (
                 <button
                   type="button"

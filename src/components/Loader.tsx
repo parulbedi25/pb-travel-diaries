@@ -60,7 +60,7 @@ export function LoaderStage({
     <div className="relative flex flex-col items-center gap-5">
       <span className={cn("grid place-items-center", anim !== "none" && `ldr-anim-${anim}`)}>
         {logo ? (
-          <img src={logo} alt="" className="h-20 w-auto object-contain" />
+          <img src={logo} alt="" className="h-20 w-auto max-w-[70vw] object-contain" />
         ) : (
           <BikeLoaderMark />
         )}
