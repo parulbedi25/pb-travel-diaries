@@ -16,4 +16,18 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  server: {
+    // Bind to all interfaces so the preview proxy can reach the dev server,
+    // and accept the proxied preview hostname / origin.
+    host: true,
+    port: 5173,
+    strictPort: true,
+    allowedHosts: true,
+  },
+  preview: {
+    host: true,
+    port: 4173,
+    strictPort: true,
+    allowedHosts: true,
+  },
 });

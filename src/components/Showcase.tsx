@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { JourneyData, Destination } from "../store/siteContent";
 import { EASE, SectionHeader, Reveal } from "./ui/motion";
+import Photo from "./ui/Photo";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
 
@@ -71,7 +72,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                   className={cn(
                     "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-300",
                     i === safe
-                      ? "bg-gradient-to-r from-saffron-400 to-flame-500 text-white shadow-lg shadow-flame-500/25"
+                      ? "bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/25"
                       : "glass text-zinc-400"
                   )}
                 >
@@ -110,7 +111,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                         {isActive && (
                           <motion.span
                             layoutId="dest-pill"
-                            className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full bg-gradient-to-b from-saffron-400 to-flame-500"
+                            className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full bg-saffron-400"
                             transition={{ type: "spring", stiffness: 380, damping: 32 }}
                           />
                         )}
@@ -118,7 +119,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                           className={cn(
                             "grid h-9 w-9 shrink-0 place-items-center rounded-xl font-display text-xs font-bold transition-all duration-300",
                             isActive
-                              ? "bg-gradient-to-br from-saffron-400 to-flame-500 text-white"
+                              ? "bg-saffron-400 text-on-gold"
                               : "bg-white/[0.06] text-zinc-500 group-hover:text-zinc-300"
                           )}
                         >
@@ -163,11 +164,11 @@ export default function Showcase({ data }: { data: JourneyData }) {
                       exit={{ opacity: 0, scale: 0.99 }}
                       transition={{ duration: 0.7, ease: EASE }}
                     >
-                      <img
+                      <Photo
                         src={dest.image}
                         alt={`${dest.name} — ${dest.tagline}`}
                         className="aspect-[4/3.2] w-full object-cover sm:aspect-[16/9]"
-                        loading="lazy"
+                        label="Journey photo unavailable"
                       />
                     </motion.div>
                   </AnimatePresence>
@@ -248,7 +249,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                       aria-label={`Show ${d.name}`}
                       className={cn(
                         "h-1.5 rounded-full transition-all duration-400",
-                        i === safe ? "w-8 bg-gradient-to-r from-saffron-400 to-flame-500" : "w-1.5 bg-white/15"
+                        i === safe ? "w-8 bg-saffron-400" : "w-1.5 bg-white/15"
                       )}
                     />
                   ))}

@@ -5,7 +5,114 @@ export interface MediaItem {
   size: number;
   dataUrl: string;
   addedAt: string;
+  /** Format family, stored so the library never has to guess again. */
+  kind?: MediaKind;
+  /** Lower-case extension without the dot, e.g. "xlsx". */
+  ext?: string;
 }
+
+/* ── Format support ──────────────────────────────────────────────────────
+   Photos, PDFs and Office documents all live in the same folder. The kind is
+   resolved from the MIME type when the browser gives one, and from the file
+   extension when it does not — Windows and some browsers report .xlsx/.docx
+   with an empty type, which used to make documents indistinguishable. */
+export type MediaKind =
+  | "image"
+  | "pdf"
+  | "word"
+  | "excel"
+  | "powerpoint"
+  | "text"
+  | "archive"
+  | "other";
+
+export const KIND_META: Record<MediaKind, { label: string; badge: string }> = {
+  image: { label: "Image", badge: "IMG" },
+  pdf: { label: "PDF", badge: "PDF" },
+  word: { label: "Word document", badge: "DOC" },
+  excel: { label: "Excel spreadsheet", badge: "XLS" },
+  powerpoint: { label: "PowerPoint", badge: "PPT" },
+  text: { label: "Text", badge: "TXT" },
+  archive: { label: "Archive", badge: "ZIP" },
+  other: { label: "File", badge: "FILE" },
+};
+
+const EXT_KINDS: Record<string, MediaKind> = {
+  png: "image", jpg: "image", jpeg: "image", webp: "image", gif: "image",
+  avif: "image", bmp: "image", svg: "image", heic: "image", heif: "image",
+  pdf: "pdf",
+  doc: "word", docx: "word", odt: "word", rtf: "word", pages: "word",
+  xls: "excel", xlsx: "excel", ods: "excel", csv: "excel", numbers: "excel",
+  ppt: "powerpoint", pptx: "powerpoint", odp: "powerpoint", key: "powerpoint",
+  txt: "text", md: "text", json: "text",
+  zip: "archive", gpx: "archive", kml: "archive", kmz: "archive",
+};
+
+const MIME_KINDS: Record<string, MediaKind> = {
+  "application/pdf": "pdf",
+  "application/msword": "word",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "word",
+  "application/vnd.oasis.opendocument.text": "word",
+  "application/vnd.ms-excel": "excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "excel",
+  "application/vnd.oasis.opendocument.spreadsheet": "excel",
+  "text/csv": "excel",
+  "application/vnd.ms-powerpoint": "powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "powerpoint",
+  "text/plain": "text",
+  "application/json": "text",
+  "application/zip": "archive",
+  "application/gpx+xml": "archive",
+};
+
+/** Extension → canonical MIME, used when the browser reports no type. */
+const EXT_MIME: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+  gif: "image/gif", avif: "image/avif", bmp: "image/bmp", svg: "image/svg+xml",
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  odt: "application/vnd.oasis.opendocument.text",
+  rtf: "application/rtf",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  csv: "text/csv",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain", md: "text/plain", json: "application/json",
+  zip: "application/zip",
+};
+
+export function extOf(name: string): string {
+  const parts = name.split(".");
+  return parts.length > 1 ? parts.pop()!.toLowerCase() : "";
+}
+
+/** Format family for a name/MIME pair. MIME wins; extension is the fallback. */
+export function kindFor(name: string, type: string): MediaKind {
+  if (type.startsWith("image/")) return "image";
+  const byMime = MIME_KINDS[type];
+  if (byMime) return byMime;
+  return EXT_KINDS[extOf(name)] ?? "other";
+}
+
+/** Format family for an already-stored item, including older rows. */
+export function kindOf(item: MediaItem): MediaKind {
+  return item.kind ?? kindFor(item.name, item.type);
+}
+
+/**
+ * The `accept` attribute shared by every picker, so the Media folder, the
+ * image field and the file field can never drift apart.
+ */
+export const MEDIA_ACCEPT =
+  "image/*,.png,.jpg,.jpeg,.webp,.gif,.avif,.svg," +
+  ".pdf,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.txt,.md,.json,.zip,.gpx";
+
+/** Images are resized, so their ceiling is generous. Documents are stored whole. */
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const MAX_FILE_BYTES = 12 * 1024 * 1024;
 
 const DB_NAME = "pb_media_v1";
 const STORE = "files";
@@ -100,25 +207,6 @@ export function fileToDataUrl(file: File, maxEdge = 1600, quality = 0.84): Promi
   });
 }
 
-export async function addMediaFile(file: File): Promise<MediaItem> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Please choose an image file (JPG, PNG, WEBP).");
-  }
-  const dataUrl = await fileToDataUrl(file);
-  const item: MediaItem = {
-    id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: file.name.replace(/\s+/g, "-"),
-    type: file.type,
-    size: file.size,
-    dataUrl,
-    addedAt: new Date().toISOString(),
-  };
-  await saveMedia(item);
-  return item;
-}
-
-const MAX_DOC_BYTES = 8 * 1024 * 1024;
-
 function fileToRawDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -128,22 +216,189 @@ function fileToRawDataUrl(file: File): Promise<string> {
   });
 }
 
+/* ── Compression ──────────────────────────────────────────────────────────
+   Large uploads are never rejected. They are re-encoded down to a byte budget
+   and the compressed result is what gets stored and displayed. */
+
+/** Rough decoded size of a data URL, in bytes. */
+export function dataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return dataUrl.length;
+  return Math.ceil((dataUrl.length - comma - 1) * 0.75);
+}
+
+export interface CompressBudget {
+  /** Ceiling for the stored image. */
+  maxBytes: number;
+  /** Longest edge in px to start from. */
+  maxEdge: number;
+  /** Never shrink past this, however tight the budget. */
+  minEdge?: number;
+}
+
+/** The loader mark renders at ~80px tall, so this is generous headroom. */
+export const LOADER_LOGO_BUDGET: CompressBudget = {
+  maxBytes: 2 * 1024 * 1024,
+  maxEdge: 1024,
+  minEdge: 128,
+};
+
+function loadImageFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read that image"));
+    };
+    img.src = url;
+  });
+}
+
+export interface CompressedImage {
+  dataUrl: string;
+  bytes: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Accepts any file. Images are resized as usual; documents (PDF, Word,
- * Excel, etc.) are stored as-is in the browser's media library.
+ * Re-encodes an image to fit `budget.maxBytes`: quality is lowered first, then
+ * the dimensions, and the smallest attempt is returned if the budget still
+ * cannot be met. Transparency is preserved for PNG/SVG sources by keeping the
+ * PNG format — a logo flattened onto black would look broken on the loader.
+ */
+export async function compressImageToBudget(
+  file: File,
+  budget: CompressBudget
+): Promise<CompressedImage> {
+  const img = await loadImageFile(file);
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+  if (!sourceW || !sourceH) throw new Error("That image has no size to read.");
+
+  const keepAlpha =
+    file.type === "image/png" ||
+    file.type === "image/svg+xml" ||
+    file.type === "image/gif" ||
+    file.type === "image/webp";
+  const mime = keepAlpha ? "image/png" : "image/jpeg";
+  const qualities = keepAlpha ? [1] : [0.92, 0.82, 0.7, 0.58];
+  const minEdge = Math.min(budget.minEdge ?? 64, budget.maxEdge);
+
+  let edge = budget.maxEdge;
+  let best: CompressedImage | null = null;
+
+  while (true) {
+    const scale = Math.min(1, edge / Math.max(sourceW, sourceH));
+    const width = Math.max(1, Math.round(sourceW * scale));
+    const height = Math.max(1, Math.round(sourceH * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas not available");
+    ctx.drawImage(img, 0, 0, width, height);
+
+    for (const quality of qualities) {
+      const dataUrl = canvas.toDataURL(mime, quality);
+      const bytes = dataUrlBytes(dataUrl);
+      if (!best || bytes < best.bytes) best = { dataUrl, bytes, width, height };
+      if (bytes <= budget.maxBytes) return { dataUrl, bytes, width, height };
+    }
+
+    if (edge <= minEdge) break;
+    edge = Math.max(minEdge, Math.round(edge * 0.75));
+  }
+
+  return best!;
+}
+
+const newId = () => `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Stores any supported file. Photos are resized when the browser can decode
+ * them; PDFs, Word, Excel and PowerPoint files are stored exactly as they are.
  */
 export async function addAnyMediaFile(file: File): Promise<MediaItem> {
-  if (file.type.startsWith("image/")) return addMediaFile(file);
-  if (file.size > MAX_DOC_BYTES) {
-    throw new Error("File is too large — the limit is 8 MB.");
+  const ext = extOf(file.name);
+  const kind = kindFor(file.name, file.type);
+  const type = file.type || EXT_MIME[ext] || "application/octet-stream";
+
+  if (kind !== "image" && file.size > MAX_FILE_BYTES) {
+    throw new Error(
+      `That file is ${formatBytes(file.size)} — documents need to be under ${formatBytes(MAX_FILE_BYTES)}.`
+    );
   }
+
+  let dataUrl: string;
+  if (kind === "image") {
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new Error(
+        `That image is ${formatBytes(file.size)} — photos need to be under ${formatBytes(MAX_IMAGE_BYTES)}.`
+      );
+    }
+    try {
+      dataUrl = await fileToDataUrl(file);
+    } catch {
+      // An image format the browser cannot paint (HEIC, some SVGs). Keep the
+      // original rather than rejecting the upload outright.
+      dataUrl = await fileToRawDataUrl(file);
+    }
+  } else {
+    dataUrl = await fileToRawDataUrl(file);
+  }
+
   const item: MediaItem = {
-    id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: newId(),
     name: file.name.replace(/\s+/g, "-"),
-    type: file.type || "application/octet-stream",
+    type,
     size: file.size,
-    dataUrl: await fileToRawDataUrl(file),
+    dataUrl,
     addedAt: new Date().toISOString(),
+    kind,
+    ext,
+  };
+  await saveMedia(item);
+  return item;
+}
+
+/**
+ * Kept for the image fields: rejects anything that is not a photo.
+ *
+ * With a `budget`, the upload is never refused for being too big — the image is
+ * compressed to fit and the compressed version is what gets stored.
+ */
+export async function addMediaFile(file: File, budget?: CompressBudget): Promise<MediaItem> {
+  const kind = kindFor(file.name, file.type);
+  if (kind !== "image") {
+    throw new Error("Please choose an image file (PNG, JPG, WEBP, GIF, SVG).");
+  }
+  if (!budget) return addAnyMediaFile(file);
+
+  const ext = extOf(file.name);
+  const type = file.type || EXT_MIME[ext] || "image/png";
+  // The source may be far over the budget; compression brings it down, so only
+  // a genuinely absurd file is refused.
+  if (file.size > 60 * 1024 * 1024) {
+    throw new Error(`That image is ${formatBytes(file.size)} — please use one under 60 MB.`);
+  }
+
+  const compressed = await compressImageToBudget(file, budget);
+  const item: MediaItem = {
+    id: newId(),
+    name: file.name.replace(/\s+/g, "-"),
+    type,
+    size: compressed.bytes,
+    dataUrl: compressed.dataUrl,
+    addedAt: new Date().toISOString(),
+    kind: "image",
+    ext,
   };
   await saveMedia(item);
   return item;

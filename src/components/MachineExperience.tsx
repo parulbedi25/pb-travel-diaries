@@ -25,6 +25,7 @@ import { isAdminSession, useSite } from "../store/siteContent";
 import { getMedia } from "../admin/mediaLibrary";
 import { isOn } from "../utils/enabled";
 import { SectionHeader, CountUp, EASE } from "./ui/motion";
+import Photo from "./ui/Photo";
 import { cn } from "../utils/cn";
 
 type Block = { id: string; label: string; content: ReactNode; width: number };
@@ -370,7 +371,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const bike = (
     <div
       ref={stageRef}
-      className="machine-stage panel-shadow relative overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/40"
+      className="machine-stage panel-shadow relative min-h-[240px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/40"
       style={
         {
           "--parts-reserve": `${partsPanel.width + partsPanel.right + PANEL_GAP}px`,
@@ -386,12 +387,12 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         ref={imageAreaRef}
         className="machine-image-area relative w-full"
       >
-      <img
+      <Photo
         src={data.mainImage}
         alt={data.mainImageAlt}
-        className="block h-auto w-full"
-        loading="lazy"
-        decoding="async"
+        className="h-auto"
+        aspect="1200 / 627"
+        label="Bike photo unavailable"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
       <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
@@ -435,7 +436,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                 className={cn(
                   "relative grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur-md transition-all duration-300",
                   isOn
-                    ? "scale-110 border-white shadow-lg shadow-flame-500/60"
+                    ? "scale-110 border-white shadow-lg shadow-saffron-400/60"
                     : "border-white/60 bg-saffron-400/25 hover:scale-110 hover:border-white hover:bg-saffron-400/35"
                 )}
                 style={h.color ? { backgroundColor: isOn ? h.color : `${h.color}59`, borderColor: "rgba(255,255,255,0.75)", boxShadow: isOn ? `0 8px 24px ${h.color}66` : undefined } : undefined}
@@ -512,7 +513,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             target="_blank"
             rel="noreferrer"
             aria-label={`View ${spots[listOpen ?? -1].title} product`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-saffron-400 px-3 py-2 text-[10px] font-bold text-ink-950"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-saffron-400 px-3 py-2 text-[10px] font-bold text-on-gold"
           >
             Product <ExternalLink className="h-3 w-3" />
           </a>
@@ -595,7 +596,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="machine-parts-product mt-2 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-3 py-1.5 text-[10px] font-bold text-white transition-all hover:brightness-110"
+                                  className="machine-parts-product mt-2 inline-flex items-center gap-1 rounded-full bg-saffron-400 px-3 py-1.5 text-[10px] font-bold text-on-gold transition-all hover:brightness-110"
                                 >
                                   View product <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
@@ -656,7 +657,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
           <span className="font-semibold text-zinc-300">Odometer to 50,000 km</span>
           <span className="font-mono text-saffron-300">{data.km.toLocaleString("en-IN")} km</span>
         </div>
-        <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/[0.07]"><div className="h-full rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500" style={{ width: `${odoPct}%` }} /></div>
+        <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/[0.07]"><div className="h-full rounded-full bg-saffron-400" style={{ width: `${odoPct}%` }} /></div>
         <p className="mt-2 text-[11px] text-zinc-500">{Math.max(0, 50000 - data.km).toLocaleString("en-IN")} km to the half-lakh milestone</p>
       </div>
     </div>
@@ -669,22 +670,22 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const story = (
-    <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.07] to-transparent p-7"><div><span className="grid h-11 w-11 place-items-center rounded-2xl bg-orchid-500/15 text-orchid-400"><MoonStar className="h-5 w-5" /></span><h3 className="mt-5 font-display text-xl font-semibold text-white">{data.whyTitle}</h3><p className="mt-3 text-sm leading-relaxed text-zinc-400">{data.whyText}</p></div><p className="font-mono text-[11px] tracking-[0.18em] text-zinc-500">{data.whyFoot}</p></div>
+    <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.05] p-7"><div><span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400/15 text-saffron-300"><MoonStar className="h-5 w-5" /></span><h3 className="mt-5 font-display text-xl font-semibold text-white">{data.whyTitle}</h3><p className="mt-3 text-sm leading-relaxed text-zinc-400">{data.whyText}</p></div><p className="font-mono text-[11px] tracking-[0.18em] text-zinc-500">{data.whyFoot}</p></div>
   );
 
   const expedition = (
-    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">PB's expedition setup</h3><p className="mt-1 text-xs text-zinc-500">Every bolt earned over {data.km.toLocaleString("en-IN")} km</p><ul className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{data.mods.map((m) => <li key={m} className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-zinc-300"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500" />{m}</li>)}</ul></div>
+    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">PB's expedition setup</h3><p className="mt-1 text-xs text-zinc-500">Every bolt earned over {data.km.toLocaleString("en-IN")} km</p><ul className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{data.mods.map((m) => <li key={m} className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-zinc-300"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-saffron-400" />{m}</li>)}</ul></div>
   );
 
   const review = (
-    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-5 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
+    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
   );
 
   const galleryBlocks = gallery.map(({ photo: g, sourceIndex }) => ({
     id: `gallery-${sourceIndex}`,
     label: `Gallery: ${g.cap || `Photo ${sourceIndex + 1}`}`,
     width: 4,
-    content: <figure className="group relative overflow-hidden rounded-[1.75rem] border border-white/10"><img src={g.src} alt={g.alt} loading="lazy" decoding="async" className="aspect-[16/10] w-full object-cover transition-transform duration-700 group-hover:scale-105" /><div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-transparent" aria-hidden /><figcaption className="absolute bottom-4 left-4 rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-white backdrop-blur-md">{g.cap}</figcaption></figure>,
+    content: <figure className="group relative overflow-hidden rounded-[1.75rem] border border-white/10"><Photo src={g.src} alt={g.alt} className="aspect-[16/10] w-full object-cover transition-transform duration-700 group-hover:scale-105" label="Photo unavailable" /><div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-transparent" aria-hidden /><figcaption className="absolute bottom-4 left-4 rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-white backdrop-blur-md">{g.cap}</figcaption></figure>,
   }));
 
   const blocks: Block[] = [
@@ -1228,7 +1229,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                   onPointerDown={(e) => startResize(e, id, "h")}
                   onKeyDown={(e) => keyResize(e, id, "h")}
                   className={cn(
-                    "absolute bottom-0 left-1/2 z-40 h-3 w-44 max-w-[70%] -translate-x-1/2 touch-none cursor-ns-resize rounded-t-full bg-gradient-to-r from-saffron-400 to-flame-500 shadow-lg shadow-flame-500/30 transition-all hover:h-4 focus-visible:h-4",
+                    "absolute bottom-0 left-1/2 z-40 h-3 w-44 max-w-[70%] -translate-x-1/2 touch-none cursor-ns-resize rounded-t-full bg-saffron-400 shadow-lg shadow-saffron-400/30 transition-all hover:h-4 focus-visible:h-4",
                     isH && "h-4 brightness-125"
                   )}
                 />
@@ -1243,7 +1244,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                   onPointerDown={(e) => startResize(e, id, "w")}
                   onKeyDown={(e) => keyResize(e, id, "w")}
                   className={cn(
-                    "absolute right-0 top-1/2 z-40 hidden h-28 w-3 -translate-y-1/2 touch-none cursor-ew-resize rounded-l-full bg-gradient-to-b from-saffron-400 to-flame-500 shadow-lg shadow-flame-500/30 transition-all hover:w-4 focus-visible:w-4 xl:block",
+                    "absolute right-0 top-1/2 z-40 hidden h-28 w-3 -translate-y-1/2 touch-none cursor-ew-resize rounded-l-full bg-saffron-400 shadow-lg shadow-saffron-400/30 transition-all hover:w-4 focus-visible:w-4 xl:block",
                     isW && "w-4 brightness-125"
                   )}
                 />

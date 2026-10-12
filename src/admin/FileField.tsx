@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, FolderOpen, Link2, Upload, X } from "lucide-react";
-import { addAnyMediaFile, formatBytes, getMedia, listMedia, type MediaItem } from "./mediaLibrary";
+import {
+  addAnyMediaFile,
+  formatBytes,
+  getMedia,
+  listMedia,
+  MEDIA_ACCEPT,
+  type MediaItem,
+} from "./mediaLibrary";
 import { cn } from "../utils/cn";
 
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
 
-const ACCEPT =
-  "image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.gpx";
+
 
 function FilePicker({ onPick, onClose }: { onPick: (ref: string) => void; onClose: () => void }) {
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -129,7 +135,7 @@ export default function FileField({
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-saffron-400 to-flame-500 px-3.5 py-2 text-xs font-bold text-white disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-saffron-400 px-3.5 py-2 text-xs font-bold text-on-gold disabled:opacity-60"
         >
           <Upload className="h-3.5 w-3.5" />
           {busy ? "Uploading…" : "Upload file"}
@@ -153,7 +159,7 @@ export default function FileField({
       <input
         ref={fileRef}
         type="file"
-        accept={ACCEPT}
+        accept={MEDIA_ACCEPT}
         className="hidden"
         onChange={(e) => {
           void upload(e.target.files?.[0]);

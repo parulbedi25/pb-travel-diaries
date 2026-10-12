@@ -25,7 +25,7 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
       onClick={() => onChange(!on)}
       className={cn(
         "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
-        on ? "bg-gradient-to-r from-saffron-400 to-flame-500" : "bg-white/15"
+        on ? "bg-saffron-400" : "bg-white/15"
       )}
     >
       <span
@@ -86,7 +86,7 @@ const VARIANTS: { id: HeaderButton["variant"]; label: string }[] = [
 ];
 
 function previewClass(v: HeaderButton["variant"]): string {
-  if (v === "gold") return "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950";
+  if (v === "gold") return "bg-saffron-400 text-on-gold";
   if (v === "outline") return "border border-white/20 text-white";
   return "bg-white text-ink-950";
 }
@@ -135,7 +135,7 @@ export function HeaderButtonsEditor() {
           type="button"
           onClick={add}
           disabled={buttons.length >= MAX_HEADER_BUTTONS}
-          className={cn(pillBtn, "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950 disabled:opacity-40")}
+          className={cn(pillBtn, "bg-saffron-400 text-on-gold disabled:opacity-40")}
         >
           <Plus className="h-3.5 w-3.5" /> Add button
         </button>
@@ -227,11 +227,14 @@ const TOKENS: { key: keyof ThemeTokens; label: string; hint: string }[] = [
   { key: "panel", label: "Panel", hint: "Raised cards and menus" },
   { key: "heading", label: "Headings", hint: "Titles and key words" },
   { key: "body", label: "Body text", hint: "Paragraphs" },
-  { key: "gold", label: "Primary accent", hint: "Buttons and highlights" },
-  { key: "goldSoft", label: "Soft accent", hint: "Gradient start, chips" },
-  { key: "warm", label: "Warm accent", hint: "Gradient end, glow" },
-  { key: "cool", label: "Cool accent", hint: "Secondary glow" },
+  { key: "gold", label: "Primary accent", hint: "Buttons, chips and borders" },
+  { key: "goldSoft", label: "Soft accent", hint: "Pale accent text and labels" },
+  { key: "goldDeep", label: "Deep accent", hint: "Soft background glows" },
+  { key: "goldInk", label: "Accent text", hint: "Accent colour for readable text" },
 ];
+
+/** Matches .text-on-gold in index.css — text on a gold fill is always dark. */
+const ON_GOLD = "#171513";
 
 export function ThemePanel() {
   const { draft, updateDraft, logAction } = useSite();
@@ -259,7 +262,7 @@ export function ThemePanel() {
               className={cn(
                 "rounded-full px-4 py-2 text-xs font-semibold capitalize transition-all",
                 mode === m
-                  ? "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950"
+                  ? "bg-saffron-400 text-on-gold"
                   : "bg-white/[0.06] text-zinc-400 hover:text-white"
               )}
             >
@@ -307,21 +310,23 @@ export function ThemePanel() {
             <p className="mt-2 text-sm leading-relaxed" style={{ color: t.body }}>
               Body text sits here, readable against the background.
             </p>
-            <span
-              className="mt-3 inline-block bg-clip-text text-base font-semibold text-transparent"
-              style={{ backgroundImage: `linear-gradient(100deg, ${t.goldSoft}, ${t.gold}, ${t.warm})` }}
-            >
-              Gradient accent
-            </span>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-semibold">
+              <span style={{ color: t.goldInk }}>Accent text</span>
+              <span style={{ color: t.goldSoft }}>Soft accent text</span>
+              <span className="inline-flex items-center gap-1.5" style={{ color: t.goldDeep }}>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.goldDeep }} />
+                Deep accent
+              </span>
+            </div>
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <span className="rounded-full px-5 py-2.5 text-sm font-semibold" style={{ background: t.gold, color: t.background }}>
+              <span className="rounded-full px-5 py-2.5 text-sm font-semibold" style={{ background: t.gold, color: ON_GOLD }}>
                 Primary button
               </span>
-              <span className="rounded-full px-4 py-2 text-xs font-semibold" style={{ background: t.warm, color: t.background }}>
-                Warm chip
+              <span className="rounded-full border px-4 py-2 text-xs font-semibold" style={{ borderColor: t.gold, color: t.goldInk }}>
+                Accent chip
               </span>
-              <span className="rounded-full px-4 py-2 text-xs font-semibold" style={{ background: t.cool, color: t.heading }}>
-                Cool chip
+              <span className="rounded-full px-4 py-2 text-xs font-semibold" style={{ background: t.goldSoft, color: ON_GOLD }}>
+                Soft chip
               </span>
             </div>
             <div className="mt-5 rounded-2xl p-4" style={{ background: t.panel }}>

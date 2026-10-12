@@ -16,7 +16,7 @@ export default function MaintenancePage({ data }: { data: MaintenanceData }) {
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-saffron-500/20 via-flame-500/15 to-orchid-500/20 blur-[130px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/15 blur-[130px]"
         aria-hidden
       />
 

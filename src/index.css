@@ -11,18 +11,12 @@
   --color-ink-800: #151514;
   --color-ink-700: #22211e;
 
-  /* ── Hanle gold · tank decal + rim stripe ── */
+  /* ── One gold, three shades ──
+     saffron-300 = soft accent text, 400 = solid fills (the primary accent),
+     500 = the deeper shade behind the soft background glows. */
   --color-saffron-300: #ffdf8a;
   --color-saffron-400: #f5b301;
   --color-saffron-500: #d99700;
-
-  /* ── Amber · deeper gold shade ── */
-  --color-flame-400: #ffc94d;
-  --color-flame-500: #e8a200;
-
-  /* ── Bronze · aged brass lowlight ── */
-  --color-orchid-400: #d2a548;
-  --color-orchid-500: #9c7414;
 
   --animate-marquee: marquee 46s linear infinite;
   --animate-pulse-soft: pulse-soft 5.5s ease-in-out infinite;
@@ -58,6 +52,39 @@
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
   }
+  @keyframes ldr-anim-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  @keyframes ldr-anim-float {
+    0%, 100% { transform: translateY(-7px); }
+    50% { transform: translateY(7px); }
+  }
+  @keyframes ldr-anim-bounce {
+    0%, 100% { transform: translateY(0) scaleY(0.96); }
+    45% { transform: translateY(-20px) scaleY(1.02); }
+    70% { transform: translateY(0) scaleY(0.94); }
+  }
+  @keyframes ldr-anim-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes ldr-anim-wobble {
+    0%, 100% { transform: rotate(-9deg); }
+    50% { transform: rotate(9deg); }
+  }
+  @keyframes ldr-anim-glow {
+    0%, 100% { opacity: 0.45; filter: drop-shadow(0 0 0 rgba(245, 179, 1, 0)); }
+    50% { opacity: 1; filter: drop-shadow(0 0 20px rgba(245, 179, 1, 0.6)); }
+  }
+  @keyframes ldr-anim-orbit {
+    from { transform: rotate(0deg) translateX(16px) rotate(0deg); }
+    to { transform: rotate(360deg) translateX(16px) rotate(-360deg); }
+  }
+  @keyframes ldr-anim-zoom {
+    0%, 100% { transform: scale(0.82); opacity: 0.7; }
+    50% { transform: scale(1.08); opacity: 1; }
+  }
 }
 
 @layer base {
@@ -70,9 +97,10 @@
     @apply bg-ink-950 text-zinc-300 font-sans antialiased overflow-x-hidden;
     text-rendering: optimizeSpeed;
   }
-  img,
   video {
-    /* Reserve space + skip offscreen decode work */
+    /* Skip offscreen decode work. Deliberately not applied to images: an
+       image's own height sizes the Machine and Journey blocks, and a skipped
+       offscreen image is treated as zero-sized, which collapsed those blocks. */
     content-visibility: auto;
   }
   ::selection {
@@ -100,7 +128,8 @@
 
 @layer components {
   .glass {
-    background: linear-gradient(155deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    /* Flat translucent white — no gradient, so glass buttons read as one solid fill. */
+    background: rgba(255, 255, 255, 0.045);
     border: 1px solid rgba(255, 255, 255, 0.09);
     /* Lighter blur = cheaper GPU work on Safari/Edge, visually identical at these alphas */
     backdrop-filter: blur(10px);
@@ -108,16 +137,8 @@
   }
 
   .text-gradient {
-    /* Hanle gold decal on matte black */
-    background-image: linear-gradient(
-      100deg,
-      var(--color-saffron-300) 0%,
-      var(--color-saffron-400) 45%,
-      var(--color-saffron-500) 95%
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    /* Solid yellow decal — one flat colour, identical in dark and light. */
+    color: var(--gold-ink);
   }
 
   .bg-grid {
@@ -162,6 +183,33 @@
   .ldr-bar {
     animation: ldr-bar 1.15s ease-in-out infinite;
   }
+
+  /* Loader logo/icon motion. Each class drives the whole mark, so an uploaded
+     image and the built-in rider mark animate identically. */
+  .ldr-anim-pulse {
+    animation: ldr-anim-pulse 1.8s ease-in-out infinite;
+  }
+  .ldr-anim-float {
+    animation: ldr-anim-float 2.6s ease-in-out infinite;
+  }
+  .ldr-anim-bounce {
+    animation: ldr-anim-bounce 1.15s ease-in-out infinite;
+  }
+  .ldr-anim-spin {
+    animation: ldr-anim-spin 2.6s linear infinite;
+  }
+  .ldr-anim-wobble {
+    animation: ldr-anim-wobble 2.2s ease-in-out infinite;
+  }
+  .ldr-anim-glow {
+    animation: ldr-anim-glow 2s ease-in-out infinite;
+  }
+  .ldr-anim-orbit {
+    animation: ldr-anim-orbit 3.2s linear infinite;
+  }
+  .ldr-anim-zoom {
+    animation: ldr-anim-zoom 1.9s ease-in-out infinite;
+  }
 }
 
 /* ---------- Light theme — warm sand with the same Hanle gold accents ---------- */
@@ -178,17 +226,12 @@
   --color-zinc-400: #5a5245;
   --color-zinc-500: #776d5d;
   --color-zinc-600: #938877;
-  /* Same Hanle gold as the dark theme — no golden brown in light mode. */
-  --color-saffron-300: #ffdf8a;
-  --color-saffron-400: #f5b301;
-  --color-saffron-500: #d99700;
-  --color-flame-400: #ffc94d;
-  --color-flame-500: #e8a200;
-  --color-orchid-400: #d2a548;
-  --color-orchid-500: #9c7414;
+  /* The accent family is deliberately not redeclared here: light mode uses the
+     same gold as dark, and the dashboard palette sets these variables at
+     runtime. Only --gold-ink differs between modes, further down. */
 }
 [data-theme="light"] .glass {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.62));
+  background: rgba(255, 255, 255, 0.72);
   border-color: rgba(23, 21, 19, 0.1);
 }
 
@@ -257,25 +300,34 @@
   );
 }
 
+/* ── Accent text colour ────────────────────────────────────────────────────
+   The "Accent text" token in the dashboard's Theme colours panel drives this
+   variable, so these are only the pre-hydration fallbacks — they mirror
+   DEFAULT_THEME_COLORS in src/store/siteContent.tsx.
+
+   Dark mode: the accent itself is readable on matte black, so it tracks the
+   primary accent. Light mode: #f5b301 on the cream background is only 1.7:1,
+   so a deeper gold keeps accent text readable at 4.7:1. */
+:root {
+  --gold-ink: #f5b301;
+}
+[data-theme="light"] {
+  --gold-ink: #8f6700;
+}
+
 /* Text on top of gold fills. Fixed in both themes — gold is always a light
    surface, so this stays dark whether the tokens invert or not. */
 .text-on-gold {
   color: #171513;
 }
 
-/* Keep the same yellow accents in both modes. Use graphite for small labels
-   on pale surfaces, not the old brown overrides. */
+/* Solid yellow accents in both modes — no graphite/brown substitution. */
 [data-theme="light"] .text-saffron-300,
-[data-theme="light"] .text-saffron-400,
-[data-theme="light"] .text-flame-400,
-[data-theme="light"] .text-orchid-400 {
-  color: #292929;
+[data-theme="light"] .text-saffron-400 {
+  color: var(--gold-ink);
 }
-[data-theme="light"] .text-gradient {
-  background-image: none;
-  color: var(--color-white);
-  box-shadow: inset 0 -0.13em 0 #f5b301;
-}
+/* .text-gradient needs no light-mode override: it is already solid yellow
+   via --gold-ink, which resolves to the readable deep gold on pale surfaces. */
 
 /* Real borders sit inside each button, unlike an outer ring that may be
    clipped by the sidebar's overflow scroller. */
@@ -360,7 +412,7 @@
   border-color: rgba(50, 40, 20, 0.16) !important;
 }
 [data-theme="light"] .machine-parts-panel .machine-parts-accent {
-  color: #292929 !important;
+  color: var(--gold-ink) !important;
 }
 [data-theme="light"] .machine-parts-panel .machine-parts-muted {
   color: #514838 !important;
@@ -375,7 +427,7 @@
   color: #514838 !important;
 }
 [data-theme="light"] .machine-parts-panel .text-saffron-300 {
-  color: #292929 !important;
+  color: var(--gold-ink) !important;
 }
 [data-theme="light"] .machine-parts-row {
   border-color: rgba(50, 40, 20, 0.09);
@@ -401,7 +453,13 @@
   .animate-route-dash,
   .ldr-ride,
   .ldr-bar,
-  .pointer-pulse {
+  .pointer-pulse,
+  [class*="ldr-anim-"] {
     animation: none !important;
+  }
+  /* The glow keyframe also changes opacity, so pin it back to fully visible. */
+  [class*="ldr-anim-"] {
+    opacity: 1 !important;
+    filter: none !important;
   }
 }

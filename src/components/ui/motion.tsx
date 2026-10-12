@@ -142,7 +142,7 @@ export function SectionHeader({
     >
       <Reveal>
         <span className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-saffron-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500" />
+          <span className="h-1.5 w-1.5 rounded-full bg-saffron-400" />
           {eyebrow}
         </span>
       </Reveal>

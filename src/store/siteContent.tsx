@@ -235,7 +235,15 @@ export function resolveHeaderButtons(list?: unknown): HeaderButton[] {
   return list.map((b, i) => normalizeButton((b ?? {}) as Partial<HeaderButton>, i));
 }
 
-/* ── Theme colours: one palette for dark mode, one for light mode ── */
+/* ── Theme colours: one palette for dark mode, one for light mode ──
+   Every token below drives a CSS variable the site actually consumes. The
+   accent family is three shades of one colour plus the accent-text colour:
+     gold      — solid fills: buttons, chips, dots, borders
+     goldSoft  — pale accent text and labels
+     goldDeep  — the deeper shade used for the soft background glows
+     goldInk   — accent text that has to stay readable on the page background
+   Keep this list in sync with THEME_TOKEN_VARS, with the css variables in
+   index.css, and with the TOKENS list in the dashboard's Theme colours panel. */
 export interface ThemeTokens {
   background: string;
   surface: string;
@@ -244,8 +252,8 @@ export interface ThemeTokens {
   body: string;
   gold: string;
   goldSoft: string;
-  warm: string;
-  cool: string;
+  goldDeep: string;
+  goldInk: string;
 }
 export interface ThemeColors {
   dark: ThemeTokens;
@@ -261,8 +269,9 @@ export const DEFAULT_THEME_COLORS: ThemeColors = {
     body: "#d4d4d8",
     gold: "#f5b301",
     goldSoft: "#ffdf8a",
-    warm: "#e8a200",
-    cool: "#9c7414",
+    goldDeep: "#d99700",
+    // On matte black the accent itself is readable, so accent text matches it.
+    goldInk: "#f5b301",
   },
   light: {
     background: "#f7f4ed",
@@ -272,8 +281,10 @@ export const DEFAULT_THEME_COLORS: ThemeColors = {
     body: "#3a342b",
     gold: "#f5b301",
     goldSoft: "#ffdf8a",
-    warm: "#e8a200",
-    cool: "#9c7414",
+    goldDeep: "#d99700",
+    // #f5b301 on the cream background is only 1.7:1, so light mode uses a
+    // deeper gold for text (4.7:1). See --gold-ink in index.css.
+    goldInk: "#8f6700",
   },
 };
 
@@ -286,28 +297,83 @@ export const THEME_TOKEN_VARS: Record<keyof ThemeTokens, string> = {
   body: "--color-zinc-300",
   gold: "--color-saffron-400",
   goldSoft: "--color-saffron-300",
-  warm: "--color-flame-500",
-  cool: "--color-orchid-500",
+  goldDeep: "--color-saffron-500",
+  goldInk: "--gold-ink",
 };
 
+const TOKEN_KEYS = Object.keys(DEFAULT_THEME_COLORS.dark) as (keyof ThemeTokens)[];
+
+/**
+ * Keeps saved palettes to the current token set. Unknown keys left over from
+ * older versions (the removed `warm` and `cool` accents) are dropped instead of
+ * being carried forward forever.
+ */
+function pickTokens(defaults: ThemeTokens, saved?: Partial<ThemeTokens>): ThemeTokens {
+  const out = {} as ThemeTokens;
+  for (const key of TOKEN_KEYS) {
+    const value = saved?.[key];
+    out[key] = typeof value === "string" && value ? value : defaults[key];
+  }
+  return out;
+}
+
 export function resolveThemeColors(tc?: Partial<ThemeColors>): ThemeColors {
-  const light = { ...DEFAULT_THEME_COLORS.light, ...(tc?.light ?? {}) };
-  // Upgrade previous default brown accents without resetting custom palettes.
-  const previousDefaults = {
+  const light = pickTokens(DEFAULT_THEME_COLORS.light, tc?.light);
+
+  // Upgrade the old brown default accents to the current yellow without
+  // touching palettes the user customised.
+  const previousDefaults: Partial<Record<keyof ThemeTokens, string>> = {
     gold: "#b07c00",
     goldSoft: "#8a6000",
-    warm: "#8a6000",
-    cool: "#6d5312",
   };
-  (Object.keys(previousDefaults) as (keyof typeof previousDefaults)[]).forEach((key) => {
-    if (light[key]?.toLowerCase() === previousDefaults[key]) {
+  for (const key of Object.keys(previousDefaults) as (keyof ThemeTokens)[]) {
+    if (light[key].toLowerCase() === previousDefaults[key]) {
       light[key] = DEFAULT_THEME_COLORS.light[key];
     }
-  });
-  return {
-    dark: { ...DEFAULT_THEME_COLORS.dark, ...(tc?.dark ?? {}) },
-    light,
-  };
+  }
+
+  const dark = pickTokens(DEFAULT_THEME_COLORS.dark, tc?.dark);
+  // Unless it was set on purpose, dark-mode accent text follows the accent, so
+  // changing the primary colour also changes the accent text.
+  if (!tc?.dark?.goldInk) dark.goldInk = dark.gold;
+
+  return { dark, light };
+}
+
+/* ── Loader animation ──
+   How the loader's logo (or the built-in rider mark) moves while the site
+   loads. "none" leaves an uploaded logo still; the built-in rider mark has its
+   own motion baked into the artwork, so it never freezes. */
+export const LOADER_ANIMATIONS = [
+  "none",
+  "pulse",
+  "float",
+  "bounce",
+  "spin",
+  "wobble",
+  "glow",
+  "orbit",
+  "zoom",
+] as const;
+export type LoaderAnimation = (typeof LOADER_ANIMATIONS)[number];
+
+export const LOADER_ANIMATION_LABELS: Record<LoaderAnimation, { label: string; hint: string }> = {
+  none: { label: "Static", hint: "No extra motion" },
+  pulse: { label: "Pulse", hint: "Breathes in and out" },
+  float: { label: "Float", hint: "Drifts gently up and down" },
+  bounce: { label: "Bounce", hint: "Springs off the ground" },
+  spin: { label: "Spin", hint: "Turns continuously" },
+  wobble: { label: "Wobble", hint: "Tilts side to side" },
+  glow: { label: "Glow", hint: "Fades with a gold halo" },
+  orbit: { label: "Orbit", hint: "Circles around its centre" },
+  zoom: { label: "Zoom", hint: "Grows and shrinks" },
+};
+
+export function resolveLoaderAnimation(value?: unknown): LoaderAnimation {
+  return typeof value === "string" &&
+    (LOADER_ANIMATIONS as readonly string[]).includes(value)
+    ? (value as LoaderAnimation)
+    : "none";
 }
 
 export interface SiteContent {
@@ -316,6 +382,8 @@ export interface SiteContent {
   sections: SectionEntry[];
   /** Optional custom loader icon (data URL or /media path). */
   loaderLogo?: string;
+  /** Motion applied to the loader logo/icon while the site loads. */
+  loaderAnimation?: LoaderAnimation;
   brand?: BrandSettings;
   footer?: FooterSettings;
   headerButtons?: HeaderButton[];
@@ -984,10 +1052,11 @@ function loadRevisions(): Revision[] {
 }
 
 function withSettingsDefaults(value: SiteContent): SiteContent {
-  const { loaderLogo, brand, footer, headerButtons, themeColors, ...page } = value;
+  const { loaderLogo, loaderAnimation, brand, footer, headerButtons, themeColors, ...page } = value;
   return {
     ...page,
     loaderLogo: loaderLogo ?? "",
+    loaderAnimation: resolveLoaderAnimation(loaderAnimation),
     brand: resolveBrand(brand),
     footer: resolveFooter(footer),
     headerButtons: resolveHeaderButtons(headerButtons),
@@ -1115,9 +1184,18 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     JSON.stringify(resolveFooter(draft.footer)) !== JSON.stringify(resolveFooter(content.footer)),
   [draft.footer, content.footer]);
   const hasSettingsChanges = useMemo(() =>
-    JSON.stringify([resolveHeaderButtons(draft.headerButtons), resolveThemeColors(draft.themeColors)]) !==
-    JSON.stringify([resolveHeaderButtons(content.headerButtons), resolveThemeColors(content.themeColors)]),
-  [draft.headerButtons, draft.themeColors, content.headerButtons, content.themeColors]);
+    JSON.stringify([
+      resolveHeaderButtons(draft.headerButtons),
+      resolveThemeColors(draft.themeColors),
+      resolveLoaderAnimation(draft.loaderAnimation),
+    ]) !==
+    JSON.stringify([
+      resolveHeaderButtons(content.headerButtons),
+      resolveThemeColors(content.themeColors),
+      resolveLoaderAnimation(content.loaderAnimation),
+    ]),
+  [draft.headerButtons, draft.themeColors, draft.loaderAnimation,
+   content.headerButtons, content.themeColors, content.loaderAnimation]);
   const hasChanges =
     hasPageChanges || hasBrandChanges || hasFooterChanges || hasSettingsChanges || loaderDraft !== (content.loaderLogo ?? "");
 

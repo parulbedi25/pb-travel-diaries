@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation } from "lucide-react";
 import type { HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
+import Photo from "./ui/Photo";
 
 const container = {
   hidden: {},
@@ -27,8 +28,8 @@ export default function Hero({ data }: { data: HeroData }) {
       {/* ambient background */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_75%_60%_at_50%_0%,black,transparent)]" />
-        <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-gradient-to-r from-saffron-500/25 via-flame-500/20 to-orchid-500/25 blur-[100px] animate-pulse-soft" />
-        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-orchid-500/15 blur-[100px]" />
+        <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/20 blur-[100px] animate-pulse-soft" />
+        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/15 blur-[100px]" />
         <div className="glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/15 blur-[100px]" />
       </div>
 
@@ -69,9 +70,8 @@ export default function Hero({ data }: { data: HeroData }) {
             <motion.div variants={item} className="mt-9 flex flex-wrap items-center gap-4">
               <a
                 href={data.cta1Href || "#"}
-                className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-7 py-4 font-display text-[15px] font-semibold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(255,77,109,0.5)] hover:brightness-110 active:scale-95"
+                className="group relative inline-flex items-center gap-2.5 rounded-full bg-saffron-400 px-7 py-4 font-display text-[15px] font-semibold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(245,179,1,0.45)] hover:brightness-110 active:scale-95"
               >
-                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
                 <MapPin className="h-4.5 w-4.5" />
                 {data.cta1}
               </a>
@@ -79,7 +79,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 href={data.cta2Href || "#"}
                 className="group inline-flex items-center gap-3 rounded-full glass px-6 py-4 font-display text-[15px] font-semibold text-white transition-all duration-300 hover:border-white/25 hover:bg-white/[0.07] active:scale-95"
               >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-gradient-to-br group-hover:from-saffron-400 group-hover:to-flame-500">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-saffron-400">
                   <Play className="h-3.5 w-3.5 fill-current" />
                 </span>
                 {data.cta2}
@@ -91,12 +91,9 @@ export default function Hero({ data }: { data: HeroData }) {
                 {["AM", "RK", "IS", "KB"].map((n, i) => (
                   <span
                     key={n}
-                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-gradient-to-br text-[10px] font-bold text-white"
+                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[10px] font-bold text-on-gold"
                     style={{
                       marginLeft: i === 0 ? 0 : -10,
-                      backgroundImage: `linear-gradient(135deg, ${
-                        ["#ffab5e", "#ff5d7e", "#8b5cf6", "#2dd4bf"][i]
-                      }, ${["#ff5d7e", "#8b5cf6", "#2dd4bf", "#ffab5e"][i]})`,
                       zIndex: 4 - i,
                     }}
                   >
@@ -133,15 +130,12 @@ export default function Hero({ data }: { data: HeroData }) {
             >
               {/* main image */}
               <div className="relative overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-black/60">
-                <img
+                <Photo
                   src={data.mainImage}
                   alt="Winding mountain road through the snowcapped Himalayas of Leh, Ladakh"
                   className="aspect-[4/3.4] w-full object-cover sm:aspect-[4/3]"
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  width={1200}
-                  height={627}
+                  priority
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-ink-950/10" />
                 {/* location chip */}
@@ -151,7 +145,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 </div>
                 {/* bottom card */}
                 <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-2xl bg-ink-950/55 p-3 backdrop-blur-xl">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-saffron-400 to-flame-500">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-saffron-400">
                     <Play className="h-4 w-4 fill-white text-white" />
                   </span>
                   <div className="min-w-0">
@@ -169,11 +163,11 @@ export default function Hero({ data }: { data: HeroData }) {
                 {...float(0.4, 12)}
                 className="absolute -left-6 top-14 hidden w-44 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-12"
               >
-                <img
+                <Photo
                   src={data.cardAImage}
                   alt={data.cardATitle}
                   className="aspect-square w-full object-cover"
-                  loading="lazy"
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-950/90 to-transparent p-2.5 pt-6">
                   <p className="text-[11px] font-semibold text-white">{data.cardATitle}</p>
@@ -186,11 +180,11 @@ export default function Hero({ data }: { data: HeroData }) {
                 {...float(1.1, 14)}
                 className="absolute -right-4 bottom-24 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-right-10"
               >
-                <img
+                <Photo
                   src={data.cardBImage}
                   alt={data.cardBTitle}
                   className="aspect-square w-full object-cover"
-                  loading="lazy"
+                  label="Photo unavailable"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-950/90 to-transparent p-2.5 pt-6">
                   <p className="text-[11px] font-semibold text-white">{data.cardBTitle}</p>

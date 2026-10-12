@@ -252,7 +252,7 @@ export default function LiveMapPage() {
                 </span>
               </li>
               <li className="flex items-center gap-2.5">
-                <Mountain className="h-3.5 w-3.5 shrink-0 text-orchid-400" />
+                <Mountain className="h-3.5 w-3.5 shrink-0 text-saffron-300" />
                 {location.altitude}
               </li>
               <li className="flex items-center gap-2.5">

@@ -8,8 +8,14 @@ import {
   Eye,
   FileText,
   Crosshair,
+  FileArchive,
+  FileImage,
+  FileSpreadsheet,
+  FileType,
   FolderOpen,
   GripVertical,
+  ImageOff,
+  Presentation,
   History,
   Image as ImageIcon,
   Images,
@@ -23,6 +29,7 @@ import {
   LogOut,
   Moon,
   Pencil,
+  Play,
   Plus,
   RefreshCcw,
   Save,
@@ -46,6 +53,10 @@ import {
   type SectionEntry,
   type SectionType,
   type SiteContent,
+  type LoaderAnimation,
+  LOADER_ANIMATIONS,
+  LOADER_ANIMATION_LABELS,
+  resolveLoaderAnimation,
 } from "../store/siteContent";
 import BrandLogo from "../components/BrandLogo";
 import { FooterView } from "../components/Footer";
@@ -74,14 +85,20 @@ import {
   cascadeNavItem,
   cascadeSection,
 } from "./cascade";
-import { BikeLoaderMark } from "../components/Loader";
+import { BikeLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
 import {
   addAnyMediaFile,
   formatBytes,
+  kindOf,
+  KIND_META,
+  LOADER_LOGO_BUDGET,
+  type MediaKind,
   listMedia,
+  MEDIA_ACCEPT,
   removeMedia,
   type MediaItem,
 } from "./mediaLibrary";
+import ConfirmDialog from "./ConfirmDialog";
 
 /* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
 
@@ -514,7 +531,7 @@ function Switch({
       className={cn(
         "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
         disabled && "cursor-not-allowed opacity-50",
-        on ? "bg-gradient-to-r from-saffron-400 to-flame-500" : "bg-white/15"
+        on ? "bg-saffron-400" : "bg-white/15"
       )}
     >
       <span
@@ -722,7 +739,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-950 px-5">
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" aria-hidden />
-      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[640px] -translate-x-1/2 rounded-full bg-gradient-to-r from-saffron-500/20 via-flame-500/15 to-orchid-500/20 blur-[120px]" aria-hidden />
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[640px] -translate-x-1/2 rounded-full bg-saffron-400/15 blur-[120px]" aria-hidden />
 
       <div className="relative w-full max-w-sm">
         <button
@@ -733,7 +750,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         </button>
         <div className="rounded-3xl glass p-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-sm font-bold text-white shadow-lg shadow-flame-500/30">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
               PB
             </span>
             <div>
@@ -769,7 +786,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
             <button
               type="submit"
               disabled={busy}
-              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-5 py-3 font-display text-sm font-semibold text-white shadow-lg shadow-flame-500/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
+              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
             >
               {busy ? "Checking…" : "Enter dashboard"}
             </button>
@@ -956,7 +973,7 @@ export function HotspotEditor({
                 className={cn(
                   "absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
                   isOpen
-                    ? "border-white bg-saffron-400 text-ink-950"
+                    ? "border-white bg-saffron-400 text-on-gold"
                     : "border-white bg-ink-950/85 text-white hover:border-saffron-300",
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab"
                 )}
@@ -1023,7 +1040,7 @@ export function HotspotEditor({
                   className="flex cursor-grab items-center gap-2.5 p-2.5 active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-ink-950">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
                     {i + 1}
                   </span>
                   <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05]">
@@ -1499,7 +1516,7 @@ function SectionsPanel() {
           </div>
           <button
             onClick={addSection}
-            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> Add section
           </button>
@@ -1858,7 +1875,7 @@ function MenuPanel() {
             ],
           }));
         }}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+        className="mt-4 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-5 py-2.5 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
       >
         <Plus className="h-3.5 w-3.5" /> Add menu item
       </button>
@@ -2129,7 +2146,7 @@ function BrandingPanel() {
               <button
                 type="button"
                 onClick={handleSaveBranding}
-                className="inline-flex items-center gap-2 rounded-full bg-[#f5b301] px-5 py-3 text-sm font-bold text-[#171513] shadow-lg shadow-saffron-500/15 transition-all hover:bg-[#ffce49] active:scale-95 animate-pulse"
+                className="inline-flex items-center gap-2 rounded-full bg-[#f5b301] px-5 py-3 text-sm font-bold text-[#171513] shadow-lg shadow-saffron-400/15 transition-all hover:bg-[#ffce49] active:scale-95 animate-pulse"
               >
                 <Save className="h-4 w-4" /> Save Branding
               </button>
@@ -2154,12 +2171,30 @@ function BrandingPanel() {
 }
 
 function SettingsPanel() {
-  const { theme, setTheme, updateDraft, draft, loaderDraft, setLoaderDraft } = useSite();
+  const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft } = useSite();
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // The loader animation lives on the draft, so it publishes with Save Changes.
+  const loaderAnimation = resolveLoaderAnimation(draft.loaderAnimation);
+  const setLoaderAnimation = (next: LoaderAnimation) => {
+    logAction(`Changed loader animation to ${LOADER_ANIMATION_LABELS[next].label}`);
+    updateDraft((c) => ({ ...c, loaderAnimation: next }));
+  };
+
+  // Esc closes the loader preview.
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewOpen]);
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2247,32 +2282,129 @@ function SettingsPanel() {
           </div>
         </div>
 
-        {/* loader icon */}
+        {/* loader icon + animation */}
         <div className="rounded-3xl glass p-6">
-          <h3 className="font-display text-base font-semibold text-white">Loader icon</h3>
+          <h3 className="font-display text-base font-semibold text-white">Loader screen</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             Shown while the site loads. Upload your own mark, pick one from the media folder, or
-            leave it empty for the default animated rider crossing the mountains.
+            leave it empty for the default rider crossing the mountains. Large images are
+            accepted and compressed to under 2 MB automatically, and the compressed copy is what
+            the loader displays.
           </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-[180px_1fr] sm:items-start">
-            <div className="grid h-28 place-items-center rounded-2xl border border-white/10 bg-black/40">
-              {loaderDraft ? (
-                <img src={loaderDraft} alt="" className="max-h-24 max-w-full object-contain" />
-              ) : (
-                <BikeLoaderMark />
-              )}
+          <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr] sm:items-start">
+            {/* Fixed 16/9 viewport, so a very tall or very wide logo still
+                previews in the same space as everything else. */}
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+              <div className="grid place-items-center p-3" style={{ aspectRatio: "16 / 9" }}>
+                <span
+                  className={cn(
+                    "grid place-items-center",
+                    loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
+                  )}
+                >
+                  {loaderDraft ? (
+                    <img
+                      src={loaderDraft}
+                      alt=""
+                      className="max-h-[64px] max-w-[150px] object-contain"
+                    />
+                  ) : (
+                    <BikeLoaderMark />
+                  )}
+                </span>
+              </div>
             </div>
             <div>
-              <ImageField value={loaderDraft} onChange={setLoaderDraft} />
+              <ImageField
+                value={loaderDraft}
+                onChange={setLoaderDraft}
+                budget={LOADER_LOGO_BUDGET}
+                previewNote="Loader mark · compressed on upload"
+              />
               {loaderDraft && (
                 <button
                   type="button"
                   onClick={() => setLoaderDraft("")}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
                 >
-                  <RefreshCcw className="h-3 w-3" /> Use default rider animation
+                  <RefreshCcw className="h-3 w-3" /> Use default rider mark
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* animation picker */}
+          <div className="mt-6 border-t border-white/[0.07] pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                Animation
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+              >
+                <Play className="h-3 w-3" /> Preview full screen
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              How the mark moves while loading. Hover a tile to see it, or pick one to apply it
+              to the loader and this preview.
+            </p>
+
+            <div
+              role="group"
+              aria-label="Loader animation"
+              className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3"
+            >
+              {LOADER_ANIMATIONS.map((a) => {
+                const on = loaderAnimation === a;
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setLoaderAnimation(a)}
+                    aria-pressed={on}
+                    className={cn(
+                      "group flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-center transition-colors",
+                      on
+                        ? "border-saffron-400/60 bg-saffron-400/10"
+                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+                    )}
+                  >
+                    <span className="grid h-11 w-full place-items-center overflow-hidden">
+                      <span
+                        className={cn(
+                          "grid place-items-center",
+                          a !== "none" && `ldr-anim-${a}`,
+                          // Only animate on hover unless it's the chosen one,
+                          // so a grid of tiles is not permanently in motion.
+                          !on && "group-hover:[animation-play-state:running] [animation-play-state:paused]"
+                        )}
+                      >
+                        {loaderDraft ? (
+                          <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
+                        ) : (
+                          <BikeLoaderMark />
+                        )}
+                      </span>
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className={cn(
+                          "block text-xs font-semibold",
+                          on ? "text-white" : "text-zinc-300"
+                        )}
+                      >
+                        {LOADER_ANIMATION_LABELS[a].label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-tight text-zinc-500">
+                        {LOADER_ANIMATION_LABELS[a].hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2357,6 +2489,30 @@ function SettingsPanel() {
           </div>
         </div>
       </div>
+
+      {/* full-screen loader preview — the real component, on a local timer */}
+      {previewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Loader preview"
+          className="fixed inset-0 z-[200] grid place-items-center bg-ink-950"
+        >
+          <LoaderBackdrop />
+          <LoaderStage logo={loaderDraft} animation={loaderAnimation} />
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setPreviewOpen(false)}
+            className="absolute right-5 top-5 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" /> Close preview
+          </button>
+          <p className="absolute bottom-8 text-[11px] text-zinc-600">
+            This is the real loader screen · Esc to close
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -2422,10 +2578,29 @@ function RevisionsPanel() {
 
 /* ═══════════════ Media folder tab ═══════════════ */
 
+/** Icon for a stored file, by format family. */
+function KindIcon({ kind, broken }: { kind: MediaKind; broken?: boolean }) {
+  const cls = "h-8 w-8 text-saffron-300";
+  if (broken) return <ImageOff className={cls} />;
+  switch (kind) {
+    case "image": return <FileImage className={cls} />;
+    case "excel": return <FileSpreadsheet className={cls} />;
+    case "powerpoint": return <Presentation className={cls} />;
+    case "archive": return <FileArchive className={cls} />;
+    case "pdf": return <FileType className={cls} />;
+    default: return <FileText className={cls} />;
+  }
+}
+
 function MediaPanel() {
+  const { draft } = useSite();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** Item awaiting delete confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<MediaItem | null>(null);
+  /** Images the browser could not paint — shown as files instead of broken frames. */
+  const [broken, setBroken] = useState<Record<string, true>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => listMedia().then(setItems);
@@ -2437,16 +2612,41 @@ function MediaPanel() {
   const uploadFiles = async (files: FileList | File[]) => {
     setBusy(true);
     setError("");
+    const failed: string[] = [];
     try {
       for (const file of Array.from(files)) {
-        await addAnyMediaFile(file);
+        try {
+          await addAnyMediaFile(file);
+        } catch (e) {
+          failed.push(`${file.name}: ${e instanceof Error ? e.message : "upload failed"}`);
+        }
       }
       await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setBusy(false);
     }
+    if (failed.length) setError(failed.join(" · "));
+  };
+
+  /**
+   * Deleting is confirmed first. Anything already placed on the site is called
+   * out, because removing the file leaves that field pointing at nothing.
+   */
+  const confirmedDelete = async (item: MediaItem) => {
+    const ref = `idb:${item.id}`;
+    const usedEverywhere = JSON.stringify(draft).split(ref).length - 1;
+    setPendingDelete(null);
+    await removeMedia(item.id);
+    await refresh();
+    if (usedEverywhere > 0) {
+      setError(
+        `Deleted ${item.name}. It was in use in ${usedEverywhere} place${usedEverywhere === 1 ? "" : "s"} — those fields now point at a missing file.`
+      );
+    }
+  };
+
+  const usageCount = (item: MediaItem) => {
+    return JSON.stringify(draft).split(`idb:${item.id}`).length - 1;
   };
 
   return (
@@ -2461,19 +2661,20 @@ function MediaPanel() {
       >
         <FolderOpen className="mx-auto h-8 w-8 text-saffron-300" />
         <h3 className="mt-3 font-display text-lg font-semibold text-white">Media folder</h3>
-        <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-          Upload photos or documents (PDF, Word, Excel…) from your computer. They stay in this
-          browser and can be picked on any image or file field. You can also drop files into{" "}
+        <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
+          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG) and documents (PDF, Word, Excel,
+          PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
+          picked on any image or file field. You can also drop files into{" "}
           <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-saffron-300">
             public/media/
           </code>{" "}
-          and use <code className="font-mono text-[11px] text-zinc-300">/media/filename.jpg</code>.
+          and use <code className="font-mono text-[11px] text-zinc-300">/media/filename.pdf</code>.
         </p>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-flame-500/25 disabled:opacity-60"
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 disabled:opacity-60"
         >
           <Upload className="h-4 w-4" />
           {busy ? "Uploading…" : "Upload files"}
@@ -2481,7 +2682,7 @@ function MediaPanel() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.gpx"
+          accept={MEDIA_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {
@@ -2489,49 +2690,101 @@ function MediaPanel() {
             e.target.value = "";
           }}
         />
-        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        {error && (
+          <p role="alert" className="mx-auto mt-3 max-w-lg text-xs leading-relaxed text-red-400">
+            {error}
+          </p>
+        )}
       </div>
 
       {items.length === 0 ? (
         <p className="mt-8 text-center text-xs text-zinc-500">No files in the media library yet.</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((m) => (
-            <figure
-              key={m.id}
-              className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
-            >
-              {m.type.startsWith("image/") ? (
-                <img src={m.dataUrl} alt={m.name} className="aspect-[4/3] w-full object-cover" />
-              ) : (
-                <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
-                  <span className="flex flex-col items-center gap-1.5">
-                    <FileText className="h-8 w-8 text-saffron-300" />
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                      {m.name.split(".").pop() || "file"}
+          {items.map((m) => {
+            const kind = kindOf(m);
+            const meta = KIND_META[kind];
+            const isImage = kind === "image" && !broken[m.id];
+            const inUse = usageCount(m);
+            return (
+              <figure
+                key={m.id}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+              >
+                <span className="relative block">
+                  {isImage ? (
+                    <img
+                      src={m.dataUrl}
+                      alt={m.name}
+                      loading="lazy"
+                      onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                  ) : (
+                    <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
+                      <span className="flex flex-col items-center gap-2">
+                        <KindIcon kind={kind} broken={isImage === false && broken[m.id] === true} />
+                        <span className="rounded-full bg-saffron-400/15 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-saffron-300">
+                          {(m.ext || meta.badge).toUpperCase()}
+                        </span>
+                      </span>
                     </span>
+                  )}
+                  {inUse > 0 && (
+                    <span
+                      className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-bold text-saffron-300 backdrop-blur-md"
+                      title={`Used in ${inUse} place${inUse === 1 ? "" : "s"} on the site`}
+                    >
+                      IN USE
+                    </span>
+                  )}
+                </span>
+
+                <figcaption className="flex flex-1 flex-col p-3">
+                  <span className="block truncate text-xs font-medium text-zinc-200" title={m.name}>
+                    {m.name}
                   </span>
-                </span>
-              )}
-              <figcaption className="flex items-start justify-between gap-2 p-3">
-                <span>
-                  <span className="block truncate text-xs font-medium text-zinc-200">{m.name}</span>
-                  <span className="text-[10px] text-zinc-500">{formatBytes(m.size)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void removeMedia(m.id).then(refresh);
-                  }}
-                  aria-label={`Delete ${m.name}`}
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </figcaption>
-            </figure>
-          ))}
+                  <span className="mt-0.5 text-[10px] text-zinc-500">
+                    {meta.label} · {formatBytes(m.size)}
+                  </span>
+                  <span className="mt-3 flex items-center gap-1.5">
+                    <a
+                      href={m.dataUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Open
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete(m)}
+                      aria-label={`Delete ${m.name}`}
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                </figcaption>
+              </figure>
+            );
+          })}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Delete this file?"
+          message={`“${pendingDelete.name}” (${KIND_META[kindOf(pendingDelete)].label.toLowerCase()}, ${formatBytes(pendingDelete.size)}) will be removed from the media folder. This cannot be undone.`}
+          detail={
+            usageCount(pendingDelete) > 0
+              ? `It is currently used in ${usageCount(pendingDelete)} place${usageCount(pendingDelete) === 1 ? "" : "s"} on the site — those fields will point at a missing file.`
+              : undefined
+          }
+          confirmLabel="Delete file"
+          onConfirm={() => void confirmedDelete(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </div>
   );
@@ -2689,7 +2942,7 @@ function FooterPanel() {
                 <button
                   type="button"
                   onClick={addColumn}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add column
                 </button>
@@ -3027,9 +3280,8 @@ export default function AdminPage() {
             Site
           </a>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-sm font-bold text-white shadow-lg shadow-flame-500/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               PB
-              <span className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
             </span>
             <div>
               <h1 className="font-display text-sm font-semibold text-white">PB Control</h1>
@@ -3048,7 +3300,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => openSaveModal()}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-4 py-2 text-xs font-bold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
                 >
                   <Save className="h-3.5 w-3.5" /> Save Changes
                 </button>
@@ -3086,7 +3338,22 @@ export default function AdminPage() {
 
       {/* ---------- Main dashboard content ---------- */}
       <div className="relative mx-auto flex max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:flex-row">
-        <nav aria-label="Dashboard" className="flex shrink-0 gap-2 overflow-x-auto no-scrollbar lg:w-48 lg:flex-col">
+        {/*
+          The option list sticks below the header on wide screens, so switching
+          tabs never requires scrolling back up. `self-start` stops the flex row
+          from stretching it to the full column height (which would leave no
+          room to stick).
+
+          The max-height is deliberately more conservative than the raw viewport
+          space: a sticky box is also capped by its container's bottom edge, so
+          at the very end of the page a too-tall list gets pushed up behind the
+          header. Leaving the extra `rem` of slack keeps every option visible,
+          and the list scrolls on its own when it is taller than that.
+        */}
+        <nav
+          aria-label="Dashboard"
+          className="flex shrink-0 gap-2 overflow-x-auto no-scrollbar lg:sticky lg:top-24 lg:max-h-[calc(100dvh-13rem)] lg:w-48 lg:flex-col lg:self-start lg:overscroll-contain"
+        >
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -3190,7 +3457,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f5b301] px-5 py-2.5 text-xs font-bold text-[#171513] shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f5b301] px-5 py-2.5 text-xs font-bold text-[#171513] shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   {saveScope === "brand" ? "Confirm & Save Branding" : "Confirm & Publish"}
                 </button>

@@ -25,7 +25,7 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
   return (
     <footer className="relative border-t border-white/[0.07] pt-16 sm:pt-20">
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-saffron-400/50 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-saffron-400/50"
         aria-hidden
       />
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
@@ -46,7 +46,7 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                       href={s.href}
                       {...linkProps(s.href)}
                       aria-label={s.label}
-                      className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-gradient-to-br hover:from-saffron-400 hover:to-flame-500 hover:text-white"
+                      className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
                     >
                       {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{s.label[0]}</span>}
                     </a>
@@ -71,7 +71,7 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                         {...linkProps(link.href)}
                         className="group inline-flex items-center gap-1.5 text-sm text-zinc-400 transition-colors duration-300 hover:text-white"
                       >
-                        <span className="h-px w-0 bg-gradient-to-r from-saffron-400 to-flame-500 transition-all duration-300 group-hover:w-3" />
+                        <span className="h-px w-0 bg-saffron-400 transition-all duration-300 group-hover:w-3" />
                         {link.label}
                       </a>
                     </li>

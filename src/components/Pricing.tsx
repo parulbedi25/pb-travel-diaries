@@ -14,7 +14,7 @@ export default function Pricing({ data }: { data: PricingData }) {
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="relative scroll-mt-28 py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-orchid-500/10 blur-[130px]"
+        className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -50,7 +50,7 @@ export default function Pricing({ data }: { data: PricingData }) {
                   {selected && (
                     <motion.span
                       layoutId="billing-pill"
-                      className="absolute inset-0 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 shadow-lg shadow-flame-500/30"
+                      className="absolute inset-0 rounded-full bg-saffron-400 shadow-lg shadow-saffron-400/30"
                       transition={{ type: "spring", stiffness: 400, damping: 32 }}
                     />
                   )}
@@ -83,17 +83,17 @@ export default function Pricing({ data }: { data: PricingData }) {
                   className={cn(
                     "group relative flex h-full flex-col rounded-[2rem] p-8 transition-all duration-500 hover:-translate-y-2",
                     plan.featured
-                      ? "border border-transparent bg-gradient-to-b from-white/[0.09] to-white/[0.03] shadow-2xl shadow-flame-500/10 lg:scale-[1.03]"
+                      ? "border border-transparent bg-white/[0.06] shadow-2xl shadow-saffron-400/10 lg:scale-[1.03]"
                       : "glass hover:border-white/20"
                   )}
                 >
                   {plan.featured && (
                     <>
                       <span
-                        className="pointer-events-none absolute inset-0 rounded-[2rem] p-px [background:linear-gradient(160deg,rgba(255,171,94,0.6),rgba(255,77,109,0.4),rgba(139,92,246,0.5))] [mask:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)] [mask-composite:exclude]"
+                        className="pointer-events-none absolute inset-0 rounded-[2rem] p-px [background:var(--color-saffron-400)] [mask:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)] [mask-composite:exclude]"
                         aria-hidden
                       />
-                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white shadow-lg shadow-flame-500/40">
+                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-saffron-400 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-on-gold shadow-lg shadow-saffron-400/40">
                         Most popular
                       </span>
                     </>
@@ -104,7 +104,7 @@ export default function Pricing({ data }: { data: PricingData }) {
                       className={cn(
                         "grid h-11 w-11 place-items-center rounded-2xl",
                         plan.featured
-                          ? "bg-gradient-to-br from-saffron-400 to-flame-500 text-white"
+                          ? "bg-saffron-400 text-on-gold"
                           : "bg-white/[0.07] text-zinc-300"
                       )}
                     >
@@ -158,7 +158,7 @@ export default function Pricing({ data }: { data: PricingData }) {
                     className={cn(
                       "mt-8 inline-flex items-center justify-center rounded-full px-6 py-3.5 font-display text-sm font-semibold transition-all duration-300 active:scale-95",
                       plan.featured
-                        ? "bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 text-white shadow-xl shadow-flame-500/30 hover:brightness-110 hover:shadow-flame-500/50"
+                        ? "bg-saffron-400 text-on-gold shadow-xl shadow-saffron-400/30 hover:brightness-110 hover:shadow-saffron-400/50"
                         : "bg-white/[0.07] text-white hover:bg-white hover:text-ink-950"
                     )}
                   >
