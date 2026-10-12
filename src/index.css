@@ -52,6 +52,39 @@
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
   }
+  @keyframes ldr-anim-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+  @keyframes ldr-anim-float {
+    0%, 100% { transform: translateY(-7px); }
+    50% { transform: translateY(7px); }
+  }
+  @keyframes ldr-anim-bounce {
+    0%, 100% { transform: translateY(0) scaleY(0.96); }
+    45% { transform: translateY(-20px) scaleY(1.02); }
+    70% { transform: translateY(0) scaleY(0.94); }
+  }
+  @keyframes ldr-anim-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes ldr-anim-wobble {
+    0%, 100% { transform: rotate(-9deg); }
+    50% { transform: rotate(9deg); }
+  }
+  @keyframes ldr-anim-glow {
+    0%, 100% { opacity: 0.45; filter: drop-shadow(0 0 0 rgba(245, 179, 1, 0)); }
+    50% { opacity: 1; filter: drop-shadow(0 0 20px rgba(245, 179, 1, 0.6)); }
+  }
+  @keyframes ldr-anim-orbit {
+    from { transform: rotate(0deg) translateX(16px) rotate(0deg); }
+    to { transform: rotate(360deg) translateX(16px) rotate(-360deg); }
+  }
+  @keyframes ldr-anim-zoom {
+    0%, 100% { transform: scale(0.82); opacity: 0.7; }
+    50% { transform: scale(1.08); opacity: 1; }
+  }
 }
 
 @layer base {
@@ -149,6 +182,33 @@
   }
   .ldr-bar {
     animation: ldr-bar 1.15s ease-in-out infinite;
+  }
+
+  /* Loader logo/icon motion. Each class drives the whole mark, so an uploaded
+     image and the built-in rider mark animate identically. */
+  .ldr-anim-pulse {
+    animation: ldr-anim-pulse 1.8s ease-in-out infinite;
+  }
+  .ldr-anim-float {
+    animation: ldr-anim-float 2.6s ease-in-out infinite;
+  }
+  .ldr-anim-bounce {
+    animation: ldr-anim-bounce 1.15s ease-in-out infinite;
+  }
+  .ldr-anim-spin {
+    animation: ldr-anim-spin 2.6s linear infinite;
+  }
+  .ldr-anim-wobble {
+    animation: ldr-anim-wobble 2.2s ease-in-out infinite;
+  }
+  .ldr-anim-glow {
+    animation: ldr-anim-glow 2s ease-in-out infinite;
+  }
+  .ldr-anim-orbit {
+    animation: ldr-anim-orbit 3.2s linear infinite;
+  }
+  .ldr-anim-zoom {
+    animation: ldr-anim-zoom 1.9s ease-in-out infinite;
   }
 }
 
@@ -393,7 +453,13 @@
   .animate-route-dash,
   .ldr-ride,
   .ldr-bar,
-  .pointer-pulse {
+  .pointer-pulse,
+  [class*="ldr-anim-"] {
     animation: none !important;
+  }
+  /* The glow keyframe also changes opacity, so pin it back to fully visible. */
+  [class*="ldr-anim-"] {
+    opacity: 1 !important;
+    filter: none !important;
   }
 }

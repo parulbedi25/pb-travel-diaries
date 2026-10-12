@@ -340,12 +340,50 @@ export function resolveThemeColors(tc?: Partial<ThemeColors>): ThemeColors {
   return { dark, light };
 }
 
+/* ── Loader animation ──
+   How the loader's logo (or the built-in rider mark) moves while the site
+   loads. "none" leaves an uploaded logo still; the built-in rider mark has its
+   own motion baked into the artwork, so it never freezes. */
+export const LOADER_ANIMATIONS = [
+  "none",
+  "pulse",
+  "float",
+  "bounce",
+  "spin",
+  "wobble",
+  "glow",
+  "orbit",
+  "zoom",
+] as const;
+export type LoaderAnimation = (typeof LOADER_ANIMATIONS)[number];
+
+export const LOADER_ANIMATION_LABELS: Record<LoaderAnimation, { label: string; hint: string }> = {
+  none: { label: "Static", hint: "No extra motion" },
+  pulse: { label: "Pulse", hint: "Breathes in and out" },
+  float: { label: "Float", hint: "Drifts gently up and down" },
+  bounce: { label: "Bounce", hint: "Springs off the ground" },
+  spin: { label: "Spin", hint: "Turns continuously" },
+  wobble: { label: "Wobble", hint: "Tilts side to side" },
+  glow: { label: "Glow", hint: "Fades with a gold halo" },
+  orbit: { label: "Orbit", hint: "Circles around its centre" },
+  zoom: { label: "Zoom", hint: "Grows and shrinks" },
+};
+
+export function resolveLoaderAnimation(value?: unknown): LoaderAnimation {
+  return typeof value === "string" &&
+    (LOADER_ANIMATIONS as readonly string[]).includes(value)
+    ? (value as LoaderAnimation)
+    : "none";
+}
+
 export interface SiteContent {
   v: 1;
   nav: NavItem[];
   sections: SectionEntry[];
   /** Optional custom loader icon (data URL or /media path). */
   loaderLogo?: string;
+  /** Motion applied to the loader logo/icon while the site loads. */
+  loaderAnimation?: LoaderAnimation;
   brand?: BrandSettings;
   footer?: FooterSettings;
   headerButtons?: HeaderButton[];
@@ -1014,10 +1052,11 @@ function loadRevisions(): Revision[] {
 }
 
 function withSettingsDefaults(value: SiteContent): SiteContent {
-  const { loaderLogo, brand, footer, headerButtons, themeColors, ...page } = value;
+  const { loaderLogo, loaderAnimation, brand, footer, headerButtons, themeColors, ...page } = value;
   return {
     ...page,
     loaderLogo: loaderLogo ?? "",
+    loaderAnimation: resolveLoaderAnimation(loaderAnimation),
     brand: resolveBrand(brand),
     footer: resolveFooter(footer),
     headerButtons: resolveHeaderButtons(headerButtons),
@@ -1145,9 +1184,18 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     JSON.stringify(resolveFooter(draft.footer)) !== JSON.stringify(resolveFooter(content.footer)),
   [draft.footer, content.footer]);
   const hasSettingsChanges = useMemo(() =>
-    JSON.stringify([resolveHeaderButtons(draft.headerButtons), resolveThemeColors(draft.themeColors)]) !==
-    JSON.stringify([resolveHeaderButtons(content.headerButtons), resolveThemeColors(content.themeColors)]),
-  [draft.headerButtons, draft.themeColors, content.headerButtons, content.themeColors]);
+    JSON.stringify([
+      resolveHeaderButtons(draft.headerButtons),
+      resolveThemeColors(draft.themeColors),
+      resolveLoaderAnimation(draft.loaderAnimation),
+    ]) !==
+    JSON.stringify([
+      resolveHeaderButtons(content.headerButtons),
+      resolveThemeColors(content.themeColors),
+      resolveLoaderAnimation(content.loaderAnimation),
+    ]),
+  [draft.headerButtons, draft.themeColors, draft.loaderAnimation,
+   content.headerButtons, content.themeColors, content.loaderAnimation]);
   const hasChanges =
     hasPageChanges || hasBrandChanges || hasFooterChanges || hasSettingsChanges || loaderDraft !== (content.loaderLogo ?? "");
 

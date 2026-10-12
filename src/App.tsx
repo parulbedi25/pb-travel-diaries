@@ -301,7 +301,7 @@ function Shell() {
 
   return (
     <>
-      {loading && <Loader logo={content.loaderLogo} />}
+      {loading && <Loader logo={content.loaderLogo} animation={content.loaderAnimation} />}
       <LandingPage />
     </>
   );

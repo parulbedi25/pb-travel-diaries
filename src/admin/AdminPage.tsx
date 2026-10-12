@@ -23,6 +23,7 @@ import {
   LogOut,
   Moon,
   Pencil,
+  Play,
   Plus,
   RefreshCcw,
   Save,
@@ -46,6 +47,10 @@ import {
   type SectionEntry,
   type SectionType,
   type SiteContent,
+  type LoaderAnimation,
+  LOADER_ANIMATIONS,
+  LOADER_ANIMATION_LABELS,
+  resolveLoaderAnimation,
 } from "../store/siteContent";
 import BrandLogo from "../components/BrandLogo";
 import { FooterView } from "../components/Footer";
@@ -74,7 +79,7 @@ import {
   cascadeNavItem,
   cascadeSection,
 } from "./cascade";
-import { BikeLoaderMark } from "../components/Loader";
+import { BikeLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
 import {
   addAnyMediaFile,
   formatBytes,
@@ -2154,12 +2159,30 @@ function BrandingPanel() {
 }
 
 function SettingsPanel() {
-  const { theme, setTheme, updateDraft, draft, loaderDraft, setLoaderDraft } = useSite();
+  const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft } = useSite();
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // The loader animation lives on the draft, so it publishes with Save Changes.
+  const loaderAnimation = resolveLoaderAnimation(draft.loaderAnimation);
+  const setLoaderAnimation = (next: LoaderAnimation) => {
+    logAction(`Changed loader animation to ${LOADER_ANIMATION_LABELS[next].label}`);
+    updateDraft((c) => ({ ...c, loaderAnimation: next }));
+  };
+
+  // Esc closes the loader preview.
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewOpen]);
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2247,20 +2270,27 @@ function SettingsPanel() {
           </div>
         </div>
 
-        {/* loader icon */}
+        {/* loader icon + animation */}
         <div className="rounded-3xl glass p-6">
-          <h3 className="font-display text-base font-semibold text-white">Loader icon</h3>
+          <h3 className="font-display text-base font-semibold text-white">Loader screen</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             Shown while the site loads. Upload your own mark, pick one from the media folder, or
-            leave it empty for the default animated rider crossing the mountains.
+            leave it empty for the default rider crossing the mountains.
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-[180px_1fr] sm:items-start">
-            <div className="grid h-28 place-items-center rounded-2xl border border-white/10 bg-black/40">
-              {loaderDraft ? (
-                <img src={loaderDraft} alt="" className="max-h-24 max-w-full object-contain" />
-              ) : (
-                <BikeLoaderMark />
-              )}
+            <div className="grid h-28 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+              <span
+                className={cn(
+                  "grid place-items-center",
+                  loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
+                )}
+              >
+                {loaderDraft ? (
+                  <img src={loaderDraft} alt="" className="max-h-24 max-w-full object-contain" />
+                ) : (
+                  <BikeLoaderMark />
+                )}
+              </span>
             </div>
             <div>
               <ImageField value={loaderDraft} onChange={setLoaderDraft} />
@@ -2270,9 +2300,84 @@ function SettingsPanel() {
                   onClick={() => setLoaderDraft("")}
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
                 >
-                  <RefreshCcw className="h-3 w-3" /> Use default rider animation
+                  <RefreshCcw className="h-3 w-3" /> Use default rider mark
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* animation picker */}
+          <div className="mt-6 border-t border-white/[0.07] pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                Animation
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+              >
+                <Play className="h-3 w-3" /> Preview full screen
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              How the mark moves while loading. Hover a tile to see it, or pick one to apply it
+              to the loader and this preview.
+            </p>
+
+            <div
+              role="group"
+              aria-label="Loader animation"
+              className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3"
+            >
+              {LOADER_ANIMATIONS.map((a) => {
+                const on = loaderAnimation === a;
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setLoaderAnimation(a)}
+                    aria-pressed={on}
+                    className={cn(
+                      "group flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-center transition-colors",
+                      on
+                        ? "border-saffron-400/60 bg-saffron-400/10"
+                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+                    )}
+                  >
+                    <span className="grid h-11 w-full place-items-center overflow-hidden">
+                      <span
+                        className={cn(
+                          "grid place-items-center",
+                          a !== "none" && `ldr-anim-${a}`,
+                          // Only animate on hover unless it's the chosen one,
+                          // so a grid of tiles is not permanently in motion.
+                          !on && "group-hover:[animation-play-state:running] [animation-play-state:paused]"
+                        )}
+                      >
+                        {loaderDraft ? (
+                          <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
+                        ) : (
+                          <BikeLoaderMark />
+                        )}
+                      </span>
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className={cn(
+                          "block text-xs font-semibold",
+                          on ? "text-white" : "text-zinc-300"
+                        )}
+                      >
+                        {LOADER_ANIMATION_LABELS[a].label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-tight text-zinc-500">
+                        {LOADER_ANIMATION_LABELS[a].hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2357,6 +2462,30 @@ function SettingsPanel() {
           </div>
         </div>
       </div>
+
+      {/* full-screen loader preview — the real component, on a local timer */}
+      {previewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Loader preview"
+          className="fixed inset-0 z-[200] grid place-items-center bg-ink-950"
+        >
+          <LoaderBackdrop />
+          <LoaderStage logo={loaderDraft} animation={loaderAnimation} />
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setPreviewOpen(false)}
+            className="absolute right-5 top-5 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" /> Close preview
+          </button>
+          <p className="absolute bottom-8 text-[11px] text-zinc-600">
+            This is the real loader screen · Esc to close
+          </p>
+        </div>
+      )}
     </div>
   );
 }
