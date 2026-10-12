@@ -64,7 +64,7 @@ export default function Loader({ logo }: { logo?: string }) {
           <BikeLoaderMark />
         )}
         <div className="h-[3px] w-40 overflow-hidden rounded-full bg-white/10">
-          <div className="ldr-bar h-full rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500" />
+          <div className="ldr-bar h-full rounded-full bg-saffron-400" />
         </div>
         <p className="font-mono text-[11px] tracking-[0.28em] text-zinc-500">PB FROM PB</p>
       </div>

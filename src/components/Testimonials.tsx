@@ -3,15 +3,6 @@ import type { StoriesData } from "../store/siteContent";
 import { SectionHeader, Stagger, Item } from "./ui/motion";
 import { isOn } from "../utils/enabled";
 
-const GRADS = [
-  "from-saffron-400 to-flame-500",
-  "from-flame-400 to-orchid-400",
-  "from-orchid-400 to-sky-400",
-  "from-teal-400 to-emerald-400",
-  "from-sky-400 to-saffron-400",
-  "from-emerald-400 to-teal-400",
-];
-
 export default function Testimonials({ data }: { data: StoriesData }) {
   return (
     <section id="stories" aria-labelledby="stories-title" className="relative scroll-mt-28 py-24 sm:py-32">
@@ -48,7 +39,7 @@ export default function Testimonials({ data }: { data: StoriesData }) {
                 </div>
                 <figcaption className="mt-4 flex items-center gap-3 border-t border-white/[0.07] pt-5">
                   <span
-                    className={`grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br ${GRADS[i % GRADS.length]} font-display text-xs font-bold text-white`}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold"
                   >
                     {t.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
                   </span>

@@ -19,7 +19,7 @@ export default function CTA({ data }: { data: CtaData }) {
           <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 px-6 py-16 text-center sm:px-12 sm:py-24">
             <div className="absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent" aria-hidden />
             <div
-              className="absolute -top-40 left-1/2 h-80 w-[560px] -translate-x-1/2 rounded-full bg-gradient-to-r from-saffron-500/30 via-flame-500/25 to-orchid-500/30 blur-[110px] animate-pulse-soft"
+              className="absolute -top-40 left-1/2 h-80 w-[560px] -translate-x-1/2 rounded-full bg-saffron-400/25 blur-[110px] animate-pulse-soft"
               aria-hidden
             />
             <div className="absolute inset-0 bg-grid opacity-30 [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)]" aria-hidden />
@@ -68,7 +68,7 @@ export default function CTA({ data }: { data: CtaData }) {
                     />
                     <button
                       type="submit"
-                      className="group inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-7 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 hover:shadow-flame-500/50 active:scale-95 sm:py-3.5"
+                      className="group inline-flex items-center justify-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 hover:shadow-saffron-400/50 active:scale-95 sm:py-3.5"
                     >
                       {data.btnLabel}
                       <Send className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5" />

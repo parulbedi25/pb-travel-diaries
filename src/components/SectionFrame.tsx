@@ -236,7 +236,7 @@ export default function SectionFrame({
           aria-label={`Resize ${entry.label} from the ${edge}`}
           onPointerDown={(e) => startDrag(e, edge)}
           className={cn(
-            "absolute z-20 touch-none bg-gradient-to-r from-saffron-400 to-flame-500 opacity-80 hover:opacity-100",
+            "absolute z-20 touch-none bg-saffron-400 opacity-80 hover:opacity-100",
             edge === "top" && "left-1/2 top-0 h-3 w-40 -translate-x-1/2 cursor-ns-resize rounded-b-full",
             edge === "bottom" && "bottom-0 left-1/2 h-3 w-40 -translate-x-1/2 cursor-ns-resize rounded-t-full",
             edge === "left" && "left-0 top-1/2 h-28 w-3 -translate-y-1/2 cursor-ew-resize rounded-r-full",

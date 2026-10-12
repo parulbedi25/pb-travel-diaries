@@ -25,7 +25,7 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
       onClick={() => onChange(!on)}
       className={cn(
         "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
-        on ? "bg-gradient-to-r from-saffron-400 to-flame-500" : "bg-white/15"
+        on ? "bg-saffron-400" : "bg-white/15"
       )}
     >
       <span
@@ -86,7 +86,7 @@ const VARIANTS: { id: HeaderButton["variant"]; label: string }[] = [
 ];
 
 function previewClass(v: HeaderButton["variant"]): string {
-  if (v === "gold") return "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950";
+  if (v === "gold") return "bg-saffron-400 text-on-gold";
   if (v === "outline") return "border border-white/20 text-white";
   return "bg-white text-ink-950";
 }
@@ -135,7 +135,7 @@ export function HeaderButtonsEditor() {
           type="button"
           onClick={add}
           disabled={buttons.length >= MAX_HEADER_BUTTONS}
-          className={cn(pillBtn, "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950 disabled:opacity-40")}
+          className={cn(pillBtn, "bg-saffron-400 text-on-gold disabled:opacity-40")}
         >
           <Plus className="h-3.5 w-3.5" /> Add button
         </button>
@@ -259,7 +259,7 @@ export function ThemePanel() {
               className={cn(
                 "rounded-full px-4 py-2 text-xs font-semibold capitalize transition-all",
                 mode === m
-                  ? "bg-gradient-to-r from-saffron-400 to-flame-500 text-ink-950"
+                  ? "bg-saffron-400 text-on-gold"
                   : "bg-white/[0.06] text-zinc-400 hover:text-white"
               )}
             >
@@ -308,10 +308,10 @@ export function ThemePanel() {
               Body text sits here, readable against the background.
             </p>
             <span
-              className="mt-3 inline-block bg-clip-text text-base font-semibold text-transparent"
-              style={{ backgroundImage: `linear-gradient(100deg, ${t.goldSoft}, ${t.gold}, ${t.warm})` }}
+              className="mt-3 inline-block text-base font-semibold"
+              style={{ color: t.gold }}
             >
-              Gradient accent
+              Solid yellow accent
             </span>
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <span className="rounded-full px-5 py-2.5 text-sm font-semibold" style={{ background: t.gold, color: t.background }}>

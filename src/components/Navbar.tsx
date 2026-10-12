@@ -23,7 +23,7 @@ const isExternal = (href: string) => /^https?:\/\//i.test(href);
 
 function variantClass(v: HeaderButton["variant"]): string {
   if (v === "gold") {
-    return "text-on-gold bg-gradient-to-r from-saffron-400 to-flame-500 shadow-lg shadow-flame-500/25 hover:brightness-110";
+    return "text-on-gold bg-saffron-400 shadow-lg shadow-saffron-400/25 hover:brightness-110";
   }
   if (v === "outline") return "border border-white/20 text-white hover:bg-white/[0.08]";
   return "bg-white text-ink-950 hover:shadow-[0_0_28px_rgba(255,255,255,0.25)]";
@@ -107,7 +107,7 @@ export default function Navbar() {
   return (
     <>
       <motion.div
-        className="fixed inset-x-0 top-0 z-[70] h-[2.5px] origin-left bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500"
+        className="fixed inset-x-0 top-0 z-[70] h-[2.5px] origin-left bg-saffron-400"
         style={{ scaleX: progress }}
         aria-hidden
       />
@@ -144,7 +144,7 @@ export default function Navbar() {
                 className="group relative rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-colors duration-300 hover:text-white"
               >
                 {link.label}
-                <span className="absolute inset-x-4 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-saffron-400 to-flame-500 transition-transform duration-300 group-hover:scale-x-100" />
+                <span className="absolute inset-x-4 -bottom-px h-px origin-left scale-x-0 bg-saffron-400 transition-transform duration-300 group-hover:scale-x-100" />
               </a>
             ))}
           </nav>
@@ -192,7 +192,7 @@ export default function Navbar() {
               <HeaderCta
                 key={b.id}
                 b={b}
-                className="hidden transition-all hover:shadow-saffron-500/30 sm:inline-flex"
+                className="hidden transition-all hover:shadow-saffron-400/30 sm:inline-flex"
               />
             ))}
             <button

@@ -139,7 +139,7 @@ export function InstagramSection({ data }: { data: InstagramData }) {
         )}
         {data.profileLabel && data.profileHref && (
           <Reveal className="mt-10 text-center">
-            <a href={data.profileHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-6 py-3 text-sm font-semibold text-white transition-transform active:scale-95">
+            <a href={data.profileHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-semibold text-white transition-transform active:scale-95">
               <InstagramIcon className="h-4 w-4" /> {data.profileLabel} <ArrowUpRight className="h-4 w-4" />
             </a>
           </Reveal>

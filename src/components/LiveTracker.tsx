@@ -68,7 +68,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
           <Reveal className="h-full">
             <div className="relative flex h-full min-h-[440px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50">
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
-              <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-orchid-500/15 blur-[100px]" aria-hidden />
+              <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/15 blur-[100px]" aria-hidden />
               <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/15 blur-[100px]" aria-hidden />
               <div className="absolute left-[58%] top-[38%] h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]" aria-hidden />
               <div className="absolute left-[58%] top-[38%] h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]" aria-hidden />
@@ -112,15 +112,15 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     >
                       {status === "live" && (
                         <>
-                          <span className="absolute h-10 w-10 rounded-full bg-flame-500/40 animate-radar" aria-hidden />
-                          <span className="absolute h-6 w-6 rounded-full bg-flame-500/30 animate-ping" aria-hidden />
+                          <span className="absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden />
+                          <span className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden />
                         </>
                       )}
                       <span
                         className={cn(
                           "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg",
                           status === "live"
-                            ? "bg-gradient-to-br from-saffron-400 to-flame-500 shadow-flame-500/50"
+                            ? "bg-saffron-400 shadow-saffron-400/50"
                             : status === "stale"
                               ? "bg-amber-400"
                               : "bg-zinc-500"
@@ -252,7 +252,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     {lat}° N · {lng}° E
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Mountain className="h-3.5 w-3.5 text-orchid-400" />
+                    <Mountain className="h-3.5 w-3.5 text-saffron-300" />
                     {location.altitude}
                   </span>
                   <span className="ml-auto hidden items-center gap-1.5 text-zinc-500 sm:flex">
@@ -330,7 +330,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     aria-valuemax={100}
                     aria-label="Today's ride progress"
                   >
-                    <div className="h-full w-[68%] rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500" />
+                    <div className="h-full w-[68%] rounded-full bg-saffron-400" />
                   </div>
                   <p className="mt-2 text-[11px] text-zinc-500">{note}</p>
                 </div>
@@ -371,7 +371,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                           <p className="text-sm font-semibold text-white">{n.place}</p>
                           <p className="text-xs text-zinc-500">{n.meta}</p>
                         </div>
-                        <span className="rounded-full bg-gradient-to-r from-saffron-400/15 to-flame-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
+                        <span className="rounded-full bg-saffron-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
                           {n.tag}
                         </span>
                       </div>

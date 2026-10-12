@@ -40,7 +40,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
   return (
     <section id="showreel" aria-labelledby="benefits-title" className="relative scroll-mt-28 py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-flame-500/10 blur-[130px]"
+        className="pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -121,7 +121,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                 </p>
                 <div className="mt-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-xs font-bold text-white">
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-white">
                       PB
                     </span>
                     <div>
@@ -151,7 +151,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
               <Item key={p.tag} className="flex-1">
                 <article className="group flex h-full flex-col justify-center rounded-[2rem] glass p-7 transition-all duration-500 hover:-translate-y-1 hover:border-white/20 sm:p-8">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span className="rounded-full bg-gradient-to-r from-saffron-400/15 to-flame-500/15 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-saffron-300">
+                    <span className="rounded-full bg-saffron-400/15 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-saffron-300">
                       {p.tag}
                     </span>
                     <h3 className="font-display text-xl font-semibold tracking-tight text-white">

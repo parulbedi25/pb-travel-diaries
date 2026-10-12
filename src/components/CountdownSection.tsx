@@ -241,7 +241,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
   return (
     <section id="countdown" aria-labelledby="countdown-title" className="relative scroll-mt-28 py-20 sm:py-28">
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-saffron-500/15 via-flame-500/10 to-orchid-500/15 blur-[110px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/12 blur-[110px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-4xl px-5 sm:px-8">
@@ -273,7 +273,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
           {data.ctaLabel && (
             <a
               href={data.ctaHref || "#"}
-              className="group mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-7 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+              className="group mt-8 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-7 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
             >
               {data.ctaLabel}
               <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
@@ -294,7 +294,7 @@ export function CountdownPage({ data }: { data: CountdownData }) {
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
-        className="pointer-events-none absolute -top-24 left-1/2 h-96 w-[720px] -translate-x-1/2 rounded-full bg-gradient-to-r from-saffron-500/25 via-flame-500/15 to-orchid-500/25 blur-[130px]"
+        className="pointer-events-none absolute -top-24 left-1/2 h-96 w-[720px] -translate-x-1/2 rounded-full bg-saffron-400/20 blur-[130px]"
         aria-hidden
       />
       <div className="relative w-full max-w-4xl text-center">
@@ -322,7 +322,7 @@ export function CountdownPage({ data }: { data: CountdownData }) {
         {data.ctaLabel && (
           <a
             href={data.ctaHref || "#"}
-            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-8 py-4 font-display text-base font-semibold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-8 py-4 font-display text-base font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             {data.ctaLabel}
             <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
@@ -353,7 +353,7 @@ export function DonePage({ data }: { data: CountdownData }) {
         {data.ctaLabel && (
           <a
             href={data.ctaHref || "#"}
-            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-8 py-4 font-display text-base font-semibold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-8 py-4 font-display text-base font-semibold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             {data.ctaLabel}
             <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>

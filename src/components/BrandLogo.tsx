@@ -44,7 +44,7 @@ export default function BrandLogo({
           className={cn(
             "relative grid shrink-0 place-items-center overflow-hidden",
             !plain &&
-              "rounded-xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 shadow-lg shadow-flame-500/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3"
+              "rounded-xl bg-saffron-400 shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3"
           )}
           style={{
             height,
@@ -62,7 +62,7 @@ export default function BrandLogo({
       )}
       {showLogo && !b.logo && (
         <span
-          className="relative grid shrink-0 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-sm font-bold text-[#171513] shadow-lg shadow-flame-500/25"
+          className="relative grid shrink-0 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-[#171513] shadow-lg shadow-saffron-400/25"
           style={{ height, width: height, background: b.iconBg || undefined }}
         >
           PB

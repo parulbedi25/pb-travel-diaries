@@ -514,7 +514,7 @@ function Switch({
       className={cn(
         "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
         disabled && "cursor-not-allowed opacity-50",
-        on ? "bg-gradient-to-r from-saffron-400 to-flame-500" : "bg-white/15"
+        on ? "bg-saffron-400" : "bg-white/15"
       )}
     >
       <span
@@ -722,7 +722,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-950 px-5">
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" aria-hidden />
-      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[640px] -translate-x-1/2 rounded-full bg-gradient-to-r from-saffron-500/20 via-flame-500/15 to-orchid-500/20 blur-[120px]" aria-hidden />
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[640px] -translate-x-1/2 rounded-full bg-saffron-400/15 blur-[120px]" aria-hidden />
 
       <div className="relative w-full max-w-sm">
         <button
@@ -733,7 +733,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         </button>
         <div className="rounded-3xl glass p-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-sm font-bold text-white shadow-lg shadow-flame-500/30">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-white shadow-lg shadow-saffron-400/30">
               PB
             </span>
             <div>
@@ -769,7 +769,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
             <button
               type="submit"
               disabled={busy}
-              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-5 py-3 font-display text-sm font-semibold text-white shadow-lg shadow-flame-500/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
+              className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-white shadow-lg shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
             >
               {busy ? "Checking…" : "Enter dashboard"}
             </button>
@@ -956,7 +956,7 @@ export function HotspotEditor({
                 className={cn(
                   "absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
                   isOpen
-                    ? "border-white bg-saffron-400 text-ink-950"
+                    ? "border-white bg-saffron-400 text-on-gold"
                     : "border-white bg-ink-950/85 text-white hover:border-saffron-300",
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab"
                 )}
@@ -1023,7 +1023,7 @@ export function HotspotEditor({
                   className="flex cursor-grab items-center gap-2.5 p-2.5 active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-ink-950">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
                     {i + 1}
                   </span>
                   <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05]">
@@ -1499,7 +1499,7 @@ function SectionsPanel() {
           </div>
           <button
             onClick={addSection}
-            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> Add section
           </button>
@@ -1858,7 +1858,7 @@ function MenuPanel() {
             ],
           }));
         }}
-        className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+        className="mt-4 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
       >
         <Plus className="h-3.5 w-3.5" /> Add menu item
       </button>
@@ -2129,7 +2129,7 @@ function BrandingPanel() {
               <button
                 type="button"
                 onClick={handleSaveBranding}
-                className="inline-flex items-center gap-2 rounded-full bg-[#f5b301] px-5 py-3 text-sm font-bold text-[#171513] shadow-lg shadow-saffron-500/15 transition-all hover:bg-[#ffce49] active:scale-95 animate-pulse"
+                className="inline-flex items-center gap-2 rounded-full bg-[#f5b301] px-5 py-3 text-sm font-bold text-[#171513] shadow-lg shadow-saffron-400/15 transition-all hover:bg-[#ffce49] active:scale-95 animate-pulse"
               >
                 <Save className="h-4 w-4" /> Save Branding
               </button>
@@ -2473,7 +2473,7 @@ function MediaPanel() {
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-flame-500/25 disabled:opacity-60"
+          className="mt-5 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-saffron-400/25 disabled:opacity-60"
         >
           <Upload className="h-4 w-4" />
           {busy ? "Uploading…" : "Upload files"}
@@ -2689,7 +2689,7 @@ function FooterPanel() {
                 <button
                   type="button"
                   onClick={addColumn}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add column
                 </button>
@@ -3027,7 +3027,7 @@ export default function AdminPage() {
             Site
           </a>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-saffron-400 via-flame-500 to-orchid-500 font-display text-sm font-bold text-white shadow-lg shadow-flame-500/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-white shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               PB
               <span className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
             </span>
@@ -3048,7 +3048,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   onClick={() => openSaveModal()}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-4 py-2 text-xs font-bold text-white shadow-xl shadow-flame-500/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-white shadow-xl shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 animate-pulse active:scale-95"
                 >
                   <Save className="h-3.5 w-3.5" /> Save Changes
                 </button>
@@ -3190,7 +3190,7 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f5b301] px-5 py-2.5 text-xs font-bold text-[#171513] shadow-lg shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#f5b301] px-5 py-2.5 text-xs font-bold text-[#171513] shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   {saveScope === "brand" ? "Confirm & Save Branding" : "Confirm & Publish"}
                 </button>

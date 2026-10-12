@@ -60,7 +60,7 @@ function RouteFallback() {
   return (
     <div className="grid min-h-dvh place-items-center bg-ink-950">
       <div className="h-[3px] w-40 overflow-hidden rounded-full bg-white/10">
-        <div className="ldr-bar h-full rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500" />
+        <div className="ldr-bar h-full rounded-full bg-saffron-400" />
       </div>
     </div>
   );

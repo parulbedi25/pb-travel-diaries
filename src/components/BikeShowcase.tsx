@@ -93,7 +93,7 @@ function AccessoryBubble({
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-3 py-2 text-[11px] font-bold text-white shadow-lg shadow-flame-500/20 transition-all hover:brightness-110"
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-saffron-400 px-3 py-2 text-[11px] font-bold text-white shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
           >
             View product
             <ExternalLink className="h-3 w-3" />
@@ -135,7 +135,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
   return (
     <section id="machine" aria-labelledby="machine-title" className="relative scroll-mt-28 py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-24 h-96 w-96 rounded-full bg-flame-500/10 blur-[130px]"
+        className="pointer-events-none absolute right-0 top-24 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -216,9 +216,9 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                         className={cn(
                           "relative grid h-8 w-8 place-items-center rounded-full border backdrop-blur-md transition-all duration-300",
                           isOn
-                            ? "scale-110 text-white shadow-lg shadow-flame-500/50"
+                            ? "scale-110 text-white shadow-lg shadow-saffron-400/50"
                             : "border-white/50 bg-ink-950/70 text-white hover:scale-105 hover:border-saffron-300",
-                          isOn && !h.color && "border-saffron-300 bg-gradient-to-br from-saffron-400 to-flame-500"
+                          isOn && !h.color && "border-saffron-300 bg-saffron-400"
                         )}
                         style={
                           h.color
@@ -290,7 +290,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                         <span
                           className={cn(
                             "grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold",
-                            isOn ? "bg-saffron-400 text-ink-950" : "bg-white/10 text-zinc-300"
+                            isOn ? "bg-saffron-400 text-on-gold" : "bg-white/10 text-zinc-300"
                           )}
                         >
                           {i + 1}
@@ -311,7 +311,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                 </div>
                 <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/[0.07]">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500"
+                    className="h-full rounded-full bg-saffron-400"
                     style={{ width: `${odoPct}%` }}
                   />
                 </div>
@@ -412,7 +412,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                                       target="_blank"
                                       rel="noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-4 py-2 text-[11px] font-bold text-white shadow-lg shadow-flame-500/20 transition-all hover:brightness-110"
+                                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-4 py-2 text-[11px] font-bold text-white shadow-lg shadow-saffron-400/20 transition-all hover:brightness-110"
                                     >
                                       View product
                                       <ExternalLink className="h-3 w-3" />
@@ -449,7 +449,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
           <Reveal className="h-full">
             <div className="flex h-full flex-col justify-between gap-6 overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-white/[0.07] to-transparent p-7">
               <div>
-                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-orchid-500/15 text-orchid-400">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400/15 text-saffron-300">
                   <MoonStar className="h-5 w-5" />
                 </span>
                 <h3 className="mt-5 font-display text-xl font-semibold text-white">{data.whyTitle}</h3>
@@ -469,7 +469,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
                     key={m}
                     className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-zinc-300"
                   >
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-r from-saffron-400 to-flame-500" />
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-saffron-400" />
                     {m}
                   </li>
                 ))}
@@ -490,7 +490,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
               <div className="mt-5 flex flex-1 flex-col gap-3">
                 <a
                   href="#showreel"
-                  className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-saffron-400 via-flame-500 to-orchid-500 px-5 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-flame-500/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                  className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-white shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
                   <Play className="h-4 w-4 fill-current" />
                   {data.filmCta}
