@@ -1,0 +1,407 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Space Grotesk", var(--font-sans);
+  --font-urdu: "Noto Nastaliq Urdu", "Noto Naskh Arabic", serif;
+
+  /* ── Hanle Black · matte black bodywork ── */
+  --color-ink-950: #070707;
+  --color-ink-900: #0d0d0d;
+  --color-ink-800: #151514;
+  --color-ink-700: #22211e;
+
+  /* ── Hanle gold · tank decal + rim stripe ── */
+  --color-saffron-300: #ffdf8a;
+  --color-saffron-400: #f5b301;
+  --color-saffron-500: #d99700;
+
+  /* ── Amber · deeper gold shade ── */
+  --color-flame-400: #ffc94d;
+  --color-flame-500: #e8a200;
+
+  /* ── Bronze · aged brass lowlight ── */
+  --color-orchid-400: #d2a548;
+  --color-orchid-500: #9c7414;
+
+  --animate-marquee: marquee 46s linear infinite;
+  --animate-pulse-soft: pulse-soft 5.5s ease-in-out infinite;
+  --animate-blink: blink 1.5s ease-in-out infinite;
+  --animate-radar: radar 2.4s ease-out infinite;
+  --animate-route-dash: route-dash 3.2s linear infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.85; }
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+  @keyframes radar {
+    0% { transform: scale(0.35); opacity: 0.9; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+  @keyframes route-dash {
+    from { stroke-dashoffset: 24; }
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes ldr-ride {
+    from { transform: translateX(90px); }
+    to { transform: translateX(-90px); }
+  }
+  @keyframes ldr-bar {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Stable scrollbar gutter avoids layout shift when content height changes */
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply bg-ink-950 text-zinc-300 font-sans antialiased overflow-x-hidden;
+    text-rendering: optimizeSpeed;
+  }
+  img,
+  video {
+    /* Reserve space + skip offscreen decode work */
+    content-visibility: auto;
+  }
+  ::selection {
+    background: rgba(245, 179, 1, 0.32);
+    color: #fff;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 99px;
+  }
+  :focus-visible {
+    outline: 2px solid rgba(245, 179, 1, 0.85);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    /* Lighter blur = cheaper GPU work on Safari/Edge, visually identical at these alphas */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .text-gradient {
+    /* Hanle gold decal on matte black */
+    background-image: linear-gradient(
+      100deg,
+      var(--color-saffron-300) 0%,
+      var(--color-saffron-400) 45%,
+      var(--color-saffron-500) 95%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    background-size: 54px 54px;
+  }
+
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
+    mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
+  }
+
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(180deg, black 55%, transparent);
+    mask-image: linear-gradient(180deg, black 55%, transparent);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .font-urdu {
+    font-family: var(--font-urdu);
+  }
+
+  /* Ambient glow blobs: promote to their own layer so the blur is composited once */
+  .glow {
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  /* ── Loader ── */
+  .ldr-ride {
+    animation: ldr-ride 2.4s linear infinite;
+  }
+  .ldr-bar {
+    animation: ldr-bar 1.15s ease-in-out infinite;
+  }
+}
+
+/* ---------- Light theme — warm sand with the same Hanle gold accents ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-white: #171513;
+  --color-ink-950: #f7f4ed;
+  --color-ink-900: #efeae0;
+  --color-ink-800: #e7e1d4;
+  --color-ink-700: #d9d2c2;
+  --color-zinc-100: #1d1a16;
+  --color-zinc-200: #26221c;
+  --color-zinc-300: #3a342b;
+  --color-zinc-400: #5a5245;
+  --color-zinc-500: #776d5d;
+  --color-zinc-600: #938877;
+  /* Same Hanle gold as the dark theme — no golden brown in light mode. */
+  --color-saffron-300: #ffdf8a;
+  --color-saffron-400: #f5b301;
+  --color-saffron-500: #d99700;
+  --color-flame-400: #ffc94d;
+  --color-flame-500: #e8a200;
+  --color-orchid-400: #d2a548;
+  --color-orchid-500: #9c7414;
+}
+[data-theme="light"] .glass {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.62));
+  border-color: rgba(23, 21, 19, 0.1);
+}
+
+[data-theme="light"] .bg-grid {
+  background-image:
+    linear-gradient(rgba(23, 21, 19, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 21, 19, 0.055) 1px, transparent 1px);
+}
+
+/* ── Machine: component-responsive right panel + colour wash ───────────────
+   Container queries follow the resized Machine block, not the browser width.
+   Below 700px the panel becomes chips underneath and the photo stays full-size. */
+.machine-stage {
+  container-type: inline-size;
+}
+.machine-list,
+.machine-wash {
+  display: none;
+}
+.machine-mobile-controls {
+  display: flex;
+}
+@container (min-width: 700px) {
+  .machine-image-area {
+    width: calc(100% - var(--parts-reserve, 304px));
+    transition: width 100ms linear;
+  }
+  .machine-list {
+    display: flex;
+    animation: machine-fade 240ms ease-out both;
+  }
+  .machine-wash {
+    display: block;
+  }
+  .machine-mobile-controls {
+    display: none;
+  }
+}
+.machine-stage[data-panel-resizing] .machine-image-area {
+  transition: none;
+}
+@keyframes machine-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dominant colour of the bike photo, sampled in JS as --wr/--wg/--wb.
+   A soft radial wash replaces the blurred object behind the parts list. */
+.machine-wash {
+  --wr: 34;
+  --wg: 36;
+  --wb: 40;
+  background-color: rgba(7, 7, 7, 0.55);
+  background-image: radial-gradient(
+    ellipse 82% 92% at 66% 45%,
+    rgb(var(--wr) var(--wg) var(--wb) / 0.55),
+    transparent 74%
+  );
+}
+[data-theme="light"] .machine-wash {
+  background-color: rgba(247, 244, 237, 0.78);
+  background-image: radial-gradient(
+    ellipse 82% 92% at 66% 45%,
+    rgb(var(--wr) var(--wg) var(--wb) / 0.3),
+    transparent 74%
+  );
+}
+
+/* Text on top of gold fills. Fixed in both themes — gold is always a light
+   surface, so this stays dark whether the tokens invert or not. */
+.text-on-gold {
+  color: #171513;
+}
+
+/* Keep the same yellow accents in both modes. Use graphite for small labels
+   on pale surfaces, not the old brown overrides. */
+[data-theme="light"] .text-saffron-300,
+[data-theme="light"] .text-saffron-400,
+[data-theme="light"] .text-flame-400,
+[data-theme="light"] .text-orchid-400 {
+  color: #292929;
+}
+[data-theme="light"] .text-gradient {
+  background-image: none;
+  color: var(--color-white);
+  box-shadow: inset 0 -0.13em 0 #f5b301;
+}
+
+/* Real borders sit inside each button, unlike an outer ring that may be
+   clipped by the sidebar's overflow scroller. */
+[data-theme="light"] .dashboard-nav-option {
+  border-color: rgba(23, 21, 19, 0.24);
+  background-color: rgba(255, 255, 255, 0.55);
+}
+[data-theme="light"] .dashboard-nav-option:hover {
+  border-color: rgba(23, 21, 19, 0.42);
+}
+[data-theme="light"] .dashboard-nav-option[aria-pressed="true"] {
+  border-color: #f5b301;
+  background-color: rgba(245, 179, 1, 0.14);
+}
+
+/* Pointer dots pulse by default; hovering the bike image pauses them so the
+   dots settle and the photo reads cleanly. */
+.pointer-pulse {
+  animation: pointer-pulse 1.9s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+.machine-image-area:hover .pointer-pulse {
+  animation-play-state: paused;
+  opacity: 0;
+}
+@keyframes pointer-pulse {
+  0% { transform: scale(0.7); opacity: 0.75; }
+  70% { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Equal, symmetric elevation: zero horizontal offset so a panel's shadow reads
+   identically from every side and scales with its resized size. */
+.panel-shadow {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 48px -12px rgba(0, 0, 0, 0.55);
+}
+[data-theme="light"] .panel-shadow {
+  box-shadow:
+    0 0 0 1px rgba(23, 21, 19, 0.07),
+    0 0 48px -12px rgba(45, 36, 20, 0.18);
+}
+
+/* Journey: destination list layered inside the photo. Pale glass in light mode
+   so dark labels stay readable over any image. */
+.machine-dest-list {
+  background: linear-gradient(160deg, rgba(7, 7, 7, 0.72), rgba(7, 7, 7, 0.52));
+}
+[data-theme="light"] .machine-dest-list {
+  background: linear-gradient(160deg, rgba(255, 252, 244, 0.86), rgba(255, 252, 244, 0.68));
+  border-color: rgba(23, 21, 19, 0.14);
+}
+[data-theme="light"] .machine-dest-list .text-white {
+  color: #201c15;
+}
+[data-theme="light"] .machine-dest-list .text-zinc-300 {
+  color: #3a342b;
+}
+[data-theme="light"] .machine-dest-list .text-zinc-500 {
+  color: #5a5245;
+}
+[data-theme="light"] .machine-dest-list .text-zinc-600 {
+  color: #776d5d;
+}
+[data-theme="light"] .machine-dest-list .bg-white\/6,
+[data-theme="light"] .machine-dest-list .bg-white\/\[0\.06\] {
+  background-color: rgba(23, 21, 19, 0.07);
+}
+
+/* The parts list keeps a pale glass veil in light mode so dark labels stay
+   readable over the colour wash. */
+[data-theme="light"] .machine-parts-panel {
+  border-color: rgba(50, 40, 20, 0.22) !important;
+  background-color: rgba(247, 244, 237, 0.46) !important;
+  /* Equal from every side, matching the rest of the resizable panels. */
+  box-shadow:
+    0 0 0 1px rgba(23, 21, 19, 0.07),
+    0 0 48px -12px rgba(45, 36, 20, 0.18) !important;
+}
+/* (Blurred-photo and dark-tint overrides removed — the wash is a colour field now.) */
+[data-theme="light"] .machine-parts-head {
+  border-color: rgba(50, 40, 20, 0.16) !important;
+}
+[data-theme="light"] .machine-parts-panel .machine-parts-accent {
+  color: #292929 !important;
+}
+[data-theme="light"] .machine-parts-panel .machine-parts-muted {
+  color: #514838 !important;
+}
+[data-theme="light"] .machine-parts-panel .text-white {
+  color: #201c15 !important;
+}
+[data-theme="light"] .machine-parts-panel .text-zinc-300 {
+  color: #383126 !important;
+}
+[data-theme="light"] .machine-parts-panel .text-zinc-400 {
+  color: #514838 !important;
+}
+[data-theme="light"] .machine-parts-panel .text-saffron-300 {
+  color: #292929 !important;
+}
+[data-theme="light"] .machine-parts-row {
+  border-color: rgba(50, 40, 20, 0.09);
+  background: rgba(255, 252, 244, 0.52);
+}
+[data-theme="light"] .machine-parts-row:hover,
+[data-theme="light"] .machine-parts-row.border-saffron-400\/45 {
+  border-color: rgba(245, 179, 1, 0.8) !important;
+  background: rgba(255, 249, 216, 0.9) !important;
+}
+[data-theme="light"] .machine-parts-product {
+  color: #211b10 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-marquee,
+  .animate-pulse-soft,
+  .animate-blink,
+  .animate-radar,
+  .animate-route-dash,
+  .ldr-ride,
+  .ldr-bar,
+  .pointer-pulse {
+    animation: none !important;
+  }
+}
