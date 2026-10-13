@@ -55,7 +55,6 @@ import CountdownSection, {
 } from "./components/CountdownSection";
 import { EASE } from "./components/ui/motion";
 import { LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
-import AccountPage from "./auth/AccountPage";
 import ShopPage from "./components/ShopPage";
 
 // Heavy routes are split out so the landing page never downloads them.
@@ -293,11 +292,6 @@ function Shell() {
     const t = setTimeout(() => setLoading(false), 450);
     return () => clearTimeout(t);
   }, []);
-
-  const verificationReturn = new URLSearchParams(window.location.search).get("auth") === "verified";
-  if (route === "/account" || verificationReturn) {
-    return <AccountPage />;
-  }
 
   if (route === LIVE_MAP_PATH) {
     return (

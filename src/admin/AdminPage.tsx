@@ -38,7 +38,6 @@ import {
   Sun,
   Trash2,
   Upload,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -104,7 +103,6 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
-import UserManagementPanel from "./UserManagementPanel";
 
 /* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
 
@@ -4089,7 +4087,7 @@ function ShopPanel() {
 }
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings" | "users";
+type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
@@ -4100,7 +4098,6 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "theme", label: "Theme colours", icon: Palette },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
-  { id: "users", label: "Users", icon: Users },
 ];
 
 export default function AdminPage() {
@@ -4299,7 +4296,6 @@ export default function AdminPage() {
           {tab === "theme" && <ThemePanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
-          {tab === "users" && <UserManagementPanel />}
         </main>
       </div>
 
