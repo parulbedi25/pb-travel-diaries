@@ -83,20 +83,14 @@ export default function Pricing({ data }: { data: PricingData }) {
                   className={cn(
                     "group relative flex h-full flex-col rounded-[2rem] p-8 transition-all duration-500 hover:-translate-y-2",
                     plan.featured
-                      ? "border border-transparent bg-white/[0.06] shadow-2xl shadow-saffron-400/10 lg:scale-[1.03]"
+                      ? "border border-saffron-400/75 bg-white/[0.06] shadow-2xl shadow-saffron-400/15 lg:scale-[1.03]"
                       : "glass hover:border-white/20"
                   )}
                 >
                   {plan.featured && (
-                    <>
-                      <span
-                        className="pointer-events-none absolute inset-0 rounded-[2rem] p-px [background:var(--color-saffron-400)] [mask:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)] [mask-composite:exclude]"
-                        aria-hidden
-                      />
-                      <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-saffron-400 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-on-gold shadow-lg shadow-saffron-400/40">
-                        Most popular
-                      </span>
-                    </>
+                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-saffron-400 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-on-gold shadow-lg shadow-saffron-400/40">
+                      Most popular
+                    </span>
                   )}
 
                   <div className="flex items-center gap-3">

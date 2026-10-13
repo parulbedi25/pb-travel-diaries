@@ -1,0 +1,7 @@
+project_id = "pb-travel-diaries"
+
+[functions.username-login]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = true

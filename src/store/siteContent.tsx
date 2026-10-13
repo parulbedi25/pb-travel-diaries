@@ -24,6 +24,8 @@ export type SectionType =
   | "features"
   | "journey"
   | "machine"
+  | "gears"
+  | "riderkit"
   | "benefits"
   | "youtube"
   | "instagram"
@@ -114,9 +116,11 @@ export interface FooterColumn {
 }
 export interface FooterSocial {
   id: string;
-  /** Must match a social icon label: YouTube, Instagram, X (Twitter), Facebook */
+  /** Must match a built-in social icon label: YouTube, Instagram, X (Twitter), Facebook. */
   label: string;
+  /** Shared profile URL used by matching social icons across the site. */
   href: string;
+  /** Show or hide this platform's icons site-wide. */
   enabled: boolean;
 }
 export interface FooterSettings {
@@ -124,6 +128,7 @@ export interface FooterSettings {
   enabled: boolean;
   description: string;
   columns: FooterColumn[];
+  /** Shared profile URLs and visibility for social icons across the site. */
   socials: FooterSocial[];
   copyright: string;
   credit: string;
@@ -378,6 +383,8 @@ export function resolveLoaderAnimation(value?: unknown): LoaderAnimation {
 
 export interface SiteContent {
   v: 1;
+  /** Internal one-time migrations applied to browser-saved dashboard content. */
+  migrations?: string[];
   nav: NavItem[];
   sections: SectionEntry[];
   /** Optional custom loader icon (data URL or /media path). */
@@ -527,6 +534,73 @@ export interface MachineData {
   gallery: { src: string; alt: string; cap: string }[];
   hotspots: BikeHotspot[];
   subsectionLayout?: MachineSubsectionLayout;
+}
+export interface GearItem {
+  /** Stable product ID, scoped to the catalog it belongs to. */
+  id?: string;
+  /** My Picks ID when this is an independent copy attached to The Gear map. */
+  sourcePickId?: string;
+  enabled?: boolean;
+  /** A free-form wardrobe category, such as helmet, jacket, gloves or boots. */
+  category: string;
+  /** Optional body zone for the interactive rider map; blank infers it from category. */
+  bodyPart?: string;
+  name: string;
+  brand: string;
+  model: string;
+  description: string;
+  image: string;
+  imageAlt: string;
+  highlights: string[];
+  fit: string;
+  usedFor: string;
+  price: string;
+  link: string;
+}
+export interface GearsData {
+  eyebrow: string;
+  titleA: string;
+  titleHi: string;
+  titleB: string;
+  sub: string;
+  emptyTitle: string;
+  emptyText: string;
+  items: GearItem[];
+}
+
+export function makeGearItemId(name: string, suffix?: string | number): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "item";
+  return `gear-${slug}${suffix === undefined ? "" : `-${suffix}`}`;
+}
+
+export type RiderKitPointerZone = "head" | "torso" | "hands" | "waist" | "legs" | "feet" | "intercom";
+export interface RiderKitPointer {
+  id: string;
+  label: string;
+  /** Optional stable link to the product opened from this pointer. */
+  gearId?: string;
+  zone: RiderKitPointerZone;
+  x: number;
+  y: number;
+  radius: number;
+  enabled?: boolean;
+}
+export interface RiderKitData {
+  eyebrow: string;
+  titleA: string;
+  titleHi: string;
+  titleB: string;
+  sub: string;
+  image: string;
+  imageAlt: string;
+  /** Independent product copies shown on the rider map; not tied to the Wardrobe section. */
+  items: GearItem[];
+  mapPointers: RiderKitPointer[];
 }
 export interface BenefitsData {
   eyebrow: string;
@@ -829,6 +903,211 @@ const MACHINE: MachineData = {
   ],
 };
 
+const GEARS: GearsData = {
+  eyebrow: "My Picks",
+  titleA: "Gear for ",
+  titleHi: "the ride.",
+  titleB: "",
+  sub: "A curated gear collection from brands I ride with. Prices and availability can change; open each product page for current details.",
+  emptyTitle: "No gear picks yet.",
+  emptyText: "Add a pick from Dashboard → Shop → My Picks to start this collection.",
+  items: [
+    {
+      enabled: true,
+      category: "Helmet",
+      bodyPart: "Head",
+      id: "gear-zennith-modular-helmet",
+      name: "Zennith Modular Helmet",
+      brand: "Royal Enfield",
+      model: "Black · ISI + DOT",
+      description: "The official listing shows the Zennith as a modular helmet with ISI and DOT certifications.",
+      image: "https://royalenfield.store/media/catalog/product/_/0/_0005__0007_magnific_transform-this-helmet-ima_heomyxxvql.jpg?optimize=high&bg-color=255,255,255&fit=bounds&height=&width=",
+      imageAlt: "Black Zennith Modular Helmet from the Royal Enfield Store",
+      highlights: ["ISI + DOT", "Modular helmet"],
+      fit: "Sizes M, L and XL listed",
+      usedFor: "Urban · Summer, rain and winter",
+      price: "₹2,990",
+      link: "https://royalenfield.store/in/en/commando-mod-solid-id-ab-matt-black-xl60",
+    },
+    {
+      enabled: true,
+      category: "Jacket",
+      bodyPart: "Torso",
+      id: "gear-windfarer-v3-class-a-riding-jacket",
+      name: "Windfarer V3 Class A Riding Jacket",
+      brand: "Royal Enfield",
+      model: "Black · Class A",
+      description: "Royal Enfield lists the Windfarer V3 for urban and touring use, across summer, rain and winter conditions.",
+      image: "https://royalenfield.store/media/catalog/product/s/f/sfrbsbevae_7__1.jpg?optimize=high&bg-color=255,255,255&fit=bounds&height=&width=",
+      imageAlt: "Black Windfarer V3 Class A Riding Jacket from the Royal Enfield Store",
+      highlights: ["Class A", "Urban & touring", "Certified · SealPro"],
+      fit: "Sizes S–4XL listed",
+      usedFor: "Urban · Touring · Summer, rain and winter",
+      price: "₹9,990",
+      link: "https://royalenfield.store/in/en/windfarer-v3-black-1-61-m-8xl",
+    },
+    {
+      enabled: true,
+      category: "Gloves",
+      bodyPart: "Hands",
+      id: "gear-mx-pro-gloves",
+      name: "MX Pro Gloves",
+      brand: "Royal Enfield",
+      model: "CE certified · L1-KP",
+      description: "The official listing describes these gloves as lightweight, abrasion-resistant and CE certified.",
+      image: "https://royalenfield.store/media/catalog/product/s/d/sdbasfs_3_.jpg?optimize=high&bg-color=255,255,255&fit=bounds&height=&width=",
+      imageAlt: "MX Pro riding gloves from the Royal Enfield Store",
+      highlights: ["Lightweight", "Abrasion resistant", "CE certified · L1-KP"],
+      fit: "Sizes XS–3XL listed",
+      usedFor: "Cruising · Adventure · Touring · Urban",
+      price: "₹3,500",
+      link: "https://royalenfield.store/in/en/mx-pro-gloves-light-olive-23-6-cm-xs",
+    },
+    {
+      enabled: true,
+      category: "Trousers",
+      bodyPart: "Legs",
+      id: "gear-tripper-riding-trouser",
+      name: "Tripper Riding Trouser",
+      brand: "Royal Enfield",
+      model: "Multi Stripe · Class A",
+      description: "Royal Enfield lists CE Level 2 knee and hip protection, with 600D polyester at impact zones.",
+      image: "https://royalenfield.store/media/catalog/product/T/A/TAS250001-BBLR_MULTI_1_HERO_1.jpg?optimize=high&bg-color=255,255,255&fit=bounds&height=&width=",
+      imageAlt: "Multi Stripe Tripper Riding Trouser from the Royal Enfield Store",
+      highlights: ["Class A certified", "CE Level 2 knee and hip protection", "600D polyester at impact zones"],
+      fit: "Sizes 28–44 listed",
+      usedFor: "Urban · Touring · Summer, winter and rain",
+      price: "₹6,750",
+      link: "https://royalenfield.store/in/en/tripper-riding-bblr-multi-1-24-m-44",
+    },
+    {
+      enabled: true,
+      category: "Boots",
+      bodyPart: "Feet",
+      id: "gear-wanderer-waterproof-boots",
+      name: "Wanderer Waterproof Boots",
+      brand: "Royal Enfield",
+      model: "Black · CE certified",
+      description: "The official product page lists these as waterproof riding boots for cruising and adventure use.",
+      image: "/images/gear/wanderer-waterproof-boots.webp",
+      imageAlt: "Black Wanderer Waterproof Boots from the Royal Enfield Store",
+      highlights: ["CE certified", "Waterproof", "Cruising & adventure"],
+      fit: "Sizes 4–12 listed",
+      usedFor: "Cruising · Adventure · Summer, winter and rain",
+      price: "₹9,990",
+      link: "https://royalenfield.store/in/en/wanderer-wp-ing-boots-red-eu-46-uk-12-1720648806",
+    },
+    {
+      enabled: true,
+      category: "Helmet",
+      bodyPart: "Head",
+      id: "gear-optimus-dual-sport-helmet-black-gold",
+      name: "Optimus Dual Sport Helmet — Black & Gold",
+      brand: "Royal Enfield",
+      model: "HEA240002 · Black & Gold",
+      description: "A dual-sport full-face helmet with a removable, adjustable peak, listed with ISI and DOT certification.",
+      image: "/images/gear/optimus-dual-sport-helmet-black-gold.webp",
+      imageAlt: "Royal Enfield Optimus Dual Sport Helmet in black and gold",
+      highlights: ["ISI + DOT", "Removable, adjustable peak", "Approx. 1450 ± 50 g"],
+      fit: "Check the product page for current size availability",
+      usedFor: "Urban · Touring · Adventure",
+      price: "₹6,950",
+      link: "https://royalenfield.store/in/en/stripe-optimus-ds-ff-id-abs-b-g-xl-62cm",
+    },
+    {
+      enabled: true,
+      category: "Gloves",
+      bodyPart: "Hands",
+      id: "gear-arizona-leather-gloves-tan",
+      name: "Arizona Leather Gloves — Tan",
+      brand: "Royal Enfield",
+      model: "GLA240009 · Tan",
+      description: "Tan leather riding gloves with CE Class L1-KP certification and TPR protection at the knuckles and fingers.",
+      image: "/images/gear/arizona-leather-gloves-tan.webp",
+      imageAlt: "Tan Arizona Leather riding gloves from Royal Enfield",
+      highlights: ["CE Class L1-KP", "TPR knuckle and finger protectors", "Perforated leather · touchscreen compatible"],
+      fit: "See the official page for current sizes",
+      usedFor: "Urban · Touring",
+      price: "₹2,790",
+      link: "https://store.royalenfield.com/en/all-leather-gloves-tan-22-6-cm-l",
+    },
+    {
+      enabled: true,
+      category: "Jacket",
+      bodyPart: "Torso",
+      id: "gear-nirvik-v2-print-class-a-riding-jacket-black-gold",
+      name: "Nirvik V2 Print Class A Riding Jacket — Black & Gold",
+      brand: "Royal Enfield",
+      model: "JRA240005 · Black & Gold",
+      description: "Two-weather riding jacket listed as Class A, with a rain jacket and protection for touring and adventure riding.",
+      image: "/images/gear/nirvik-v2-jacket-black-gold.webp",
+      imageAlt: "Rider wearing the Royal Enfield Nirvik V2 Print jacket in black and gold",
+      highlights: ["Class A certified", "Two-layer 500D high-abrasion nylon", "Rain jacket included"],
+      fit: "Sizes vary; check the official page",
+      usedFor: "Urban · Touring · Adventure · Summer, winter and rain",
+      price: "₹17,950",
+      link: "https://royalenfield.store/in/en/nirvik-print-option-blk-gold-m-40cm",
+    },
+    {
+      enabled: true,
+      category: "Bags & carry",
+      bodyPart: "Waist / hip",
+      id: "gear-classic-sling-bag-rose-gold",
+      name: "Classic Sling Bag — Rose Gold",
+      brand: "Royal Enfield",
+      model: "BGA250007 · Rose Gold",
+      description: "Compact cross-body sling shown in the supplied product image. Current Rose Gold store listing and price could not be verified.",
+      image: "/images/gear/classic-sling-rose-gold.webp",
+      imageAlt: "Royal Enfield Classic Sling Bag in Rose Gold",
+      highlights: ["Moulded hard-shell upper", "Adjustable cross-body strap", "Free size"],
+      fit: "Free size",
+      usedFor: "Carrying small essentials",
+      price: "",
+      link: "https://royalenfield.store/in/en/men/bags",
+    },
+    {
+      enabled: true,
+      category: "Intercom",
+      bodyPart: "Head",
+      id: "gear-super-meteor-650-x-sena-50s-intercom",
+      name: "Super Meteor 650 x Sena 50S Intercom",
+      brand: "Royal Enfield × Sena",
+      model: "50S · Black",
+      description: "Helmet communication system with Sena Mesh Intercom and sound components developed with Harman Kardon.",
+      image: "/images/gear/sena-50s-intercom.webp",
+      imageAlt: "Royal Enfield and Sena 50S helmet intercom communicator",
+      highlights: ["Sound by Harman Kardon", "Mesh Intercom · 9 channels", "Bluetooth 5.0 · 2 km stated range"],
+      fit: "1 size",
+      usedFor: "Helmet-mounted rider-to-rider communication",
+      price: "₹35,990",
+      link: "https://royalenfield.store/in/en/re-x-sena-50s-intercom-black-free-size",
+    },
+  ],
+};
+
+const RIDERKIT: RiderKitData = {
+  eyebrow: "The rider's kit",
+  titleA: "One rider. ",
+  titleHi: "Every layer, mapped.",
+  titleB: "",
+  sub: "An illustrative full-body gear map. Hover a gear area for a subtle zoom and to bring its matching item to the top; tap to pin it and open the details.",
+  image: "/images/rider-kit-model-reference-v2.png",
+  imageAlt: "Illustrative rider wearing a reference-matched black and gold helmet and jacket, tan gloves, black boots and a hip sling bag",
+  items: GEARS.items.map((item) => ({ ...item, sourcePickId: item.id, highlights: [...item.highlights] })),
+  mapPointers: [
+    { enabled: true, id: "helmet-zennith", label: "Zennith helmet", gearId: "gear-zennith-modular-helmet", zone: "head", x: 43, y: 15, radius: 7 },
+    { enabled: true, id: "helmet", label: "Optimus helmet", gearId: "gear-optimus-dual-sport-helmet-black-gold", zone: "head", x: 52, y: 16, radius: 7 },
+    { enabled: true, id: "helmet-intercom", label: "Helmet intercom", gearId: "gear-super-meteor-650-x-sena-50s-intercom", zone: "intercom", x: 64, y: 17, radius: 6 },
+    { enabled: true, id: "windfarer-jacket", label: "Windfarer jacket", gearId: "gear-windfarer-v3-class-a-riding-jacket", zone: "torso", x: 39, y: 39, radius: 10 },
+    { enabled: true, id: "jacket", label: "Nirvik jacket", gearId: "gear-nirvik-v2-print-class-a-riding-jacket-black-gold", zone: "torso", x: 55, y: 41, radius: 11 },
+    { enabled: true, id: "left-glove", label: "MX Pro gloves", gearId: "gear-mx-pro-gloves", zone: "hands", x: 34, y: 66, radius: 9 },
+    { enabled: true, id: "right-glove", label: "Arizona gloves", gearId: "gear-arizona-leather-gloves-tan", zone: "hands", x: 68, y: 69, radius: 9 },
+    { enabled: true, id: "sling-bag", label: "Waist / hip bag", gearId: "gear-classic-sling-bag-rose-gold", zone: "waist", x: 61, y: 57, radius: 8 },
+    { enabled: true, id: "trousers", label: "Riding trousers", gearId: "gear-tripper-riding-trouser", zone: "legs", x: 50, y: 71, radius: 14 },
+    { enabled: true, id: "boots", label: "Riding boots", gearId: "gear-wanderer-waterproof-boots", zone: "feet", x: 50, y: 91, radius: 9 },
+  ],
+};
+
 const BENEFITS: BenefitsData = {
   eyebrow: "Built for the way you move",
   titleA: "One journey. ",
@@ -957,10 +1236,14 @@ const CTA: CtaData = {
 
 export const DEFAULT_CONTENT: SiteContent = {
   v: 1,
+  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1"],
   nav: [
     { id: "nav-live", label: "Live", href: "#/live-map", enabled: true },
     { id: "nav-journey", label: "The Journey", href: "#journey", enabled: true },
     { id: "nav-machine", label: "The Machine", href: "#machine", enabled: true },
+    { id: "nav-gears", label: "Gears", href: "#gears", enabled: true },
+    { id: "nav-shop", label: "My Picks", href: "#/shop", enabled: true },
+    { id: "nav-riderkit", label: "Rider Kit", href: "#riderkit", enabled: true },
     { id: "nav-features", label: "Why PB", href: "#features", enabled: true },
     { id: "nav-stories", label: "Tribe Stories", href: "#stories", enabled: true },
     { id: "nav-pricing", label: "Membership", href: "#pricing", enabled: true },
@@ -975,6 +1258,8 @@ export const DEFAULT_CONTENT: SiteContent = {
     { id: "sec-features", type: "features", label: "Why PB (Features)", enabled: true, data: { ...FEATURES } },
     { id: "sec-journey", type: "journey", label: "Journey Showcase", enabled: true, data: { ...JOURNEY } },
     { id: "sec-machine", type: "machine", label: "The Machine (طویل / Taweel)", enabled: true, data: { ...MACHINE } },
+    { id: "sec-gears", type: "gears", label: "Riding Gear & Wardrobe", enabled: true, data: { ...GEARS } },
+    { id: "sec-riderkit", type: "riderkit", label: "The Gear", enabled: true, data: { ...RIDERKIT } },
     { id: "sec-benefits", type: "benefits", label: "Benefits & Showreel", enabled: true, data: { ...BENEFITS } },
     { id: "sec-youtube", type: "youtube", label: "YouTube", enabled: false, data: { ...YOUTUBE } },
     { id: "sec-instagram", type: "instagram", label: "Instagram", enabled: false, data: { ...INSTAGRAM } },
@@ -1029,12 +1314,361 @@ function loadContent(): SiteContent {
       return structuredClone(DEFAULT_CONTENT);
     }
     // Existing dashboards keep their order and edits; newly shipped built-in
-    // sections are appended once so YouTube/Instagram appear without a reset.
+    // sections are added without resetting saved content. Keep the rider map
+    // beside the existing Gears catalog when introducing it to an older site.
     const knownIds = new Set(parsed.sections.map((s) => s.id));
     const missing = DEFAULT_CONTENT.sections
       .filter((s) => !knownIds.has(s.id))
       .map((s) => structuredClone(s));
-    return normalizeLoaded({ ...parsed, sections: [...parsed.sections, ...missing] });
+
+    // Add the Gears menu entry and official starter picks to old saved sites
+    // once, while respecting later edits/removals from the dashboard.
+    const appliedMigrations = Array.isArray(parsed.migrations) ? parsed.migrations : [];
+    const gearsNavMigration = "gears-nav-link-v1";
+    const gearsPicksMigration = "gears-store-picks-v1";
+    const gearItemIdsMigration = "gear-item-ids-v1";
+    const riderKitNavMigration = "riderkit-nav-v1";
+    const riderKitGearMigration = "riderkit-attached-gear-v1";
+    const riderKitInteractionMigration = "riderkit-hover-zoom-v2";
+    const riderKitImageMigration = "riderkit-reference-image-v2";
+    const riderKitPointerMigration = "riderkit-dashboard-pointers-v1";
+    const riderKitProductLinkMigration = "riderkit-pointer-products-v1";
+    const riderKitProductPointerListMigration = "riderkit-product-pointer-list-v1";
+    const riderKitLabelMigration = "riderkit-the-gear-label-v1";
+    const shopPicksNavMigration = "shop-my-picks-nav-v1";
+    const gearsMyPicksCopyMigration = "gears-my-picks-copy-v1";
+    const riderKitIndependentProductsMigration = "riderkit-independent-products-v1";
+    const shouldMigrateGearsNav = !appliedMigrations.includes(gearsNavMigration);
+    const shouldSeedGears = !appliedMigrations.includes(gearsPicksMigration);
+    const shouldMigrateGearItemIds = !appliedMigrations.includes(gearItemIdsMigration);
+    const shouldMigrateRiderKitNav = !appliedMigrations.includes(riderKitNavMigration);
+    const shouldMigrateRiderKitGear = !appliedMigrations.includes(riderKitGearMigration);
+    const shouldMigrateRiderKitInteraction = !appliedMigrations.includes(riderKitInteractionMigration);
+    const shouldMigrateRiderKitImage = !appliedMigrations.includes(riderKitImageMigration);
+    const shouldMigrateRiderKitPointers = !appliedMigrations.includes(riderKitPointerMigration);
+    const shouldMigrateRiderKitProductLinks = !appliedMigrations.includes(riderKitProductLinkMigration);
+    const shouldMigrateRiderKitProductPointerList = !appliedMigrations.includes(riderKitProductPointerListMigration);
+    const shouldMigrateRiderKitLabel = !appliedMigrations.includes(riderKitLabelMigration);
+    const shouldMigrateShopPicksNav = !appliedMigrations.includes(shopPicksNavMigration);
+    const shouldMigrateGearsMyPicksCopy = !appliedMigrations.includes(gearsMyPicksCopyMigration);
+    const shouldMigrateRiderKitIndependentProducts = !appliedMigrations.includes(riderKitIndependentProductsMigration);
+    const allSections = [...parsed.sections, ...missing];
+    const riderKitSection = missing.find((section) => section.type === "riderkit");
+    if (riderKitSection) {
+      const addedIndex = allSections.findIndex((section) => section.id === riderKitSection.id);
+      const gearsIndex = allSections.findIndex((section) => section.type === "gears");
+      if (addedIndex >= 0 && gearsIndex >= 0 && addedIndex !== gearsIndex + 1) {
+        const [addedRiderKit] = allSections.splice(addedIndex, 1);
+        const newGearsIndex = allSections.findIndex((section) => section.type === "gears");
+        allSections.splice(newGearsIndex + 1, 0, addedRiderKit);
+      }
+    }
+    if (shouldMigrateRiderKitInteraction) {
+      const riderKitIndex = allSections.findIndex((section) => section.type === "riderkit");
+      if (riderKitIndex >= 0 && allSections[riderKitIndex].data.sub === "An illustrative full-body gear map. Hover or tap a highlighted zone to bring its Royal Enfield store pick to the top and open the details.") {
+        allSections[riderKitIndex] = {
+          ...allSections[riderKitIndex],
+          data: {
+            ...allSections[riderKitIndex].data,
+            sub: "An illustrative full-body gear map. Hover a gear area for a subtle zoom and to bring its matching item to the top; tap to pin it and open the details.",
+          },
+        };
+      }
+    }
+    const defaultRiderKit = DEFAULT_CONTENT.sections.find((section) => section.type === "riderkit");
+    if ((shouldMigrateRiderKitImage || shouldMigrateRiderKitPointers || shouldMigrateRiderKitProductLinks) && defaultRiderKit) {
+      const riderKitIndex = allSections.findIndex((section) => section.type === "riderkit");
+      if (riderKitIndex >= 0) {
+        const riderKit = allSections[riderKitIndex];
+        const nextData = { ...riderKit.data };
+        const defaultImage = String(defaultRiderKit.data.image ?? "");
+        const currentImage = nextData.image;
+        if (shouldMigrateRiderKitImage && (currentImage === "/images/rider-kit-model.png" || currentImage === undefined)) {
+          nextData.image = defaultImage;
+          if (!nextData.imageAlt || nextData.imageAlt === "Illustrative rider in a full-face helmet, touring jacket, gloves, riding trousers and boots") {
+            nextData.imageAlt = defaultRiderKit.data.imageAlt;
+          }
+        }
+        if (shouldMigrateRiderKitPointers && (!Array.isArray(nextData.mapPointers) || nextData.mapPointers.length === 0)) {
+          nextData.mapPointers = structuredClone(defaultRiderKit.data.mapPointers);
+        }
+        if (shouldMigrateRiderKitProductLinks && Array.isArray(nextData.mapPointers)) {
+          const defaultLinks = new Map(
+            (defaultRiderKit.data.mapPointers as RiderKitPointer[]).map((pointer) => [pointer.id, pointer.gearId])
+          );
+          nextData.mapPointers = (nextData.mapPointers as RiderKitPointer[]).map((pointer) => ({
+            ...pointer,
+            gearId: pointer.gearId ?? defaultLinks.get(pointer.id),
+          }));
+        }
+        allSections[riderKitIndex] = { ...riderKit, data: nextData };
+      }
+    }
+    if (shouldMigrateRiderKitLabel) {
+      const riderKitIndex = allSections.findIndex((section) => section.type === "riderkit");
+      if (riderKitIndex >= 0 && allSections[riderKitIndex].label === "Interactive Rider Kit") {
+        allSections[riderKitIndex] = { ...allSections[riderKitIndex], label: "The Gear" };
+      }
+    }
+    const defaultGears = DEFAULT_CONTENT.sections.find((s) => s.type === "gears");
+    let seededGears = false;
+    if (shouldSeedGears && defaultGears) {
+      const gearIndex = allSections.findIndex((s) => s.type === "gears");
+      const currentGears = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      const currentItems = currentGears?.data.items;
+      if (gearIndex >= 0 && (!Array.isArray(currentItems) || currentItems.length === 0)) {
+        allSections[gearIndex] = {
+          ...currentGears!,
+          enabled: true,
+          data: { ...currentGears!.data, items: structuredClone(defaultGears.data.items) },
+        };
+        seededGears = true;
+      }
+    }
+
+    // Add the supplied Royal Enfield product images to older saved wardrobes
+    // once, while preserving all existing copy and custom gear photos.
+    if (shouldMigrateRiderKitGear && defaultGears) {
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      const currentGears = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      if (currentGears) {
+        const currentItems = Array.isArray(currentGears.data.items)
+          ? [...(currentGears.data.items as GearItem[])]
+          : [];
+        const defaultItems = Array.isArray(defaultGears.data.items)
+          ? (defaultGears.data.items as GearItem[])
+          : [];
+        const addedNames = new Set([
+          "Optimus Dual Sport Helmet — Black & Gold",
+          "Arizona Leather Gloves — Tan",
+          "Nirvik V2 Print Class A Riding Jacket — Black & Gold",
+          "Classic Sling Bag — Rose Gold",
+          "Super Meteor 650 x Sena 50S Intercom",
+        ]);
+        let nextItems = currentItems.map((item) =>
+          item?.name === "Wanderer Waterproof Boots" && item.image?.includes("BOA240001-BLACK_1_HERO.jpg")
+            ? { ...item, image: "/images/gear/wanderer-waterproof-boots.webp" }
+            : item
+        );
+        const existingNames = new Set(nextItems.map((item) => item?.name));
+        for (const item of defaultItems) {
+          if (addedNames.has(item.name) && !existingNames.has(item.name)) {
+            nextItems = [...nextItems, structuredClone(item)];
+            existingNames.add(item.name);
+          }
+        }
+        allSections[gearIndex] = {
+          ...currentGears,
+          data: { ...currentGears.data, items: nextItems },
+        };
+      }
+    }
+
+    if (shouldMigrateGearItemIds) {
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      const gearSection = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      if (gearSection && Array.isArray(gearSection.data.items)) {
+        const usedIds = new Set<string>();
+        const items = (gearSection.data.items as GearItem[]).map((item, index) => {
+          const base = item.id?.trim() || makeGearItemId(item.name?.trim() || `item-${index + 1}`);
+          let id = base;
+          let suffix = 2;
+          while (usedIds.has(id)) id = `${base}-${suffix++}`;
+          usedIds.add(id);
+          return { ...item, id };
+        });
+        allSections[gearIndex] = { ...gearSection, data: { ...gearSection.data, items } };
+      }
+    }
+
+    // Give The Gear its own product copies once. Older sites used the wardrobe
+    // catalog as the map's backing store; seed the new independent list from
+    // that saved list, then leave it independent from wardrobe visibility.
+    if (shouldMigrateRiderKitIndependentProducts && defaultRiderKit) {
+      const riderKitIndex = allSections.findIndex((section) => section.type === "riderkit");
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      const riderKit = riderKitIndex >= 0 ? allSections[riderKitIndex] : undefined;
+      const gearSection = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      if (riderKit) {
+        const savedMapItems = Array.isArray(riderKit.data.items) ? riderKit.data.items as GearItem[] : undefined;
+        const savedPickItems = Array.isArray(gearSection?.data.items) ? gearSection.data.items as GearItem[] : undefined;
+        const itemsToCopy = savedMapItems ?? savedPickItems ?? defaultRiderKit.data.items as GearItem[];
+        const copyingWardrobeItems = !savedMapItems && Boolean(savedPickItems);
+        const mapItems = itemsToCopy.map((item) => ({
+          ...item,
+          // The old section cascade marked every wardrobe child off when the
+          // Wardrobe parent was disabled. That must not disable the new map copy.
+          ...(copyingWardrobeItems && gearSection?.enabled === false && item.enabled === false ? { enabled: true } : {}),
+          sourcePickId: item.sourcePickId ?? item.id,
+          highlights: Array.isArray(item.highlights) ? [...item.highlights] : [],
+        }));
+        allSections[riderKitIndex] = { ...riderKit, data: { ...riderKit.data, items: mapItems } };
+      }
+    }
+
+    // Previously saved gear catalogs already contain products meant for The Gear.
+    // Preserve those links on the first independent-copy migration; future picks
+    // are added explicitly from Shop → My Picks using the "Add to The Gear" action.
+    if (shouldMigrateRiderKitProductPointerList && defaultRiderKit) {
+      const riderKitIndex = allSections.findIndex((section) => section.type === "riderkit");
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      const riderKit = riderKitIndex >= 0 ? allSections[riderKitIndex] : undefined;
+      const gearSection = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      if (riderKit && gearSection && Array.isArray(gearSection.data.items)) {
+        const pointers = Array.isArray(riderKit.data.mapPointers)
+          ? [...(riderKit.data.mapPointers as RiderKitPointer[])]
+          : [];
+        const usedGearIds = new Set<string>();
+        const gearItems = (gearSection.data.items as GearItem[]).map((item, index) => {
+          const base = item.id?.trim() || makeGearItemId(item.name?.trim() || `item-${index + 1}`);
+          let id = base;
+          let suffix = 2;
+          while (usedGearIds.has(id)) id = `${base}-${suffix++}`;
+          usedGearIds.add(id);
+          return item.id === id ? item : { ...item, id };
+        });
+        allSections[gearIndex] = { ...gearSection, data: { ...gearSection.data, items: gearItems } };
+        const defaultPointers = defaultRiderKit.data.mapPointers as RiderKitPointer[];
+        const defaultPointByZone: Record<RiderKitPointerZone, { x: number; y: number; radius: number }> = {
+          head: { x: 50, y: 16, radius: 8 },
+          torso: { x: 50, y: 40, radius: 12 },
+          hands: { x: 50, y: 67, radius: 9 },
+          waist: { x: 61, y: 57, radius: 8 },
+          legs: { x: 50, y: 71, radius: 12 },
+          feet: { x: 50, y: 91, radius: 9 },
+          intercom: { x: 64, y: 17, radius: 6 },
+        };
+        const inferGearPointerZone = (item: GearItem): RiderKitPointerZone => {
+          const text = `${item.bodyPart ?? ""} ${item.category ?? ""} ${item.name ?? ""}`.toLocaleLowerCase();
+          if (/intercom|sena|communicator/.test(text)) return "intercom";
+          if (/head|helmet|visor|eyewear|goggle/.test(text)) return "head";
+          if (/hand|glove|wrist/.test(text)) return "hands";
+          if (/foot|feet|boot|shoe/.test(text)) return "feet";
+          if (/waist|hip|sling|cross.?body|bag/.test(text)) return "waist";
+          if (/leg|trouser|pant|knee/.test(text)) return "legs";
+          return "torso";
+        };
+        const linkedIds = new Set(pointers.map((pointer) => pointer.gearId).filter((id): id is string => Boolean(id)));
+        for (const item of gearItems) {
+          const gearId = item.id?.trim();
+          if (!gearId || linkedIds.has(gearId)) continue;
+          const defaultPointer = defaultPointers.find((pointer) => pointer.gearId === gearId);
+          const matchingPointerIndex = defaultPointer ? pointers.findIndex((pointer) => pointer.id === defaultPointer.id && !pointer.gearId) : -1;
+          if (matchingPointerIndex >= 0 && defaultPointer) {
+            pointers[matchingPointerIndex] = { ...pointers[matchingPointerIndex], gearId, zone: defaultPointer.zone };
+          } else if (defaultPointer && !pointers.some((pointer) => pointer.id === defaultPointer.id)) {
+            pointers.push(structuredClone(defaultPointer));
+          } else {
+            const zone = inferGearPointerZone(item);
+            const sameZoneCount = pointers.filter((pointer) => pointer.zone === zone).length;
+            const basePoint = defaultPointByZone[zone];
+            const offset = ((sameZoneCount % 3) - 1) * 7;
+            const id = `product-${gearId}`;
+            pointers.push({
+              enabled: item.enabled !== false,
+              id,
+              label: item.name?.trim() || "Riding gear",
+              gearId,
+              zone,
+              x: Math.max(4, Math.min(96, basePoint.x + offset)),
+              y: Math.max(4, Math.min(96, basePoint.y + Math.floor(sameZoneCount / 3) * 5)),
+              radius: basePoint.radius,
+            });
+          }
+          linkedIds.add(gearId);
+        }
+        allSections[riderKitIndex] = { ...riderKit, data: { ...riderKit.data, mapPointers: pointers } };
+      }
+    }
+
+    if (shouldMigrateGearsMyPicksCopy) {
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      if (gearIndex >= 0) {
+        const gearSection = allSections[gearIndex];
+        const nextData = { ...gearSection.data };
+        if (nextData.eyebrow === "Official store picks") nextData.eyebrow = GEARS.eyebrow;
+        if (nextData.titleA === "Riding gear from " && nextData.titleHi === "Royal Enfield.") {
+          nextData.titleA = GEARS.titleA;
+          nextData.titleHi = GEARS.titleHi;
+        }
+        if (nextData.sub === "A starter edit from the official Royal Enfield Store. Prices and availability can change; open a product page for current details and sizing.") {
+          nextData.sub = GEARS.sub;
+        }
+        if (nextData.emptyText === "Add an item from the dashboard to start this collection.") {
+          nextData.emptyText = GEARS.emptyText;
+        }
+        allSections[gearIndex] = { ...gearSection, data: nextData };
+      }
+    }
+
+    const hasGearsNav = parsed.nav.some((n) => n.id === "nav-gears");
+    const gearsNav = DEFAULT_CONTENT.nav.find((n) => n.id === "nav-gears");
+    const hasRiderKitNav = parsed.nav.some((n) => n.id === "nav-riderkit");
+    const riderKitNav = DEFAULT_CONTENT.nav.find((n) => n.id === "nav-riderkit");
+    const hasShopNav = parsed.nav.some((n) => n.id === "nav-shop");
+    const shopNav = DEFAULT_CONTENT.nav.find((n) => n.id === "nav-shop");
+    let migratedNav =
+      shouldMigrateGearsNav && !hasGearsNav && gearsNav
+        ? [...parsed.nav, structuredClone(gearsNav)]
+        : parsed.nav;
+    if (shouldMigrateRiderKitNav && !hasRiderKitNav && riderKitNav) {
+      const gearNavIndex = migratedNav.findIndex((item) => item.id === "nav-gears");
+      const insertAt = gearNavIndex >= 0 ? gearNavIndex + 1 : migratedNav.length;
+      migratedNav = [
+        ...migratedNav.slice(0, insertAt),
+        structuredClone(riderKitNav),
+        ...migratedNav.slice(insertAt),
+      ];
+    }
+    if (shouldMigrateShopPicksNav && !hasShopNav && shopNav) {
+      const gearNavIndex = migratedNav.findIndex((item) => item.id === "nav-gears");
+      const riderKitNavIndex = migratedNav.findIndex((item) => item.id === "nav-riderkit");
+      const insertAt = gearNavIndex >= 0
+        ? gearNavIndex + 1
+        : riderKitNavIndex >= 0
+          ? riderKitNavIndex
+          : migratedNav.length;
+      migratedNav = [
+        ...migratedNav.slice(0, insertAt),
+        structuredClone(shopNav),
+        ...migratedNav.slice(insertAt),
+      ];
+    } else if (shouldMigrateShopPicksNav && hasShopNav) {
+      migratedNav = migratedNav.map((item) =>
+        item.id === "nav-shop" && item.label.trim().toLocaleLowerCase() === "official store picks"
+          ? { ...item, label: "My Picks", href: "#/shop" }
+          : item
+      );
+    }
+    if (seededGears) {
+      migratedNav = migratedNav.map((n) =>
+        n.id === "nav-gears" ? { ...n, enabled: true } : n
+      );
+    }
+    const migrations = [
+      ...appliedMigrations,
+      ...(shouldMigrateGearsNav ? [gearsNavMigration] : []),
+      ...(shouldSeedGears ? [gearsPicksMigration] : []),
+      ...(shouldMigrateGearItemIds ? [gearItemIdsMigration] : []),
+      ...(shouldMigrateRiderKitNav ? [riderKitNavMigration] : []),
+      ...(shouldMigrateRiderKitGear ? [riderKitGearMigration] : []),
+      ...(shouldMigrateRiderKitInteraction ? [riderKitInteractionMigration] : []),
+      ...(shouldMigrateRiderKitImage ? [riderKitImageMigration] : []),
+      ...(shouldMigrateRiderKitPointers ? [riderKitPointerMigration] : []),
+      ...(shouldMigrateRiderKitProductLinks ? [riderKitProductLinkMigration] : []),
+      ...(shouldMigrateRiderKitProductPointerList ? [riderKitProductPointerListMigration] : []),
+      ...(shouldMigrateRiderKitLabel ? [riderKitLabelMigration] : []),
+      ...(shouldMigrateShopPicksNav ? [shopPicksNavMigration] : []),
+      ...(shouldMigrateGearsMyPicksCopy ? [gearsMyPicksCopyMigration] : []),
+      ...(shouldMigrateRiderKitIndependentProducts ? [riderKitIndependentProductsMigration] : []),
+    ];
+
+    return normalizeLoaded({
+      ...parsed,
+      migrations,
+      sections: allSections,
+      nav: migratedNav,
+    });
   } catch {
     return structuredClone(DEFAULT_CONTENT);
   }
@@ -1395,29 +2029,38 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     [commit, content]
   );
 
-  /** Reorder sections from the live site. Follows the same draft flow as the dashboard. */
+  /** Reorder a section from the live customizer and publish that action immediately. */
   const moveSection = useCallback(
     (id: string, label: string, direction: -1 | 1) => {
-      logAction(`Reordered position of: ${label}`);
-      updateDraft((c) => {
+      const reorder = (c: SiteContent) => {
         const sections = [...c.sections];
         const from = sections.findIndex((s) => s.id === id);
         const to = from + direction;
         if (from < 0 || to < 0 || to >= sections.length) return c;
         [sections[from], sections[to]] = [sections[to], sections[from]];
         return { ...c, sections };
-      });
+      };
+      const nextContent = reorder(content);
+      if (nextContent === content) return;
+      if (!commit(nextContent, `Moved section ${direction < 0 ? "up" : "down"}: ${label}`)) return;
+      // Preserve unrelated unpublished edits already in the dashboard draft.
+      setDraft((prev) => reorder(prev));
+      logAction(`Reordered position of: ${label}`);
     },
-    [logAction, updateDraft]
+    [commit, content, logAction]
   );
 
-  /** Show or hide one section, honouring the parent/child cascade. */
+  /** Show or hide one section from the live customizer immediately, honouring the parent/child cascade. */
   const setSectionEnabled = useCallback(
     (id: string, label: string, enabled: boolean) => {
+      const applyVisibility = (c: SiteContent) => cascadeSection(c, id, enabled);
+      const nextContent = applyVisibility(content);
+      if (!commit(nextContent, `${enabled ? "Enabled" : "Disabled"} section: ${label}`)) return;
+      // Keep pending dashboard edits intact while syncing the same visibility action.
+      setDraft((prev) => applyVisibility(prev));
       logAction(`${enabled ? "Enabled" : "Disabled"}: ${label}`);
-      updateDraft((c) => cascadeSection(c, id, enabled));
     },
-    [logAction, updateDraft]
+    [commit, content, logAction]
   );
 
   /** Edit one section field from the live site, mirroring the dashboard editor. */

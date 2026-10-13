@@ -23,6 +23,8 @@ export const CHILD_LISTS: Partial<Record<SectionType, string[]>> = {
   features: ["items"],
   journey: ["destinations"],
   machine: ["hotspots", "gallery"],
+  gears: ["items"],
+  riderkit: ["mapPointers"],
   benefits: ["personas"],
   youtube: ["items"],
   instagram: ["items"],
@@ -105,13 +107,12 @@ const linksOf = (col: FooterColumn, on: boolean): FooterColumn => ({
   links: col.links.map((l) => ({ ...l, enabled: on })),
 });
 
-/** Whole footer on or off. Off hides every column, link and social icon. */
+/** Whole footer on or off. Shared social profile settings remain independent. */
 export function cascadeFooterSection(f: FooterSettings, on: boolean): FooterSettings {
   return {
     ...f,
     enabled: on,
     columns: f.columns.map((col) => ({ ...linksOf(col, on), enabled: on })),
-    socials: f.socials.map((s) => ({ ...s, enabled: on })),
   };
 }
 
@@ -170,11 +171,10 @@ export function cascadeFooterLinks(f: FooterSettings, on: boolean): FooterSettin
   };
 }
 
-/** One social icon on or off. On also shows the footer. */
+/** One site-wide social profile on or off; this does not toggle the footer section. */
 export function cascadeFooterSocial(f: FooterSettings, id: string, on: boolean): FooterSettings {
   return {
     ...f,
-    enabled: on ? true : f.enabled,
     socials: f.socials.map((s) => (s.id === id ? { ...s, enabled: on } : s)),
   };
 }

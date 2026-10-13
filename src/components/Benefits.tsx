@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Volume2, VolumeX, Play } from "lucide-react";
-import type { BenefitsData } from "../store/siteContent";
+import { resolveFooter, useSite, type BenefitsData } from "../store/siteContent";
 import { IMAGES, SHOWREEL_VIDEO } from "../data/content";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { isOn } from "../utils/enabled";
-import { YouTubeIcon, InstagramIcon, XIcon } from "./ui/SocialIcons";
+import { SOCIALS, externalLinkProps } from "./ui/SocialIcons";
 
 export default function Benefits({ data }: { data: BenefitsData }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
+  const { content } = useSite();
+  const socialLinks = useMemo(
+    () => resolveFooter(content.footer).socials.filter((s) => s.enabled && s.href.trim()),
+    [content.footer]
+  );
 
   // Only fetch + play the showreel once it scrolls into view; pause when it leaves.
   // Saves the whole 4K download for visitors who never reach this section.
@@ -119,7 +124,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                 <p className="font-display text-xl font-semibold leading-snug text-white">
                   "{data.quote}"
                 </p>
-                <div className="mt-5 flex items-center justify-between">
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <span className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold">
                       PB
@@ -129,18 +134,24 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                       <p className="text-xs text-zinc-400">Creator, rider, storyteller · Nangal Dam, Punjab</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    {[YouTubeIcon, InstagramIcon, XIcon].map((Icon, i) => (
-                      <a
-                        key={i}
-                        href="#cta"
-                        aria-label={["YouTube", "Instagram", "Twitter"][i]}
-                        className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </a>
-                    ))}
-                  </div>
+                  {socialLinks.length > 0 && (
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {socialLinks.map((social) => {
+                        const Icon = SOCIALS.find((item) => item.label === social.label)?.Icon;
+                        return (
+                          <a
+                            key={social.id}
+                            href={social.href.trim()}
+                            {...externalLinkProps(social.href)}
+                            aria-label={social.label}
+                            className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
+                          >
+                            {Icon ? <Icon className="h-3.5 w-3.5" /> : <span className="text-xs">{social.label[0]}</span>}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

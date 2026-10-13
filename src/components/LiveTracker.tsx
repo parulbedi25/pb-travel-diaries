@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Satellite,
   MapPin,
@@ -10,9 +11,9 @@ import {
   Check,
   ArrowUpRight,
 } from "lucide-react";
-import type { LiveData } from "../store/siteContent";
+import { resolveFooter, useSite, type LiveData } from "../store/siteContent";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
-import { InstagramIcon } from "./ui/SocialIcons";
+import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
 import { useLiveLocation } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
 
@@ -42,6 +43,12 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   const lat = location.lat.toFixed(4);
   const lng = location.lng.toFixed(4);
   const note = data.note.trim() ? data.note : location.note;
+  const { content } = useSite();
+  const instagramHref = useMemo(() => {
+    const instagram = resolveFooter(content.footer).socials.find((s) => s.label === "Instagram");
+    return instagram?.enabled && instagram.href.trim() ? instagram.href.trim() : "";
+  }, [content.footer]);
+  const storyHref = status === "live" ? instagramHref : "";
 
   return (
     <section id="live" aria-labelledby="live-title" className="relative scroll-mt-28 py-24 sm:py-32">
@@ -337,11 +344,12 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     Open live Google Map
                   </a>
                   <a
-                    href="#cta"
+                    href={storyHref || "#cta"}
+                    {...(storyHref ? externalLinkProps(storyHref) : {})}
                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white transition-all duration-300 hover:border-white/30 hover:bg-white/[0.06] active:scale-95"
                   >
-                    {status === "live" ? <InstagramIcon className="h-4 w-4" /> : <BellPlus className="h-4 w-4 text-saffron-300" />}
-                    {status === "live" ? "Follow live stories" : "Get ping alerts"}
+                    {storyHref ? <InstagramIcon className="h-4 w-4" /> : <BellPlus className="h-4 w-4 text-saffron-300" />}
+                    {storyHref ? "Follow live stories" : "Get ping alerts"}
                   </a>
                 </div>
               </div>

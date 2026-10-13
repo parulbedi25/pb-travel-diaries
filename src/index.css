@@ -41,7 +41,9 @@
     100% { transform: scale(1.9); opacity: 0; }
   }
   @keyframes route-dash {
-    from { stroke-dashoffset: 24; }
+    /* The dash pattern is 9 + 7 = 16 units long; one full pattern per loop
+       makes the offset land on the same phase and prevents a visible snap. */
+    from { stroke-dashoffset: 16; }
     to { stroke-dashoffset: 0; }
   }
   @keyframes ldr-ride {
@@ -440,6 +442,35 @@
 }
 [data-theme="light"] .machine-parts-product {
   color: #211b10 !important;
+}
+
+/* Product callout on The Gear rider map: anchor beside the selected pointer on
+   wider screens, then use a contained bottom card on narrow screens. */
+.gear-product-bubble {
+  position: absolute;
+  z-index: 40;
+  top: clamp(0.75rem, calc(var(--gear-point-y) - 5rem), 62%);
+  width: min(15rem, calc(100% - 1.5rem));
+  max-height: 62%;
+  overflow-y: auto;
+}
+.gear-product-bubble--left {
+  right: calc(100% - var(--gear-point-x) + 0.5rem);
+}
+.gear-product-bubble--right {
+  left: calc(var(--gear-point-x) + 0.5rem);
+}
+@media (max-width: 639px) {
+  .gear-product-bubble,
+  .gear-product-bubble--left,
+  .gear-product-bubble--right {
+    left: 0.75rem;
+    right: 0.75rem;
+    top: auto;
+    bottom: 0.75rem;
+    width: auto;
+    max-height: 48%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

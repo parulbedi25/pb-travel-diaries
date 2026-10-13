@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
 export const LIVE_MAP_PATH = "/live-map";
+export const SHOP_PATH = "/shop";
 
 /**
  * Minimal hash router.
- * "#/live-map" is a full page; "#journey", "#pricing" etc. stay in-page anchors.
- * Works when the built single-file app is served statically.
+ * "#/live-map" and "#/shop" are full pages; "#journey", "#pricing" etc.
+ * stay in-page anchors. Works when the built single-file app is served statically.
  */
 export function getHashRoute(): string {
   if (typeof window === "undefined") return "/";

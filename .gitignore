@@ -18,6 +18,10 @@ hosting/.cache
 /.firebase/
 /emulator-ui/
 
+# Dependencies and generated output
+/node_modules/
+/dist/
+
 # Logs
 *.log
 npm-debug.log*
@@ -26,3 +30,4 @@ yarn-error.log*
 
 # Environment files (local configs)
 /.env.*
+!/.env.example

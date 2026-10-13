@@ -183,11 +183,11 @@ export default function SectionFrame({
         {children}
       </div>
 
-      <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-full bg-black/85 p-1 shadow-xl">
+      <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1 rounded-full bg-black/85 p-1 shadow-xl">
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/10"
+          className="pointer-events-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/10"
         >
           <Pencil className="h-3 w-3" /> Edit
         </button>
@@ -195,7 +195,8 @@ export default function SectionFrame({
           type="button"
           onClick={() => moveSection(entry.id, entry.label, -1)}
           aria-label="Move section up"
-          className="grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
+          title="Move this section up and save"
+          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <ArrowUp className="h-3.5 w-3.5" />
         </button>
@@ -203,7 +204,8 @@ export default function SectionFrame({
           type="button"
           onClick={() => moveSection(entry.id, entry.label, 1)}
           aria-label="Move section down"
-          className="grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
+          title="Move this section down and save"
+          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <ArrowDown className="h-3.5 w-3.5" />
         </button>
@@ -211,8 +213,8 @@ export default function SectionFrame({
           type="button"
           onClick={() => setSectionEnabled(entry.id, entry.label, false)}
           aria-label="Hide section"
-          title="Hide this section from visitors"
-          className="grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
+          title="Hide this section from visitors and save"
+          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <EyeOff className="h-3.5 w-3.5" />
         </button>
@@ -220,8 +222,8 @@ export default function SectionFrame({
           type="button"
           onClick={() => setSectionLayout(entry.id, entry.label, {})}
           aria-label="Reset section size"
-          title="Reset to auto"
-          className="grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
+          title="Reset section size and save"
+          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </button>
@@ -245,7 +247,7 @@ export default function SectionFrame({
         />
       ))}
 
-      <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-[11px] text-zinc-300">
+      <span className="pointer-events-none absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-[11px] text-zinc-300">
         <SlidersHorizontal className="h-3 w-3 text-saffron-300" />
         <span className="font-mono">
           {layout.height ? `${layout.height}px` : "auto"}

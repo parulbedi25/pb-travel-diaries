@@ -64,3 +64,8 @@ export const SOCIALS = [
   { label: "X (Twitter)", Icon: XIcon },
   { label: "Facebook", Icon: FacebookIcon },
 ];
+
+/** Opens external URLs in a new tab, while keeping in-page links local. */
+export function externalLinkProps(href: string): { target: "_blank"; rel: "noreferrer" } | {} {
+  return /^https?:\/\//i.test(href.trim()) ? { target: "_blank", rel: "noreferrer" } : {};
+}

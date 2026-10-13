@@ -12,6 +12,7 @@ import {
   type CustomData,
   type FaqData,
   type FeaturesData,
+  type GearsData,
   type HeroData,
   type JourneyData,
   type InstagramData,
@@ -19,6 +20,7 @@ import {
   type MachineData,
   type MaintenanceData,
   type PricingData,
+  type RiderKitData,
   type SectionEntry,
   type SocialProofData,
   type StoriesData,
@@ -32,6 +34,8 @@ import LiveTracker from "./components/LiveTracker";
 import Features from "./components/Features";
 import Showcase from "./components/Showcase";
 import MachineExperience from "./components/MachineExperience";
+import Gears from "./components/Gears";
+import RiderKitExperience from "./components/RiderKitExperience";
 import Benefits from "./components/Benefits";
 import { InstagramSection, YouTubeSection } from "./components/SocialFeeds";
 import Testimonials from "./components/Testimonials";
@@ -50,7 +54,9 @@ import CountdownSection, {
   useCountdownFinished,
 } from "./components/CountdownSection";
 import { EASE } from "./components/ui/motion";
-import { LIVE_MAP_PATH, useHashRoute } from "./utils/router";
+import { LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import AccountPage from "./auth/AccountPage";
+import ShopPage from "./components/ShopPage";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -89,6 +95,10 @@ function Section({ entry, revealed = false }: { entry: SectionEntry; revealed?: 
       return <Showcase data={dataOf<JourneyData>(entry, revealed)} />;
     case "machine":
       return <MachineExperience data={dataOf<MachineData>(entry, revealed)} />;
+    case "gears":
+      return <Gears data={dataOf<GearsData>(entry, revealed)} />;
+    case "riderkit":
+      return <RiderKitExperience data={dataOf<RiderKitData>(entry, revealed)} />;
     case "benefits":
       return <Benefits data={dataOf<BenefitsData>(entry, revealed)} />;
     case "youtube":
@@ -284,12 +294,20 @@ function Shell() {
     return () => clearTimeout(t);
   }, []);
 
+  const verificationReturn = new URLSearchParams(window.location.search).get("auth") === "verified";
+  if (route === "/account" || verificationReturn) {
+    return <AccountPage />;
+  }
+
   if (route === LIVE_MAP_PATH) {
     return (
       <Suspense fallback={<RouteFallback />}>
         <LiveMapPage />
       </Suspense>
     );
+  }
+  if (route === SHOP_PATH) {
+    return <ShopPage />;
   }
   if (route === "/admin") {
     return (

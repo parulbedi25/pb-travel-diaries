@@ -1,13 +1,8 @@
 import { useMemo } from "react";
 import { ArrowUp } from "lucide-react";
 import { Logo } from "./Navbar";
-import { SOCIALS } from "./ui/SocialIcons";
+import { SOCIALS, externalLinkProps } from "./ui/SocialIcons";
 import { resolveFooter, useSite, type FooterSettings } from "../store/siteContent";
-
-const isExternal = (href: string) => /^https?:\/\//i.test(href);
-
-const linkProps = (href: string) =>
-  isExternal(href) ? { target: "_blank", rel: "noreferrer" } : {};
 
 /**
  * Footer markup driven entirely by settings. Used on the live site and in the
@@ -43,8 +38,8 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                   return (
                     <a
                       key={s.id}
-                      href={s.href}
-                      {...linkProps(s.href)}
+                      href={s.href.trim()}
+                      {...externalLinkProps(s.href)}
                       aria-label={s.label}
                       className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
                     >
@@ -68,7 +63,7 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                     <li key={link.id}>
                       <a
                         href={link.href}
-                        {...linkProps(link.href)}
+                        {...externalLinkProps(link.href)}
                         className="group inline-flex items-center gap-1.5 text-sm text-zinc-400 transition-colors duration-300 hover:text-white"
                       >
                         <span className="h-px w-0 bg-saffron-400 transition-all duration-300 group-hover:w-3" />

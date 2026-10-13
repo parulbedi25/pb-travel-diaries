@@ -34,22 +34,27 @@ import {
   RefreshCcw,
   Save,
   Settings,
+  ShoppingBag,
   Sun,
   Trash2,
   Upload,
+  Users,
   X,
 } from "lucide-react";
 import {
   useSite,
   defaultDataFor,
   resolveFooter,
+  makeGearItemId,
   type BikeHotspot,
   type BrandSettings,
+  type GearItem,
   type CountdownData,
   type FooterColumn,
   type FooterLink,
   type FooterSettings,
   type FooterSocial,
+  type RiderKitPointer,
   type SectionEntry,
   type SectionType,
   type SiteContent,
@@ -99,6 +104,7 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
+import UserManagementPanel from "./UserManagementPanel";
 
 /* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
 
@@ -158,6 +164,39 @@ function localInputToIso(value: string): string {
 const TA = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "textarea", hint });
 const IMG = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "image", hint });
 const STR = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "strings", hint });
+
+const GEAR_ITEM_FIELDS: Field[] = [
+  T("category", "Category", "Helmet, jacket, gloves, pants, boots, bag, intercom, etc."),
+  T("bodyPart", "Body zone", "Head, torso, hands, waist/hip, legs or feet. Leave blank to infer."),
+  T("name", "Gear name"),
+  T("brand", "Brand"),
+  T("model", "Model"),
+  IMG("image", "Gear photo"),
+  T("imageAlt", "Photo alt text"),
+  TA("description", "Why I wear it / notes"),
+  STR("highlights", "Highlights / specs", "One per line"),
+  T("fit", "Fit / size", "Optional"),
+  T("usedFor", "Used for / conditions", "Optional, e.g. monsoon touring or high-altitude rides"),
+  T("price", "Price", "Optional"),
+  T("link", "Product / affiliate link", "Official store URL or future affiliate URL; opens in a new tab"),
+];
+const GEAR_ITEM_TEMPLATE = {
+  id: "",
+  enabled: true,
+  category: "Helmet",
+  bodyPart: "",
+  name: "New gear item",
+  brand: "",
+  model: "",
+  description: "",
+  image: "",
+  imageAlt: "",
+  highlights: [],
+  fit: "",
+  usedFor: "",
+  price: "",
+  link: "",
+};
 
 export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
   hero: [
@@ -309,6 +348,39 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
         T("cap", "Caption chip"),
       ],
       template: { src: "", alt: "Photo", cap: "Caption" },
+    },
+  ],
+  gears: [
+    T("eyebrow", "Eyebrow label"),
+    T("titleA", "Title — before highlight"),
+    T("titleHi", "Title — highlighted"),
+    T("titleB", "Title — after highlight"),
+    TA("sub", "Subtitle", "Manage My Picks in Shop. The Gear has independent product copies; edit or reposition them in its rider-pointer tiles."),
+    T("emptyTitle", "Empty-state heading"),
+    TA("emptyText", "Empty-state message"),
+  ],
+  riderkit: [
+    T("eyebrow", "Eyebrow label"),
+    T("titleA", "Title — before highlight"),
+    T("titleHi", "Title — highlighted"),
+    T("titleB", "Title — after highlight"),
+    TA("sub", "Subtitle"),
+    IMG("image", "Full-body rider image", "Upload or select the hero image. The draggable pointer editor appears below."),
+    T("imageAlt", "Image alt text"),
+    {
+      path: "mapPointers",
+      label: "Rider image pointers",
+      kind: "items",
+      hint: "Click the image preview below to add a pointer, then drag numbered dots to position them. Edit each pointer's gear zone, label and hit radius here.",
+      fields: [
+        T("id", "Pointer ID", "Keep IDs unique"),
+        T("label", "Pointer label"),
+        T("zone", "Mapped gear zone", "head, torso, hands, waist, legs, feet, or intercom"),
+        { path: "x", label: "Horizontal position (%)", kind: "number" },
+        { path: "y", label: "Vertical position (%)", kind: "number" },
+        { path: "radius", label: "Hover / click radius (%)", kind: "number" },
+      ],
+      template: { enabled: true, id: "new-pointer", label: "New pointer", zone: "torso", x: 50, y: 40, radius: 12 },
     },
   ],
   benefits: [
@@ -657,6 +729,15 @@ export function ItemsField({
   onItemToggle?: (index: number, enabled: boolean) => void;
 }) {
   const items = Array.isArray(value) ? value : [];
+  const addItem = () => {
+    const nextItem = structuredClone(field.template ?? { name: "New item" });
+    const isGearItem = field.fields?.some((sub) => sub.path === "bodyPart") && field.fields?.some((sub) => sub.path === "highlights");
+    if (isGearItem && typeof nextItem === "object" && nextItem !== null) {
+      const record = nextItem as Record<string, unknown>;
+      record.id = makeGearItemId(String(record.name ?? "New gear item"), `${Date.now().toString(36)}-${items.length}`);
+    }
+    onChange([...items, nextItem]);
+  };
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
@@ -702,9 +783,8 @@ export function ItemsField({
           </div>
         ))}
         <button
-          onClick={() =>
-            onChange([...items, structuredClone(field.template ?? { name: "New item" })])
-          }
+          type="button"
+          onClick={addItem}
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-4 py-3 text-xs font-semibold text-zinc-400 transition-all duration-300 hover:border-saffron-400/50 hover:text-white"
         >
           <Plus className="h-3.5 w-3.5" /> Add item
@@ -1108,6 +1188,390 @@ export function HotspotEditor({
                         onChange={(v) => updateItem(i, f.path, v)}
                       />
                     ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════ Rider-map pointer editor (The Gear) ═══════════════ */
+
+export function RiderKitPointerEditor({
+  pointers,
+  image,
+  gearItems,
+  onChange,
+  onItemToggle,
+  onGearItemChange,
+  onAddProduct,
+  onRemovePointer,
+}: {
+  pointers: RiderKitPointer[];
+  image: string;
+  gearItems: GearItem[];
+  onChange: (next: RiderKitPointer[]) => void;
+  onItemToggle: (index: number, enabled: boolean) => void;
+  onGearItemChange: (gearId: string, path: string, value: unknown) => void;
+  onAddProduct: (pointerIndex?: number) => void;
+  onRemovePointer: (pointerIndex: number) => void;
+}) {
+  const { logAction } = useSite();
+  const fields = SECTION_FIELDS.riderkit.find((field) => field.path === "mapPointers")?.fields ?? [];
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [drag, setDrag] = useState<{ idx: number; x: number; y: number; moved: boolean } | null>(null);
+  const [rowDragFrom, setRowDragFrom] = useState<number | null>(null);
+  const [rowDragOver, setRowDragOver] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const suppressClick = useRef(false);
+
+  const pctFrom = (clientX: number, clientY: number) => {
+    const el = wrapRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: roundPct(((clientX - rect.left) / rect.width) * 100),
+      y: roundPct(((clientY - rect.top) / rect.height) * 100),
+    };
+  };
+
+  const addAt = (x: number, y: number) => {
+    const next: RiderKitPointer = {
+      enabled: true,
+      id: `gear-pointer-${Date.now()}-${pointers.length + 1}`,
+      label: `Gear pointer ${pointers.length + 1}`,
+      zone: "torso",
+      x,
+      y,
+      radius: 12,
+    };
+    onChange([...pointers, next]);
+    setOpenIdx(pointers.length);
+    logAction(`Added The Gear image pointer: ${next.label}`);
+  };
+
+  const handleImageClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    const point = pctFrom(event.clientX, event.clientY);
+    if (point) addAt(point.x, point.y);
+  };
+
+  const startDrag = (event: React.PointerEvent<HTMLButtonElement>, index: number) => {
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({ idx: index, x: pointers[index].x, y: pointers[index].y, moved: false });
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!drag) return;
+    const point = pctFrom(event.clientX, event.clientY);
+    if (!point) return;
+    const origin = pointers[drag.idx];
+    setDrag({ ...drag, x: point.x, y: point.y, moved: drag.moved || point.x !== origin.x || point.y !== origin.y });
+  };
+
+  const endDrag = () => {
+    if (!drag) return;
+    if (drag.moved) {
+      suppressClick.current = true;
+      const pointer = pointers[drag.idx];
+      onChange(pointers.map((item, index) => index === drag.idx ? { ...item, x: drag.x, y: drag.y } : item));
+      logAction(`Moved The Gear image pointer: ${pointer?.label ?? `#${drag.idx + 1}`}`);
+    }
+    setDrag(null);
+  };
+
+  const updatePointer = (index: number, path: string, value: unknown) => {
+    const pointer = pointers[index];
+    logAction(`Edited The Gear image pointer: ${pointer?.label ?? `#${index + 1}`}`);
+    onChange(pointers.map((item, itemIndex) => itemIndex === index ? setAt(item, path, value) as RiderKitPointer : item));
+  };
+
+  const linkProduct = (index: number, gearId: string) => {
+    const linked = gearItems.find((item) => item.id === gearId);
+    onChange(pointers.map((item, itemIndex) => itemIndex === index
+      ? { ...item, gearId: gearId || undefined, ...(linked ? { label: linked.name } : {}) }
+      : item));
+    logAction(`Linked The Gear pointer to ${linked?.name || "automatic zone matching"}`);
+  };
+
+  const reorderPointers = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= pointers.length) return;
+    const next = [...pointers];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    logAction(`Reordered The Gear product pointers: ${moved?.label ?? `#${from + 1}`} → ${to + 1}`);
+    onChange(next);
+    if (openIdx === from) setOpenIdx(to);
+    else if (openIdx !== null && from < to && openIdx > from && openIdx <= to) setOpenIdx(openIdx - 1);
+    else if (openIdx !== null && from > to && openIdx >= to && openIdx < from) setOpenIdx(openIdx + 1);
+  };
+
+  const removePointer = (index: number) => {
+    logAction(`Removed The Gear product pointer: ${pointers[index]?.label ?? `#${index + 1}`}`);
+    onRemovePointer(index);
+    setOpenIdx(null);
+  };
+
+  const position = (value: number) => Math.max(0, Math.min(100, Number.isFinite(Number(value)) ? Number(value) : 0));
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-semibold text-white">
+            <Crosshair className="h-3.5 w-3.5 text-saffron-300" /> Rider image pointers
+          </p>
+          <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-zinc-500">
+            Click the image to add a blank pin · drag map dots to position · expand a product tile to edit its photo, description, specs, price and buy link · drag the grip at left to reorder.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setOpenIdx(pointers.length);
+              onAddProduct();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-3.5 py-2 text-xs font-bold text-on-gold hover:brightness-110"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add product
+          </button>
+          <button
+            type="button"
+            onClick={() => addAt(50, 50)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] px-3.5 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/[0.12]"
+          >
+            <Crosshair className="h-3.5 w-3.5" /> Add blank pointer
+          </button>
+        </div>
+      </div>
+
+      {image ? (
+        <div
+          ref={wrapRef}
+          onClick={handleImageClick}
+          className="relative aspect-[2/3] w-full cursor-crosshair select-none overflow-hidden rounded-xl border border-white/10 bg-black/40"
+          role="group"
+          aria-label="Rider gear map preview. Click to add a pointer and drag dots to position them."
+        >
+          <img src={image} alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/30" aria-hidden="true" />
+          {pointers.map((pointer, index) => {
+            const isDragging = drag?.idx === index;
+            const x = isDragging && drag ? drag.x : position(pointer.x);
+            const y = isDragging && drag ? drag.y : position(pointer.y);
+            const isOpen = openIdx === index;
+            return (
+              <button
+                key={`${pointer.id}-${index}`}
+                type="button"
+                aria-label={`Pointer ${index + 1}: ${pointer.label}`}
+                title={`${pointer.label} · ${pointer.zone}`}
+                onPointerDown={(event) => startDrag(event, index)}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (suppressClick.current) {
+                    suppressClick.current = false;
+                    return;
+                  }
+                  setOpenIdx(isOpen ? null : index);
+                }}
+                className={cn(
+                  "absolute z-10 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-ink-950/90 text-[10px] font-bold text-white shadow-lg transition-colors",
+                  isOpen ? "bg-saffron-400 text-on-gold" : "hover:border-saffron-300",
+                  isDragging ? "cursor-grabbing scale-110" : "cursor-grab",
+                  isOn(pointer) ? "opacity-100" : "opacity-45"
+                )}
+                style={{ left: `${x}%`, top: `${y}%` }}
+              >
+                {index + 1}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid h-40 place-items-center rounded-xl border border-dashed border-white/15 px-6 text-center text-xs text-zinc-500">
+          Upload the full-body rider image above, then click it to add pointers.
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Product pointer list · {pointers.length}</p>
+        <p className="text-right text-[11px] text-zinc-600">Drag the grip to change product order</p>
+      </div>
+      {pointers.length === 0 ? (
+        <p className="mt-3 rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-zinc-600">
+          No product pointers yet — add a product or click the image to add a blank pin.
+        </p>
+      ) : (
+        <ol className="mt-3 flex flex-col gap-2.5">
+          {pointers.map((pointer, index) => {
+            const isOpen = openIdx === index;
+            const linkedProduct = gearItems.find((item) => item.id === pointer.gearId);
+            const tileTitle = linkedProduct?.name || pointer.label || "Unlinked pointer";
+            return (
+              <li
+                key={`${pointer.id}-row-${index}`}
+                onDragOver={(event) => {
+                  if (rowDragFrom === null) return;
+                  event.preventDefault();
+                  setRowDragOver(index);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (rowDragFrom !== null) reorderPointers(rowDragFrom, index);
+                  setRowDragFrom(null);
+                  setRowDragOver(null);
+                }}
+                className={cn(
+                  "rounded-2xl border bg-white/[0.03] transition-colors",
+                  isOpen ? "border-saffron-400/40" : "border-white/[0.07]",
+                  rowDragOver === index && rowDragFrom !== null && rowDragFrom !== index && "border-saffron-400 bg-saffron-400/10",
+                  rowDragFrom === index && "opacity-50"
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2 p-2.5">
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(event) => {
+                      setRowDragFrom(index);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(index));
+                    }}
+                    onDragEnd={() => {
+                      setRowDragFrom(null);
+                      setRowDragOver(null);
+                    }}
+                    aria-label={`Drag ${tileTitle} to reorder`}
+                    title="Drag to reorder products"
+                    className="grid h-8 w-6 shrink-0 cursor-grab place-items-center text-zinc-600 active:cursor-grabbing"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpenIdx(isOpen ? null : index)}
+                    aria-expanded={isOpen}
+                    aria-label={`Edit ${tileTitle}`}
+                    title="Click to edit this product and its pointer"
+                    className="flex min-w-[8rem] flex-1 items-center gap-2 text-left"
+                  >
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">{index + 1}</span>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.05]">
+                      {linkedProduct?.image ? (
+                        <img src={linkedProduct.image} alt="" className="h-full w-full object-contain" />
+                      ) : (
+                        <Crosshair className="h-4 w-4 text-zinc-600" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-white">{tileTitle}</span>
+                      <span className="block truncate text-[11px] text-zinc-500">{pointer.zone} · x {position(pointer.x)}% · y {position(pointer.y)}%</span>
+                    </span>
+                  </button>
+                  <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-1 sm:basis-auto">
+                    <button
+                      type="button"
+                      onClick={() => reorderPointers(index, index - 1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${tileTitle} up`}
+                      className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => reorderPointers(index, index + 1)}
+                      disabled={index === pointers.length - 1}
+                      aria-label={`Move ${tileTitle} down`}
+                      className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <Switch on={isOn(pointer)} onChange={(enabled) => onItemToggle(index, enabled)} label={`Show ${tileTitle}`} />
+                    <button
+                      type="button"
+                      onClick={() => removePointer(index)}
+                      aria-label={`Remove ${tileTitle}`}
+                      className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                {isOpen && (
+                  <div className="grid gap-3.5 border-t border-white/[0.07] p-3.5">
+                    {fields.map((field) => (
+                      <FieldRow
+                        key={field.path}
+                        field={field}
+                        value={getAt(pointer, field.path)}
+                        onChange={(value) => updatePointer(index, field.path, value)}
+                      />
+                    ))}
+                    <div className="grid gap-3 border-t border-white/[0.08] pt-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300">{linkedProduct ? "Product details" : "Link a product"}</p>
+                          <p className="mt-1 text-[11px] text-zinc-600">This product tile owns its image, description, specs, price and buy link.</p>
+                        </div>
+                        {!linkedProduct && (
+                          <button
+                            type="button"
+                            onClick={() => onAddProduct(index)}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-saffron-400 px-3 py-2 text-[11px] font-bold text-on-gold hover:brightness-110"
+                          >
+                            <Plus className="h-3 w-3" /> Create product here
+                          </button>
+                        )}
+                      </div>
+                      <label className="grid gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                        Linked product
+                        <select
+                          value={pointer.gearId ?? ""}
+                          onChange={(event) => linkProduct(index, event.target.value)}
+                          aria-label={`Product linked to ${pointer.label}`}
+                          className={cn(inputCls, "normal-case tracking-normal")}
+                        >
+                          <option value="">Auto-map by gear zone</option>
+                          {gearItems.map((item, itemIndex) => (
+                            <option key={`${item.id ?? item.name}-${itemIndex}`} value={item.id ?? ""}>
+                              {item.name || item.category || `Gear item ${itemIndex + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {linkedProduct ? (
+                        <div className="grid gap-3 rounded-xl border border-white/[0.07] bg-black/20 p-3">
+                          <p className="text-[11px] font-semibold text-saffron-200">Editing · {linkedProduct.name || linkedProduct.category}</p>
+                          {GEAR_ITEM_FIELDS.map((field) => (
+                            <FieldRow
+                              key={`product-${field.path}`}
+                              field={field}
+                              value={getAt(linkedProduct, field.path)}
+                              onChange={(value) => onGearItemChange(linkedProduct.id ?? "", field.path, value)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[11px] text-zinc-600">
+                          Create a product here or select an existing one; its fields will appear inside this tile.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </li>
@@ -1682,6 +2146,91 @@ function SectionsPanel() {
                       mainImage={(getAt(selected.data, "mainImage") as string) ?? ""}
                       onChange={(v) => setSectionData(selected.id, "hotspots", v)}
                       onItemToggle={(i, on) => toggleChild(selected.id, "hotspots", i, on)}
+                    />
+                  );
+                }
+                if (selected.type === "riderkit" && f.path === "mapPointers") {
+                  const gearItems = Array.isArray(getAt(selected.data, "items")) ? getAt(selected.data, "items") as GearItem[] : [];
+                  const pointers = Array.isArray(getAt(selected.data, "mapPointers")) ? getAt(selected.data, "mapPointers") as RiderKitPointer[] : [];
+                  const updateRiderKitData = (nextItems: GearItem[], nextPointers: RiderKitPointer[]) => {
+                    touchEnable(selected.id);
+                    updateDraft((contentDraft) => {
+                      const next = ensureOn(contentDraft, selected.id);
+                      return {
+                        ...next,
+                        sections: next.sections.map((section) => section.id === selected.id
+                          ? { ...section, enabled: true, data: { ...section.data, items: nextItems, mapPointers: nextPointers } }
+                          : section),
+                      };
+                    });
+                  };
+                  const onGearItemChange = (gearId: string, path: string, value: unknown) => {
+                    const nextItems = gearItems.map((item) => item.id === gearId ? setAt(item, path, value) as GearItem : item);
+                    const nextPointers = path === "name"
+                      ? pointers.map((pointer) => pointer.gearId === gearId ? { ...pointer, label: String(value ?? "") } : pointer)
+                      : pointers;
+                    logAction(`Edited The Gear product: ${gearItems.find((item) => item.id === gearId)?.name || gearId}`);
+                    updateRiderKitData(nextItems, nextPointers);
+                  };
+                  const onAddProduct = (pointerIndex?: number) => {
+                    const attachedPointer = pointerIndex === undefined ? undefined : pointers[pointerIndex];
+                    if (pointerIndex !== undefined && !attachedPointer) return;
+                    const zone = attachedPointer?.zone ?? "torso";
+                    const categoryByZone: Record<RiderKitPointer["zone"], string> = {
+                      head: "Helmet",
+                      torso: "Jacket",
+                      hands: "Gloves",
+                      waist: "Bags & carry",
+                      legs: "Riding pants",
+                      feet: "Boots",
+                      intercom: "Intercom",
+                    };
+                    const bodyPart = zone === "intercom" ? "Head" : zone[0].toLocaleUpperCase() + zone.slice(1);
+                    const name = `New ${categoryByZone[zone].toLocaleLowerCase()} product`;
+                    const id = makeGearItemId(name, `${Date.now().toString(36)}-${gearItems.length + 1}`);
+                    const newItem: GearItem = {
+                      ...GEAR_ITEM_TEMPLATE,
+                      id,
+                      name,
+                      category: categoryByZone[zone],
+                      bodyPart,
+                      highlights: ["Add a key specification", "Add a second specification"],
+                    };
+                    const pointByZone: Record<RiderKitPointer["zone"], { x: number; y: number; radius: number }> = {
+                      head: { x: 50, y: 16, radius: 8 },
+                      torso: { x: 50, y: 40, radius: 12 },
+                      hands: { x: 50, y: 67, radius: 9 },
+                      waist: { x: 61, y: 57, radius: 8 },
+                      legs: { x: 50, y: 71, radius: 12 },
+                      feet: { x: 50, y: 91, radius: 9 },
+                      intercom: { x: 64, y: 17, radius: 6 },
+                    };
+                    const nextPointers = pointerIndex === undefined
+                      ? [...pointers, { enabled: true, id: `product-pointer-${id}`, label: name, gearId: id, zone, ...pointByZone[zone] }]
+                      : pointers.map((pointer, index) => index === pointerIndex ? { ...pointer, gearId: id, label: name } : pointer);
+                    logAction(`Added product to The Gear pointer list: ${name}`);
+                    updateRiderKitData([...gearItems, newItem], nextPointers);
+                  };
+                  const onRemovePointer = (pointerIndex: number) => {
+                    const pointer = pointers[pointerIndex];
+                    const nextPointers = pointers.filter((_, index) => index !== pointerIndex);
+                    const nextItems = pointer?.gearId && !nextPointers.some((item) => item.gearId === pointer.gearId)
+                      ? gearItems.filter((item) => item.id !== pointer.gearId)
+                      : gearItems;
+                    logAction(`Removed The Gear pointer: ${pointer?.label ?? `#${pointerIndex + 1}`}`);
+                    updateRiderKitData(nextItems, nextPointers);
+                  };
+                  return (
+                    <RiderKitPointerEditor
+                      key="riderkit-pointers"
+                      pointers={pointers}
+                      image={(getAt(selected.data, "image") as string) ?? ""}
+                      gearItems={gearItems}
+                      onChange={(value) => setSectionData(selected.id, "mapPointers", value)}
+                      onItemToggle={(i, on) => toggleChild(selected.id, "mapPointers", i, on)}
+                      onGearItemChange={onGearItemChange}
+                      onAddProduct={onAddProduct}
+                      onRemovePointer={onRemovePointer}
                     />
                   );
                 }
@@ -2881,7 +3430,7 @@ function FooterPanel() {
 
   // Social links
   const setSocial = (id: string, patch: Partial<FooterSocial>) =>
-    write("Edited footer social links", (cur) =>
+    write("Edited site-wide social links", (cur) =>
       patch.enabled !== undefined
         ? cascadeFooterSocial(cur, id, patch.enabled)
         : { ...cur, socials: cur.socials.map((s) => (s.id === id ? { ...s, ...patch } : s)) }
@@ -3090,8 +3639,10 @@ function FooterPanel() {
           </div>
 
           <div className="rounded-3xl glass p-5">
-            <h3 className="font-display text-base font-semibold text-white">Social links</h3>
-            <p className="mt-0.5 text-[11px] text-zinc-500">Icons are fixed. Set each link and show or hide it.</p>
+            <h3 className="font-display text-base font-semibold text-white">Site-wide social icons</h3>
+            <p className="mt-0.5 text-[11px] text-zinc-500">
+              Set each profile URL and visibility for the footer, showreel card, and live tracker.
+            </p>
             <ul className="mt-4 flex flex-col gap-2.5">
               {f.socials.map((s) => (
                 <li
@@ -3102,14 +3653,14 @@ function FooterPanel() {
                   <input
                     value={s.href}
                     onChange={(e) => setSocial(s.id, { href: e.target.value })}
-                    aria-label={`${s.label} link`}
+                    aria-label={`${s.label} profile URL`}
                     placeholder="https://…"
                     className={cn(inputCls, "min-w-0 flex-1 py-2 font-mono text-xs")}
                   />
                   <Switch
                     on={s.enabled}
                     onChange={(v) => setSocial(s.id, { enabled: v })}
-                    label={`Show ${s.label}`}
+                    label={`Show ${s.label} icons site-wide`}
                   />
                 </li>
               ))}
@@ -3183,18 +3734,373 @@ function FooterPanel() {
   );
 }
 
+function ShopPanel() {
+  const { draft, updateDraft, logAction } = useSite();
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const gearSection = draft.sections.find((section) => section.type === "gears");
+  const riderKitSection = draft.sections.find((section) => section.type === "riderkit");
+  const items = Array.isArray(gearSection?.data.items) ? gearSection.data.items as GearItem[] : [];
+  const mapItems = Array.isArray(riderKitSection?.data.items) ? riderKitSection.data.items as GearItem[] : [];
+  const mappedPickIds = new Set(mapItems.map((item) => item.sourcePickId).filter((id): id is string => Boolean(id)));
+  const productKey = (item: GearItem, index: number) => item.id || `${item.name || item.category || "pick"}-${index}`;
+
+  const patchProduct = (index: number, path: string, value: unknown) => {
+    if (!gearSection || !items[index]) return;
+    const product = items[index];
+    const productName = String(product.name || product.brand || product.category || `Pick ${index + 1}`);
+    logAction(`Edited My Picks product: ${productName}`);
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => {
+        if (section.id !== gearSection.id) return section;
+        const currentItems = Array.isArray(section.data.items) ? section.data.items as GearItem[] : [];
+        return {
+          ...section,
+          data: {
+            ...section.data,
+            items: currentItems.map((item, itemIndex) => itemIndex === index ? setAt(item, path, value) as GearItem : item),
+          },
+        };
+      }),
+    }));
+  };
+
+  const reorderProducts = (from: number, to: number) => {
+    if (!gearSection || from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return;
+    const nextItems = [...items];
+    const [moved] = nextItems.splice(from, 1);
+    nextItems.splice(to, 0, moved);
+    logAction(`Reordered My Picks: ${moved?.name || moved?.brand || `Pick ${from + 1}`} → ${to + 1}`);
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => section.id === gearSection.id
+        ? { ...section, data: { ...section.data, items: nextItems } }
+        : section),
+    }));
+  };
+
+  const addPickToGear = (pick: GearItem, index: number) => {
+    if (!gearSection || !riderKitSection || !isOn(pick)) return;
+    const title = pick.name?.trim() || [pick.brand, pick.model].filter(Boolean).join(" ") || `Pick ${index + 1}`;
+    const now = Date.now().toString(36);
+    const sourcePickId = pick.id || makeGearItemId(title, `shop-${now}-${index + 1}`);
+    if (mappedPickIds.has(sourcePickId) || mapItems.some((item) => item.sourcePickId === sourcePickId)) return;
+
+    const zoneText = `${pick.bodyPart ?? ""} ${pick.category ?? ""} ${pick.name ?? ""} ${pick.brand ?? ""}`.toLocaleLowerCase();
+    const zone: RiderKitPointer["zone"] = /intercom|communicator|sena/.test(zoneText)
+      ? "intercom"
+      : /head|helmet|visor|eyewear|goggle/.test(zoneText)
+        ? "head"
+        : /hand|glove|wrist/.test(zoneText)
+          ? "hands"
+          : /foot|feet|boot|shoe/.test(zoneText)
+            ? "feet"
+            : /waist|hip|sling.?bag|cross.?body|belt.?bag/.test(zoneText)
+              ? "waist"
+              : /leg|trouser|pant|legging|knee/.test(zoneText)
+                ? "legs"
+                : "torso";
+    const initialPosition: Record<RiderKitPointer["zone"], { x: number; y: number }> = {
+      head: { x: 52, y: 16 },
+      torso: { x: 50, y: 40 },
+      hands: { x: 68, y: 68 },
+      waist: { x: 61, y: 57 },
+      legs: { x: 50, y: 71 },
+      feet: { x: 50, y: 91 },
+      intercom: { x: 64, y: 17 },
+    };
+    const targetId = makeGearItemId(title, `map-${now}-${index + 1}`);
+    const mapCopy: GearItem = {
+      ...pick,
+      id: targetId,
+      sourcePickId,
+      enabled: true,
+      highlights: Array.isArray(pick.highlights) ? [...pick.highlights] : [],
+    };
+    const point = initialPosition[zone];
+    const pointer: RiderKitPointer = {
+      id: `${targetId}-pointer`,
+      label: title,
+      gearId: targetId,
+      zone,
+      x: point.x,
+      y: point.y,
+      radius: 10,
+      enabled: true,
+    };
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => {
+        if (section.id === gearSection.id) {
+          const currentItems = Array.isArray(section.data.items) ? section.data.items as GearItem[] : [];
+          return {
+            ...section,
+            data: {
+              ...section.data,
+              items: currentItems.map((item, itemIndex) => itemIndex === index && !item.id ? { ...item, id: sourcePickId } : item),
+            },
+          };
+        }
+        if (section.id === riderKitSection.id) {
+          const currentItems = Array.isArray(section.data.items) ? section.data.items as GearItem[] : [];
+          const currentPointers = Array.isArray(section.data.mapPointers) ? section.data.mapPointers as RiderKitPointer[] : [];
+          return {
+            ...section,
+            data: {
+              ...section.data,
+              items: [...currentItems, mapCopy],
+              mapPointers: [...currentPointers, pointer],
+            },
+          };
+        }
+        return section;
+      }),
+    }));
+    logAction(`Copied ${title} from My Picks to The Gear with a rider pointer`);
+  };
+
+  const addAffiliatePick = () => {
+    if (!gearSection) return;
+    const id = makeGearItemId("affiliate-pick", `${Date.now().toString(36)}-${items.length + 1}`);
+    const product: GearItem = {
+      ...GEAR_ITEM_TEMPLATE,
+      id,
+      enabled: false,
+      category: "",
+      bodyPart: "",
+      name: "",
+      brand: "",
+      model: "",
+      description: "",
+      image: "",
+      imageAlt: "",
+      highlights: [],
+      fit: "",
+      usedFor: "",
+      price: "",
+      link: "",
+    };
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => {
+        if (section.id !== gearSection.id) return section;
+        const currentItems = Array.isArray(section.data.items) ? section.data.items as GearItem[] : [];
+        return { ...section, data: { ...section.data, items: [...currentItems, product] } };
+      }),
+    }));
+    setOpenKey(id);
+    logAction("Added a hidden affiliate pick");
+  };
+
+  const removePick = (index: number) => {
+    if (!gearSection || !items[index]) return;
+    const product = items[index];
+    const key = productKey(product, index);
+    const title = product.name || product.brand || `Pick ${index + 1}`;
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => {
+        if (section.id !== gearSection.id) return section;
+        const currentItems = Array.isArray(section.data.items) ? section.data.items as GearItem[] : [];
+        return { ...section, data: { ...section.data, items: currentItems.filter((_, itemIndex) => itemIndex !== index) } };
+      }),
+    }));
+    setOpenKey((current) => current === key ? null : current);
+    logAction(`Removed My Picks product: ${title}`);
+  };
+
+  return (
+    <div className="min-w-0">
+      <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-saffron-300">Shop · My Picks</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-white">My Picks</h2>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-zinc-500">Arrange picks by dragging the left grip. Edit each pick here; use Add to The Gear to create a separate product copy and rider-image pointer that you can reposition independently. New affiliate picks stay hidden until enabled.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="#/shop"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-saffron-300/40 hover:text-white"
+            >
+              <Eye className="h-3.5 w-3.5" /> Preview shop page
+            </a>
+            <button
+              type="button"
+              onClick={addAffiliatePick}
+              className="inline-flex items-center gap-2 rounded-full bg-saffron-400 px-4 py-2.5 text-xs font-bold text-on-gold transition hover:brightness-110"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add affiliate pick
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+          <span>Current My Picks · {items.length} {items.length === 1 ? "product" : "products"}</span>
+          <span>Changes stay in the dashboard draft until saved</span>
+        </div>
+
+        {items.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-white/12 px-5 py-12 text-center">
+            <ShoppingBag className="mx-auto h-6 w-6 text-zinc-600" />
+            <p className="mt-3 text-sm font-semibold text-zinc-300">No products in My Picks</p>
+            <p className="mt-1 text-xs text-zinc-600">No sample products are preloaded. Add an affiliate pick only when you have a product to feature.</p>
+          </div>
+        ) : (
+          <ol className="mt-4 flex flex-col gap-3">
+            {items.map((item, index) => {
+              const key = productKey(item, index);
+              const title = item.name?.trim() || [item.brand, item.model].filter(Boolean).join(" ") || `Untitled pick ${index + 1}`;
+              const open = openKey === key;
+              const isPublished = isOn(item);
+              return (
+                <li
+                  key={key}
+                  onDragOver={(event) => {
+                    if (dragFrom === null) return;
+                    event.preventDefault();
+                    setDragOver(index);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (dragFrom !== null) reorderProducts(dragFrom, index);
+                    setDragFrom(null);
+                    setDragOver(null);
+                  }}
+                  className={cn(
+                    "overflow-hidden rounded-2xl border bg-white/[0.025] transition-colors",
+                    open ? "border-saffron-300/35" : "border-white/[0.08]",
+                    dragOver === index && dragFrom !== null && dragFrom !== index && "border-saffron-400 bg-saffron-400/10",
+                    dragFrom === index && "opacity-50"
+                  )}
+                >
+                  <div className="flex flex-wrap items-center gap-2 p-2.5 sm:gap-3 sm:p-3">
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(event) => {
+                        setDragFrom(index);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", String(index));
+                      }}
+                      onDragEnd={() => {
+                        setDragFrom(null);
+                        setDragOver(null);
+                      }}
+                      aria-label={`Drag ${title} to reorder My Picks`}
+                      title="Drag to arrange My Picks"
+                      className="grid h-9 w-6 shrink-0 cursor-grab place-items-center text-zinc-600 active:cursor-grabbing"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenKey(open ? null : key)}
+                      aria-expanded={open}
+                      aria-label={`Edit ${title}`}
+                      className="flex min-w-[8rem] flex-1 items-center gap-3 rounded-xl p-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-saffron-300"
+                    >
+                      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white">
+                        {item.image ? <img src={item.image} alt="" className="h-full w-full object-contain" /> : <ImageOff className="h-4 w-4 text-zinc-500" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-white">{title}</span>
+                          {!isPublished && <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.06] px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-amber-200">Hidden draft</span>}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[10px] text-zinc-500">{item.category || "Select a product category"}{item.brand ? ` · ${item.brand}` : ""}</span>
+                      </span>
+                      {item.price?.trim() && <span className="hidden shrink-0 font-mono text-xs font-semibold text-saffron-200 sm:block">{item.price}</span>}
+                      <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} />
+                    </button>
+                    <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-1 sm:basis-auto">
+                      <button
+                        type="button"
+                        onClick={() => reorderProducts(index, index - 1)}
+                        disabled={index === 0}
+                        aria-label={`Move ${title} up`}
+                        className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => reorderProducts(index, index + 1)}
+                        disabled={index === items.length - 1}
+                        aria-label={`Move ${title} down`}
+                        className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <Switch on={isPublished} onChange={(enabled) => patchProduct(index, "enabled", enabled)} label={`Show ${title} in My Picks`} />
+                      <button
+                        type="button"
+                        onClick={() => removePick(index)}
+                        aria-label={`Remove ${title} from My Picks`}
+                        className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {open && (
+                    <div className="grid gap-3.5 border-t border-white/[0.07] bg-black/10 p-3.5 sm:p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-saffron-200">Edit this pick</p>
+                          <p className="mt-1 text-[10px] text-zinc-500">The Gear receives a separate copy; later edits here will not change it.</p>
+                        </div>
+                        {mappedPickIds.has(item.id ?? "") ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2 text-[10px] font-semibold text-emerald-300">
+                            <Check className="h-3.5 w-3.5" /> Copied to The Gear
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => addPickToGear(item, index)}
+                            disabled={!isPublished || !riderKitSection}
+                            title={!isPublished ? "Enable this My Picks product before adding it to The Gear" : !riderKitSection ? "The Gear section is not configured" : "Create an independent The Gear product and rider pointer"}
+                            className="inline-flex items-center gap-2 rounded-full border border-saffron-300/30 bg-saffron-300/[0.08] px-3.5 py-2 text-[10px] font-bold text-saffron-200 transition hover:border-saffron-300/60 hover:bg-saffron-300/[0.14] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Crosshair className="h-3.5 w-3.5" /> {isPublished ? "Add to The Gear" : "Enable pick first"}
+                          </button>
+                        )}
+                      </div>
+                      {GEAR_ITEM_FIELDS.map((field) => (
+                        <FieldRow
+                          key={field.path}
+                          field={field}
+                          value={getAt(item, field.path)}
+                          onChange={(value) => patchProduct(index, field.path, value)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
+    </div>
+  );
+}
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "brand" | "menu" | "footer" | "theme" | "media" | "settings";
+type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings" | "users";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
+  { id: "shop", label: "Shop", icon: ShoppingBag },
   { id: "brand", label: "Logo & brand", icon: ImageIcon },
   { id: "menu", label: "Header", icon: Link2 },
   { id: "footer", label: "Footer", icon: LayoutList },
   { id: "theme", label: "Theme colours", icon: Palette },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "users", label: "Users", icon: Users },
 ];
 
 export default function AdminPage() {
@@ -3352,26 +4258,29 @@ export default function AdminPage() {
         */}
         <nav
           aria-label="Dashboard"
-          className="flex shrink-0 gap-2 overflow-x-auto no-scrollbar lg:sticky lg:top-24 lg:max-h-[calc(100dvh-13rem)] lg:w-48 lg:flex-col lg:self-start lg:overscroll-contain"
+          className="grid w-full shrink-0 grid-cols-4 justify-items-center gap-2 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-13rem)] lg:w-48 lg:flex lg:flex-col lg:items-stretch lg:self-start lg:gap-2 lg:overflow-y-auto lg:overscroll-contain"
         >
           {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-pressed={tab === t.id}
-              className={cn(
-                "dashboard-nav-option inline-flex shrink-0 items-center gap-2.5 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors duration-200",
-                tab === t.id
-                  ? "border-saffron-400 bg-saffron-400/10 text-white"
-                  : "border-white/25 bg-white/[0.03] text-zinc-300 hover:border-white/40 hover:bg-white/[0.06] hover:text-white"
-              )}
-            >
-              <t.icon className="h-4 w-4" />
-              {t.label}
-            </button>
+            <div key={t.id} className="flex w-full flex-col items-center lg:items-stretch">
+              <button
+                type="button"
+                onClick={() => setTab(t.id)}
+                aria-label={t.label}
+                title={t.label}
+                aria-pressed={tab === t.id}
+                className={cn(
+                  "dashboard-nav-option inline-flex h-11 w-11 items-center justify-center rounded-xl border p-0 text-sm font-semibold transition-colors duration-200 lg:h-auto lg:w-full lg:justify-start lg:gap-2.5 lg:px-4 lg:py-3",
+                  tab === t.id
+                    ? "border-saffron-400 bg-saffron-400/10 text-white"
+                    : "border-white/25 bg-white/[0.03] text-zinc-300 hover:border-white/40 hover:bg-white/[0.06] hover:text-white"
+                )}
+              >
+                <t.icon className="h-4 w-4 shrink-0" />
+                <span className="hidden lg:inline">{t.label}</span>
+              </button>
+            </div>
           ))}
-          <div className="mt-6">
+          <div className="col-span-full mt-1 w-full lg:mt-4">
             <RevisionsPanel />
           </div>
         </nav>
@@ -3383,12 +4292,14 @@ export default function AdminPage() {
             </p>
           )}
           {tab === "sections" && <SectionsPanel />}
+          {tab === "shop" && <ShopPanel />}
           {tab === "brand" && <BrandingPanel />}
           {tab === "menu" && <MenuPanel />}
           {tab === "footer" && <FooterPanel />}
           {tab === "theme" && <ThemePanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
+          {tab === "users" && <UserManagementPanel />}
         </main>
       </div>
 

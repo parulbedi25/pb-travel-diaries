@@ -15,6 +15,8 @@ export const CHILD_LISTS: Partial<Record<string, string[]>> = {
   features: ["items"],
   journey: ["destinations"],
   machine: ["hotspots", "gallery"],
+  gears: ["items"],
+  riderkit: ["mapPointers"],
   benefits: ["personas"],
   youtube: ["items"],
   instagram: ["items"],
@@ -42,17 +44,16 @@ export function liftSections(sections: SectionEntry[]): SectionEntry[] {
   return changed ? next : sections;
 }
 
-/** Link on lifts its column, column or social on lifts the footer. */
+/** Footer links lift their column and footer; shared social profiles are independent. */
 export function liftFooter(f: FooterSettings): FooterSettings {
   const columns = Array.isArray(f.columns) ? f.columns : [];
-  const socials = Array.isArray(f.socials) ? f.socials : [];
   let colsChanged = false;
   const nextCols: FooterColumn[] = columns.map((c) => {
     if (c.enabled || !Array.isArray(c.links) || !c.links.some(explicitOn)) return c;
     colsChanged = true;
     return { ...c, enabled: true };
   });
-  const footerOn = f.enabled || nextCols.some((c) => c.enabled === true) || socials.some(explicitOn);
+  const footerOn = f.enabled || nextCols.some((c) => c.enabled === true);
   if (!colsChanged && footerOn === f.enabled) return f;
   return { ...f, columns: colsChanged ? nextCols : f.columns, enabled: footerOn };
 }
@@ -65,11 +66,10 @@ export function liftAll(c: SiteContent): SiteContent {
   return { ...c, sections, footer };
 }
 
-/** A switched-off footer keeps every child off, so old saved data cannot re-enable it. */
+/** A switched-off footer keeps its columns and links off; shared social profiles stay independent. */
 export function lowerFooter(f: FooterSettings): FooterSettings {
   if (f.enabled) return f;
   const columns = Array.isArray(f.columns) ? f.columns : [];
-  const socials = Array.isArray(f.socials) ? f.socials : [];
   return {
     ...f,
     columns: columns.map((c) => ({
@@ -77,7 +77,6 @@ export function lowerFooter(f: FooterSettings): FooterSettings {
       enabled: false,
       links: (c.links ?? []).map((l) => ({ ...l, enabled: false })),
     })),
-    socials: socials.map((s) => ({ ...s, enabled: false })),
   };
 }
 
