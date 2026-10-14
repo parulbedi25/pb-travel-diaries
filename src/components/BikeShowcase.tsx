@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Photo from "./ui/Photo";
 import {
   Gauge,
   Cog,
@@ -515,10 +516,11 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
           {data.gallery.filter(isOn).map((g, i) => (
             <Item key={`${g.src}-${i}`}>
               <figure className="group relative overflow-hidden rounded-[1.75rem] border border-white/10">
-                <img
+                <Photo
                   src={g.src}
                   alt={g.alt}
-                  loading="lazy"
+                  aspect="16 / 10"
+                  label="Photo unavailable"
                   className="aspect-[16/10] w-full object-cover transition-transform duration-[1.2s] ease-out group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-transparent" aria-hidden />

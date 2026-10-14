@@ -1,20 +1,20 @@
 export const IMAGES = {
   heroMain:
-    "https://images.pexels.com/photos/17033846/pexels-photo-17033846.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    "",
   heroCardA:
-    "https://images.pexels.com/photos/12950219/pexels-photo-12950219.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    "",
   heroCardB:
-    "https://images.pexels.com/photos/20988783/pexels-photo-20988783.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    "",
   heroCardC:
-    "https://images.pexels.com/photos/39182453/pexels-photo-39182453.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    "",
   portrait:
-    "https://images.pexels.com/photos/24589390/pexels-photo-24589390.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=800",
+    "",
   videoPoster:
-    "https://images.pexels.com/videos/32747582/4k-aerial-footage-4k-drone-aerial-drone-shot-32747582.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=630&w=1200",
+    "",
 };
 
 export const SHOWREEL_VIDEO =
-  "https://videos.pexels.com/video-files/32747582/13961057_3840_2160_24fps.mp4";
+  "";
 
 export const NAV_LINKS = [
   { label: "Live", href: "#live" },
@@ -81,7 +81,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Eleven passes above 16,000 ft, Pangong turning gold at dawn, and mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage. Full GPX, permit checklist and fuel strategy included.",
     image:
-      "https://images.pexels.com/photos/39977289/pexels-photo-39977289.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "2,150 km",
     days: "12 days",
     season: "Jun – Sep",
@@ -95,7 +95,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Sand dunes wedged between snow peaks, double-humped camels at Hunder, and Turtuk — a Baltistan village India opened to the world only in 2010. The detour most riders skip, and never forget.",
     image:
-      "https://images.pexels.com/photos/38087449/pexels-photo-38087449.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "480 km",
     days: "4 days",
     season: "Jun – Sep",
@@ -109,7 +109,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Raw, lunar, and humbling. Key Monastery at sunrise, Chandra Tal under the Milky Way, and the world's highest villages where time moves at 0.5x. My most requested route — mapped to the last kilometre.",
     image:
-      "https://images.pexels.com/photos/5202009/pexels-photo-5202009.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "1,320 km",
     days: "9 days",
     season: "May – Oct",
@@ -123,7 +123,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Amber Fort at golden hour, Jaisalmer's dunes under a full moon, and Udaipur's lakes at dusk. A 2,400 km loop through living palaces, thorn forests and the loudest thalis in India.",
     image:
-      "https://images.pexels.com/photos/18881277/pexels-photo-18881277.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "2,400 km",
     days: "10 days",
     season: "Oct – Feb",
@@ -137,7 +137,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "The oldest living city on earth doesn't photograph — it swallows you. Dawn boats on the Ganga, the thunder of the evening aarti, and kachori-sabzi breakfasts in lanes older than empires.",
     image:
-      "https://images.pexels.com/photos/19272052/pexels-photo-19272052.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "620 km",
     days: "3 days",
     season: "Oct – Mar",
@@ -151,7 +151,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Nohkalikai plunging 1,115 ft, living root bridges grown over 500 years, and Mawlynnong — Asia's cleanest village. India's wettest, greenest, most surprising corner, packed into one epic loop.",
     image:
-      "https://images.pexels.com/photos/12233686/pexels-photo-12233686.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "1,180 km",
     days: "8 days",
     season: "Oct – Apr",
@@ -165,7 +165,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Houseboats drifting through Alappuzha, Munnar's tea carpeting every hill, and Fort Kochi's Chinese fishing nets at sunset. The antidote to burnout — best absorbed at 40 kmph, windows down.",
     image:
-      "https://images.pexels.com/photos/12950219/pexels-photo-12950219.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "940 km",
     days: "7 days",
     season: "Sep – Mar",
@@ -179,7 +179,7 @@ export const DESTINATIONS: Destination[] = [
     description:
       "Everyone knows Baga. Almost nobody finds Kakolem. My Goa route trades crowds for hidden coves, spice-farm trails, Divar island ferry hops and the Saturday night market at Arpora.",
     image:
-      "https://images.pexels.com/photos/39182453/pexels-photo-39182453.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "",
     distance: "560 km",
     days: "5 days",
     season: "Nov – Feb",

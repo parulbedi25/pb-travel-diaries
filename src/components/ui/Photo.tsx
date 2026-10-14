@@ -11,8 +11,8 @@ import { cn } from "../../utils/cn";
  * same-shape placeholder when it does not, so the section keeps its size and
  * still says what belongs there.
  *
- * Remote photos (Pexels) are sent without a referrer, which avoids the
- * referrer-based blocking some image CDNs apply to hotlinked requests.
+ * Every photo is served from this app's own /media and /images folders, so
+ * there are no cross-origin requests and no referrer rules to work around.
  */
 export default function Photo({
   src,
@@ -69,7 +69,6 @@ export default function Photo({
       loading={priority ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : undefined}
       decoding="async"
-      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       className={cn("block w-full", className)}
     />

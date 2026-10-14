@@ -7,11 +7,10 @@
     <meta name="theme-color" content="#070707" />
     <meta name="color-scheme" content="dark light" />
 
-    <!-- Open connections early so fonts + images start immediately -->
+    <!-- Open the font connections early so text paints immediately. Every
+         image now ships with the app, so there is no image CDN to warm up. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://images.pexels.com" />
-    <link rel="dns-prefetch" href="https://videos.pexels.com" />
 
     <!--
       Fonts: non-blocking. display=swap paints system text instantly and swaps in
