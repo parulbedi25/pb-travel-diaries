@@ -729,8 +729,15 @@ export interface MaintenanceData {
   description: string;
   /** Optional override; blank = the saved website logo. */
   logo: string;
-  /** ISO datetime; blank = no countdown shown. */
-  expectedBack: string;
+  /**
+   * ISO datetime the site should take itself offline. Blank = no schedule.
+   * Cleared once it fires, so a schedule only ever runs once.
+   */
+  scheduledAt: string;
+  /** ISO datetime the site actually went offline. Stamped automatically. */
+  startedAt: string;
+  /** ISO datetime the site came back. Stamped automatically when switched off. */
+  endedAt: string;
   note: string;
   email: string;
 }
@@ -1224,7 +1231,9 @@ const MAINTENANCE: MaintenanceData = {
   description:
     "PB is out riding the last stretch and the site is getting a fresh coat of polish. Thank you for your patience — everything will be back shortly, sharper and faster than before.",
   logo: "",
-  expectedBack: "",
+  scheduledAt: "",
+  startedAt: "",
+  endedAt: "",
   note: "For urgent queries, drop a line at hello@pbfrompb.in",
   email: "hello@pbfrompb.in",
 };
@@ -1322,6 +1331,61 @@ export function sectionData<T>(content: SiteContent, type: SectionType): T {
   const entry = content.sections.find((s) => s.type === type);
   if (!entry) return structuredClone(defaultDataFor(type)) as T;
   return deepMerge(defaultDataFor(type), entry.data) as T;
+}
+
+/** True when a maintenance schedule has been set and its moment has arrived. */
+export function maintenanceScheduleDue(data: Record<string, unknown> | undefined, now = Date.now()): boolean {
+  const at = Date.parse(String(data?.scheduledAt ?? ""));
+  return Number.isFinite(at) && at <= now;
+}
+
+/**
+ * Applies a due maintenance schedule: switches the section on and clears the
+ * schedule so it fires once. Returns the same object when there is nothing to
+ * do, which lets callers skip an unnecessary save.
+ */
+function applyMaintenanceSchedule(content: SiteContent, now = Date.now()): SiteContent {
+  const index = content.sections.findIndex((s) => s.type === "maintenance");
+  if (index < 0) return content;
+  const section = content.sections[index];
+  if (section.enabled || !maintenanceScheduleDue(section.data, now)) return content;
+  const at = new Date(now).toISOString();
+  const next = [...content.sections];
+  next[index] = {
+    ...section,
+    enabled: true,
+    data: { ...section.data, scheduledAt: "", startedAt: at, endedAt: "" },
+  };
+  return { ...content, sections: next };
+}
+
+/**
+ * Maintenance outage bookkeeping. Stamps the moment the site goes offline and
+ * the moment it comes back, so the dashboard can report how long an outage
+ * lasted. Switching on again clears the previous window.
+ */
+function stampMaintenanceWindow(
+  previous: SiteContent,
+  next: SiteContent,
+  now = new Date().toISOString(),
+): SiteContent {
+  const index = next.sections.findIndex((s) => s.type === "maintenance");
+  if (index < 0) return next;
+  const wasOn = Boolean(previous.sections.find((s) => s.type === "maintenance")?.enabled);
+  const section = next.sections[index];
+  if (wasOn === Boolean(section.enabled)) return next;
+  const data = { ...section.data };
+  if (section.enabled) {
+    data.startedAt = now;
+    data.endedAt = "";
+  } else if (data.startedAt) {
+    data.endedAt = now;
+  } else {
+    return next;
+  }
+  const sections = [...next.sections];
+  sections[index] = { ...section, data };
+  return { ...next, sections };
 }
 
 function loadContent(): SiteContent {
@@ -1673,12 +1737,23 @@ function loadContent(): SiteContent {
       ...(shouldMigrateRiderKitIndependentProducts ? [riderKitIndependentProductsMigration] : []),
     ];
 
-    return normalizeLoaded({
+    // A schedule whose moment has passed switches maintenance on before the
+    // first paint, so the site never flashes live content and then go offline.
+    const normalized = normalizeLoaded({
       ...parsed,
       migrations,
       sections: allSections,
       nav: migratedNav,
     });
+    const scheduled = applyMaintenanceSchedule(normalized);
+    if (scheduled !== normalized) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(scheduled));
+      } catch {
+        /* The switch still applies for this visit even if it cannot be saved. */
+      }
+    }
+    return scheduled;
   } catch {
     return structuredClone(DEFAULT_CONTENT);
   }
@@ -1877,7 +1952,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     let next: SiteContent;
     let nextRevisions: Revision[];
     try {
-      next = structuredClone(withSettingsDefaults(nextContent));
+      next = structuredClone(withSettingsDefaults(stampMaintenanceWindow(content, nextContent)));
       const timestamp = new Date().toISOString();
       const id = `rev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const previousRevisions = revisions.length ? revisions : [{
@@ -2173,6 +2248,26 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     },
     [commit, content]
   );
+
+  // A schedule can come due while the site is already open. Re-check on a slow
+  // tick and let the switch in through the normal save path, so it lands in
+  // revision history exactly like a manual toggle would.
+  useEffect(() => {
+    const check = () => {
+      const maintenance = content.sections.find((section) => section.type === "maintenance");
+      if (!maintenance || maintenance.enabled) return;
+      if (!maintenanceScheduleDue(maintenance.data)) return;
+      // Never clobber dashboard edits that have not been saved yet.
+      if (hasChanges) return;
+      const next = applyMaintenanceSchedule(content);
+      if (next === content) return;
+      if (!commit(next, "Scheduled maintenance switched on")) return;
+      setDraft(structuredClone(withSettingsDefaults(next)));
+    };
+    check();
+    const id = setInterval(check, 15_000);
+    return () => clearInterval(id);
+  }, [commit, content, hasChanges]);
 
   /** Child toggles from the live editor: hidden while its parent is switched off. */
   const toggleSectionChild = useCallback(

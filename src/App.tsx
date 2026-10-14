@@ -54,7 +54,7 @@ import CountdownSection, {
   useCountdownFinished,
 } from "./components/CountdownSection";
 import { EASE } from "./components/ui/motion";
-import { LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import { ADMIN_PATHS, LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
 import ShopPage from "./components/ShopPage";
 
 // Heavy routes are split out so the landing page never downloads them.
@@ -266,7 +266,7 @@ function Shell() {
   if (route === SHOP_PATH) {
     return <ShopPage />;
   }
-  if (route === "/admin") {
+  if (ADMIN_PATHS.has(route)) {
     return (
       <Suspense fallback={<RouteFallback />}>
         <AdminPage />
