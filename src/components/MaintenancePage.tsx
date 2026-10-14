@@ -1,8 +1,7 @@
-import { Mail, Wrench } from "lucide-react";
+import { LayoutDashboard, Mail, Wrench } from "lucide-react";
 import type { MaintenanceData } from "../store/siteContent";
-import { useSite } from "../store/siteContent";
+import { isAdminSession, useSite } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
-import { CountdownDots } from "./CountdownSection";
 
 /**
  * Maintenance mode page. Shown instead of the entire site (no header, no footer)
@@ -11,9 +10,21 @@ import { CountdownDots } from "./CountdownSection";
  */
 export default function MaintenancePage({ data }: { data: MaintenanceData }) {
   const { content } = useSite();
+  // Maintenance replaces the whole site, so a signed-in admin needs a way back
+  // out of it without typing the URL. Visitors never see this.
+  const admin = isAdminSession();
 
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
+      {admin && (
+        <a
+          href="#/admin"
+          className="admin-escape fixed right-4 top-4 z-50 inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition-all duration-300 hover:scale-[1.03] active:scale-100"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Admin dashboard
+        </a>
+      )}
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/15 blur-[130px]"
@@ -46,17 +57,6 @@ export default function MaintenancePage({ data }: { data: MaintenanceData }) {
             {data.title}
           </h1>
           <p className="mt-5 text-base leading-relaxed text-zinc-400">{data.description}</p>
-
-          {data.expectedBack && (
-            <div className="mt-9">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
-                Back in
-              </p>
-              <div className="mt-4 flex justify-center">
-                <CountdownDots target={data.expectedBack} size="sm" />
-              </div>
-            </div>
-          )}
 
           {(data.note || data.email) && (
             <div className="mt-9 flex flex-col items-center gap-3 border-t border-white/[0.07] pt-7">

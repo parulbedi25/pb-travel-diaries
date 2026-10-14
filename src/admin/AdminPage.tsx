@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
   ChevronDown,
   ChevronUp,
+  CalendarClock,
+  ShieldCheck,
   Copy,
   Download,
   Eye,
@@ -52,6 +54,7 @@ import {
   type GearItem,
   type CountdownData,
   type MachineData,
+  type MaintenanceData,
   type FooterColumn,
   type FooterLink,
   type FooterSettings,
@@ -518,7 +521,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("title", "Headline"),
     TA("description", "Message"),
     IMG("logo", "Logo override", "Leave empty to use the website logo from Logo & brand"),
-    DT("expectedBack", "Expected back", "Leave empty to hide the return countdown"),
+    DT("scheduledAt", "Go offline at", "Pick a date and time and the site takes itself offline, without you lifting a finger. Leave empty to switch maintenance on and off by hand."),
     T("note", "Footer note"),
     T("email", "Contact email"),
   ],
@@ -1654,6 +1657,202 @@ export function RevealPicker({
 }
 
 /** Compact live status shown at the top of the Countdown editor. */
+/** Splits a millisecond span into a compact "2d 3h 4m 5s" string. */
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "0s";
+  const total = Math.floor(ms / 1000);
+  return [
+    total >= 86400 ? `${Math.floor(total / 86400)}d` : "",
+    total >= 3600 ? `${Math.floor((total % 86400) / 3600)}h` : "",
+    total >= 60 ? `${Math.floor((total % 3600) / 60)}m` : "",
+    `${total % 60}s`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Counts up from a timestamp, ticking once a second. */
+function useElapsed(sinceIso: string) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!sinceIso) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sinceIso]);
+  const start = Date.parse(sinceIso ?? "");
+  const valid = Number.isFinite(start);
+  const span = valid ? Math.max(0, now - start) : 0;
+  return {
+    valid,
+    span,
+    days: Math.floor(span / 86400000),
+    hours: Math.floor((span / 3600000) % 24),
+    minutes: Math.floor((span / 60000) % 60),
+    seconds: Math.floor((span / 1000) % 60),
+  };
+}
+
+/** D/H/M/S plates. .cd-chip / .cd-ink keep them readable on both themes. */
+function TimePlates({
+  units,
+  label,
+  ariaLabel,
+}: {
+  units: { value: number; label: string }[];
+  label: string;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="text-right">
+      <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+      <div role="timer" aria-label={ariaLabel} className="flex gap-1.5">
+        {units.map((u) => (
+          <span key={u.label} className="cd-chip rounded-lg px-2 py-1.5 text-center">
+            <span className="cd-ink block font-mono text-sm font-bold tabular-nums">
+              {String(u.value).padStart(2, "0")}
+            </span>
+            <span className="block text-[8px] font-bold uppercase text-zinc-600">{u.label}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Maintenance status: how long the site has been offline, or how long the last
+ * outage lasted. Dashboard only — the public page carries no timer.
+ */
+function MaintenanceStatusPanel({
+  data,
+  enabled,
+  onClearSchedule,
+}: {
+  data: MaintenanceData;
+  enabled: boolean;
+  onClearSchedule: () => void;
+}) {
+  const scheduledAt = data.scheduledAt ?? "";
+  const startedAt = data.startedAt ?? "";
+  const endedAt = data.endedAt ?? "";
+
+  const timer = useCountdown(scheduledAt);
+  const elapsed = useElapsed(startedAt);
+
+  const live = Boolean(enabled);
+  const scheduled = !live && timer.valid && !timer.done;
+  const lastSpan = !live && startedAt && endedAt ? Date.parse(endedAt) - Date.parse(startedAt) : NaN;
+  const ended = !live && Number.isFinite(lastSpan) && lastSpan >= 0;
+
+  const when = (iso: string) =>
+    iso ? new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "medium" }) : "";
+
+  const heading = live
+    ? "Maintenance is live"
+    : scheduled
+      ? "Scheduled to go offline"
+      : ended
+        ? "Last maintenance window"
+        : "No schedule set";
+
+  const detail = live
+    ? startedAt
+      ? `Offline since ${when(startedAt)}`
+      : "Visitors see the maintenance page now."
+    : scheduled
+      ? `The site takes itself offline on ${when(scheduledAt)}.`
+      : ended
+        ? `${when(startedAt)} → ${when(endedAt)}`
+        : "Pick a date and time below to switch maintenance on automatically.";
+
+  const plates = live
+    ? [
+        { value: elapsed.days, label: "D" },
+        { value: elapsed.hours, label: "H" },
+        { value: elapsed.minutes, label: "M" },
+        { value: elapsed.seconds, label: "S" },
+      ]
+    : scheduled
+      ? [
+          { value: timer.days, label: "D" },
+          { value: timer.hours, label: "H" },
+          { value: timer.minutes, label: "M" },
+          { value: timer.seconds, label: "S" },
+        ]
+      : null;
+
+  return (
+    <div
+      className={cn(
+        "mb-5 rounded-2xl border p-4 transition-colors",
+        live
+          ? "border-emerald-400/40 bg-emerald-400/[0.08]"
+          : scheduled
+            ? "border-saffron-400/25 bg-saffron-400/[0.06]"
+            : "border-white/[0.07] bg-white/[0.03]",
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p
+            className={cn(
+              "flex items-center gap-1.5 text-xs font-semibold",
+              live ? "text-emerald-300" : "text-white",
+            )}
+          >
+            {live ? (
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            ) : scheduled ? (
+              <CalendarClock className="h-3.5 w-3.5 text-saffron-400" />
+            ) : (
+              <CalendarClock className="h-3.5 w-3.5 text-zinc-500" />
+            )}
+            <span>{heading}</span>
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">{detail}</p>
+        </div>
+        {plates ? (
+          <TimePlates
+            units={plates}
+            label={live ? "Offline for" : "Goes offline in"}
+            ariaLabel={live ? "Time since maintenance started" : "Time until scheduled maintenance"}
+          />
+        ) : (
+          <span
+            className={cn(
+              "rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider",
+              ended ? "bg-emerald-400/20 text-emerald-300" : "bg-white/[0.06] text-zinc-500",
+            )}
+          >
+            {ended ? formatDuration(lastSpan) : "Not scheduled"}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-3">
+        <p className="text-[11px] text-zinc-500">
+          {live
+            ? `Total time offline: ${formatDuration(elapsed.span)}`
+            : ended
+              ? `Site was down for ${formatDuration(lastSpan)}`
+              : scheduled
+                ? "The schedule clears itself once it fires."
+                : "Switch the section on to start recording an outage."}
+        </p>
+        {scheduled ? (
+          <button
+            type="button"
+            onClick={onClearSchedule}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+          >
+            <X className="h-3 w-3" /> Cancel schedule
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function CountdownEditorStatus({
   data,
   enabled,
@@ -2401,6 +2600,16 @@ function SectionsPanel() {
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+            {selected.type === "maintenance" && (
+              <MaintenanceStatusPanel
+                data={{
+                  ...(defaultDataFor("maintenance") as unknown as MaintenanceData),
+                  ...(selected.data as unknown as MaintenanceData),
+                }}
+                enabled={selected.enabled}
+                onClearSchedule={() => setSectionData(selected.id, "scheduledAt", "")}
+              />
+            )}
             {selected.type === "countdown" && (
               <CountdownEditorStatus
                 data={{
@@ -3137,8 +3346,9 @@ function SettingsPanel() {
   };
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex flex-col gap-5">
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_370px]">
+      <div className="max-w-2xl">
+        <div className="flex flex-col gap-5">
         {/* theme */}
         <div className="rounded-3xl glass p-6">
           <h3 className="font-display text-base font-semibold text-white">Theme</h3>
@@ -3412,63 +3622,138 @@ function SettingsPanel() {
           </p>
         </div>
       )}
+      </div>
+
+      {/* revision history — the detail lives beside the settings cards */}
+      <div className="min-w-0 xl:sticky xl:top-24">
+        <RevisionsPanel />
+      </div>
     </div>
   );
 }
 
-/* ═══════════════ Revisions Drawer ═══════════════ */
+/* ═══════════════ Revision history ═══════════════ */
+
+/** "3h ago" / "2d ago" shorthand for a timestamp. */
+function relativeTime(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+/**
+ * Which parts of the site actually differ from the snapshot saved before this
+ * one, so a card says more than just when it was saved.
+ */
+function changedLabels(current: SiteContent, previous: SiteContent | undefined): string[] {
+  if (!previous) return [];
+  const before = new Map(previous.sections.map((s) => [s.id, s]));
+  const out: string[] = [];
+  for (const section of current.sections) {
+    const prev = before.get(section.id);
+    if (!prev) {
+      out.push(section.label);
+      continue;
+    }
+    if (prev.enabled !== section.enabled || JSON.stringify(prev.data) !== JSON.stringify(section.data)) {
+      out.push(section.label);
+    }
+  }
+  if (JSON.stringify(previous.nav ?? []) !== JSON.stringify(current.nav ?? [])) out.push("Menu");
+  return out;
+}
 
 function RevisionsPanel() {
   const { revisions, restoreRevision, deleteRevision } = useSite();
 
+  // Revisions are newest-first, so the one after this card is the older state.
+  const changes = useMemo(
+    () => revisions.map((r, i) => changedLabels(r.content, revisions[i + 1]?.content)),
+    [revisions],
+  );
+
   return (
+    /* Same card shell as the neighbouring Theme and Loader screen panels. The
+       heading sits outside the scroller, so it stays put while only the list
+       moves — no opaque strip needed on top of the glass. */
     <div className="rounded-3xl glass p-6">
-      <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
-        <History className="h-4.5 w-4.5 text-saffron-300" /> Revision History
-      </h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+          <History className="h-4.5 w-4.5 text-saffron-300" /> Revision History
+        </h3>
+        {revisions.length > 0 && (
+          <span className="rounded-full bg-saffron-400/15 px-2.5 py-0.5 text-[10px] font-bold text-saffron-300">
+            {revisions.length}
+          </span>
+        )}
+      </div>
       <p className="mt-1 text-xs text-zinc-500">
-        List of previously saved states. Tap a revision card to revert the website instantly.
+        Every saved state, newest first. Tap a card to revert the website instantly.
       </p>
 
       {revisions.length === 0 ? (
         <p className="mt-5 text-center text-xs italic text-zinc-600">No revisions logged yet.</p>
       ) : (
-        <div className="mt-5 flex flex-col gap-2.5 max-h-[500px] overflow-y-auto pr-1 no-scrollbar">
-          {revisions.map((r) => {
-            const timeStr = new Date(r.timestamp).toLocaleString("en-IN", {
-              day: "numeric",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            });
-            return (
-              <div
-                key={r.id}
-                className="flex items-start justify-between gap-3 rounded-2xl border border-white/[0.05] bg-white/[0.02] p-3.5 hover:border-white/10"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-white truncate">{r.description}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-500">{timeStr}</p>
+        <div className="mt-5 flex max-h-[60vh] flex-col gap-2.5 overflow-y-auto overscroll-contain pr-1 no-scrollbar">
+            {revisions.map((r, i) => {
+              const touched = changes[i];
+              const fullTime = new Date(r.timestamp).toLocaleString("en-IN", {
+                dateStyle: "medium",
+                timeStyle: "medium",
+              });
+              return (
+                <div
+                  key={r.id}
+                  className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-3.5 hover:border-white/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 flex-1 text-xs font-semibold text-white">{r.description}</p>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        onClick={() => restoreRevision(r)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-saffron-400/10 px-2.5 py-1 text-[10px] font-bold text-saffron-300 hover:bg-saffron-400/20"
+                      >
+                        Revert
+                      </button>
+                      <button
+                        onClick={() => deleteRevision(r.id)}
+                        aria-label={`Delete revision: ${r.description}`}
+                        className="grid h-6 w-6 place-items-center rounded-lg bg-white/[0.05] text-zinc-500 hover:bg-red-500/15 hover:text-red-400"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="mt-0.5 text-[10px] text-zinc-500">
+                    {fullTime} · {relativeTime(r.timestamp)}
+                    {i === 0 && <span className="ml-1.5 text-emerald-400">· latest</span>}
+                  </p>
+
+                  {touched.length > 0 ? (
+                    <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">
+                      <span className="font-semibold text-saffron-300">{touched.length}</span>{" "}
+                      {touched.length === 1 ? "area" : "areas"} changed:{" "}
+                      {touched.slice(0, 2).join(", ")}
+                      {touched.length > 2 ? ` +${touched.length - 2} more` : ""}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-[10px] text-zinc-600">
+                      {i === revisions.length - 1
+                        ? "First saved state"
+                        : "No content differences since the previous save"}
+                    </p>
+                  )}
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <button
-                    onClick={() => restoreRevision(r)}
-                    className="inline-flex items-center gap-1 rounded-lg bg-saffron-400/10 px-2.5 py-1 text-[10px] font-bold text-saffron-300 hover:bg-saffron-400/20"
-                  >
-                    Revert
-                  </button>
-                  <button
-                    onClick={() => deleteRevision(r.id)}
-                    aria-label="Delete revision"
-                    className="grid h-6 w-6 place-items-center rounded-lg bg-white/[0.05] text-zinc-500 hover:bg-red-500/15 hover:text-red-400"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       )}
     </div>
@@ -4607,10 +4892,10 @@ export default function AdminPage() {
         */}
         <nav
           aria-label="Dashboard"
-          className="grid w-full shrink-0 grid-cols-4 justify-items-center gap-2 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-13rem)] lg:w-48 lg:flex lg:flex-col lg:items-stretch lg:self-start lg:gap-2 lg:overflow-y-auto lg:overscroll-contain"
+          className="grid w-full shrink-0 grid-cols-4 justify-items-center gap-2 lg:sticky lg:top-24 lg:w-48 lg:flex lg:flex-col lg:items-stretch lg:self-start lg:gap-2"
         >
           {TABS.map((t) => (
-            <div key={t.id} className="flex w-full flex-col items-center lg:items-stretch">
+            <div key={t.id} className="flex w-full shrink-0 flex-col items-center lg:items-stretch">
               <button
                 type="button"
                 onClick={() => setTab(t.id)}
@@ -4629,9 +4914,6 @@ export default function AdminPage() {
               </button>
             </div>
           ))}
-          <div className="col-span-full mt-1 w-full lg:mt-4">
-            <RevisionsPanel />
-          </div>
         </nav>
 
         <main className="min-w-0 flex-1">

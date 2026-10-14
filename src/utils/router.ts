@@ -2,6 +2,14 @@ import { useEffect, useState } from "react";
 
 export const LIVE_MAP_PATH = "/live-map";
 export const SHOP_PATH = "/shop";
+export const ADMIN_PATH = "/admin";
+
+/**
+ * Every route that opens PB Control. Maintenance mode replaces the whole site,
+ * so the dashboard needs a URL an admin can always type — the aliases are
+ * memorable spellings of the same destination.
+ */
+export const ADMIN_PATHS = new Set<string>([ADMIN_PATH, "/pb-control", "/login"]);
 
 /**
  * Minimal hash router.
