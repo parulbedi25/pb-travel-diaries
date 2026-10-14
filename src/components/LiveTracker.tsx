@@ -186,7 +186,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 <a
                   href="#/live-map"
                   aria-label={`Live: PB is in ${location.name}, ${location.state}. Open the live Google Map.`}
-                  className="group flex items-center gap-3 rounded-2xl border-2 border-amber-300/50 bg-black/85 px-4 py-3 shadow-[0_0_32px_rgba(251,191,36,0.25)] backdrop-blur-md transition-all duration-300 hover:scale-[1.03] hover:border-amber-200/70 hover:shadow-[0_0_44px_rgba(251,191,36,0.4)] active:scale-100"
+                  className="live-plate group flex items-center gap-3 rounded-2xl border-2 px-4 py-3 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-100"
                 >
                   <span className="relative flex h-3 w-3 shrink-0">
                     <span
@@ -208,7 +208,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     <span
                       className={cn(
                         "block font-mono text-[13px] font-bold tracking-[0.18em] animate-blink",
-                        status === "live" ? "text-amber-300" : "text-zinc-300"
+                        status === "live" ? "text-gold-ink" : "text-zinc-300"
                       )}
                     >
                       {status === "live"
@@ -221,7 +221,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                       {location.name}, {location.state} · tap to open live map
                     </span>
                   </span>
-                  <ArrowUpRight className="h-4 w-4 shrink-0 text-amber-300/70 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  <ArrowUpRight className="live-plate-arrow h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
                 <div className="hidden items-center gap-2 rounded-full bg-ink-950/70 px-3.5 py-2 text-[11px] font-medium text-zinc-300 backdrop-blur-md sm:flex">
                   <Satellite

@@ -79,12 +79,9 @@ export function CountdownDots({ target, size = "md" }: { target: string; size?: 
       {units.map((u) => (
         <div
           key={u.l}
-          className={cn(
-            "min-w-0 rounded-2xl border border-white/10 bg-white/[0.05] text-center backdrop-blur-md",
-            pad
-          )}
+          className={cn("cd-tile min-w-0 rounded-2xl border text-center backdrop-blur-md", pad)}
         >
-          <p className={cn("font-display font-bold tabular-nums text-white", num)}>
+          <p className={cn("cd-ink font-display font-bold tabular-nums", num)}>
             {String(u.v).padStart(2, "0")}
           </p>
           <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
@@ -118,16 +115,17 @@ function FlipDigit({ value, size }: { value: string; size: "md" | "lg" }) {
   return (
     <span
       className={cn(
-        "relative inline-grid place-items-center overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0b] font-mono font-bold tabular-nums text-saffron-300 shadow-[inset_0_-1px_0_rgba(255,255,255,0.05),0_6px_20px_rgba(0,0,0,0.5)]",
+        /* .cd-tile keeps the plate readable in both themes: near-black on
+           dark, a pale plate with a gold edge on light. */
+        "cd-tile relative inline-grid place-items-center overflow-hidden rounded-lg border font-mono font-bold tabular-nums",
         size === "lg" ? "h-[4.6rem] w-12 text-5xl sm:h-24 sm:w-16 sm:text-7xl" : "h-12 w-8 text-2xl sm:h-14 sm:w-10 sm:text-3xl"
       )}
-      style={{ textShadow: "0 0 18px rgba(245,179,1,0.55)" }}
     >
       {/* horizontal split line for the flip-clock feel */}
-      <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-black/70" aria-hidden />
+      <span className="cd-split pointer-events-none absolute inset-x-0 top-1/2 h-px" aria-hidden />
       <span
         className={cn(
-          "transition-transform duration-150 ease-in will-change-transform",
+          "cd-digit transition-transform duration-150 ease-in will-change-transform",
           flipping ? "-translate-y-1 scale-y-75 opacity-40" : "translate-y-0 scale-y-100 opacity-100"
         )}
         style={{ transformOrigin: "50% 50%" }}
@@ -143,11 +141,10 @@ function Colon({ size, on }: { size: "md" | "lg"; on: boolean }) {
     <span
       aria-hidden
       className={cn(
-        "flex flex-col items-center justify-center gap-2 px-0.5 font-mono font-bold text-saffron-400 transition-opacity duration-200 sm:px-1",
+        "cd-digit flex flex-col items-center justify-center gap-2 px-0.5 font-mono font-bold transition-opacity duration-200 sm:px-1",
         size === "lg" ? "text-5xl sm:text-7xl" : "text-2xl sm:text-3xl",
         on ? "opacity-100" : "opacity-25"
       )}
-      style={{ textShadow: "0 0 14px rgba(245,179,1,0.5)" }}
     >
       :
     </span>
@@ -196,7 +193,7 @@ export function DigitalClock({ target, size = "md" }: { target: string; size?: "
         aria-live="off"
         aria-label={`${c.days} days ${c.hours} hours ${c.minutes} minutes ${c.seconds} seconds remaining`}
         className={cn(
-          "inline-flex items-start rounded-[1.4rem] border border-white/10 bg-white/[0.04] backdrop-blur-xl",
+          "cd-panel inline-flex items-start rounded-[1.4rem] border backdrop-blur-xl",
           size === "lg" ? "gap-1 px-4 py-4 sm:gap-2 sm:px-6 sm:py-5" : "gap-0.5 px-3 py-3 sm:gap-1 sm:px-4"
         )}
       >
@@ -232,8 +229,8 @@ export function DigitalClock({ target, size = "md" }: { target: string; size?: "
 /* ───────────────── In-page section ───────────────── */
 
 /**
- * The countdown timer section. The clock keeps showing zeros while the
- * section fades out; the page itself removes it once the timer finishes.
+ * The countdown timer section. The page removes it the moment the timer
+ * finishes, so visitors never see a shrunken clock at zero.
  */
 export default function CountdownSection({ data }: { data: CountdownData }) {
   const c = useCountdown(data.targetDate);
@@ -259,7 +256,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
           {data.sub && <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-zinc-400">{data.sub}</p>}
 
           {!data.targetDate && (
-            <p className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-xs text-zinc-500">
+            <p className="cd-panel mt-8 rounded-2xl border px-5 py-3 text-xs text-zinc-500">
               Set a target date &amp; time in the dashboard to start the clock.
             </p>
           )}
@@ -314,7 +311,7 @@ export function CountdownPage({ data }: { data: CountdownData }) {
         )}
 
         {!data.targetDate && (
-          <p className="mx-auto mt-10 max-w-md rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-xs text-zinc-500">
+          <p className="cd-panel mx-auto mt-10 max-w-md rounded-2xl border px-5 py-3 text-xs text-zinc-500">
             Set a target date &amp; time in the dashboard to start the clock.
           </p>
         )}

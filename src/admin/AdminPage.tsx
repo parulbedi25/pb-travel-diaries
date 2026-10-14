@@ -4,9 +4,11 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Copy,
   Download,
   Eye,
   FileText,
+  Gauge,
   Crosshair,
   FileArchive,
   FileImage,
@@ -38,7 +40,6 @@ import {
   Sun,
   Trash2,
   Upload,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -50,6 +51,7 @@ import {
   type BrandSettings,
   type GearItem,
   type CountdownData,
+  type MachineData,
   type FooterColumn,
   type FooterLink,
   type FooterSettings,
@@ -67,6 +69,8 @@ import BrandLogo from "../components/BrandLogo";
 import { FooterView } from "../components/Footer";
 import { useCountdown, useCountdownFinished } from "../components/CountdownSection";
 import { cn } from "../utils/cn";
+import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
+import { pointerColors } from "../utils/pointerColors";
 import ImageField from "./ImageField";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
@@ -104,7 +108,6 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
-import UserManagementPanel from "./UserManagementPanel";
 
 /* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
 
@@ -323,6 +326,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
         TA("desc", "Description"),
         T("price", "Price", "e.g. ₹4,250 or OEM · included"),
         CLR("color", "Pointer colour", "Empty = default gold"),
+        CLR("pulseColor", "Pulsing ring colour", "The wave that ripples out of the dot. Empty = matches the pointer colour"),
         IMG("image", "Product image URL"),
         T("link", "Product link", "Opens in a new tab"),
         { path: "x", label: "X position % (0–100, left → right)", kind: "number" },
@@ -379,8 +383,10 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
         { path: "x", label: "Horizontal position (%)", kind: "number" },
         { path: "y", label: "Vertical position (%)", kind: "number" },
         { path: "radius", label: "Hover / click radius (%)", kind: "number" },
+        CLR("color", "Pointer colour", "Empty = default gold"),
+        CLR("pulseColor", "Pulsing ring colour", "The ring that pulses around the dot. Empty = matches the pointer colour"),
       ],
-      template: { enabled: true, id: "new-pointer", label: "New pointer", zone: "torso", x: 50, y: 40, radius: 12 },
+      template: { enabled: true, id: "new-pointer", label: "New pointer", zone: "torso", x: 50, y: 40, radius: 12, color: "", pulseColor: "" },
     },
   ],
   benefits: [
@@ -1057,7 +1063,12 @@ export function HotspotEditor({
                     : "border-white bg-ink-950/85 text-white hover:border-saffron-300",
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab"
                 )}
-                style={{ left: `${dx}%`, top: `${dy}%` }}
+                style={{
+                  left: `${dx}%`,
+                  top: `${dy}%`,
+                  // Numbered pin shows the pointer's own colours while editing.
+                  ...(isOpen ? {} : { borderColor: pointerColors(s.color, s.pulseColor).pulse }),
+                }}
               >
                 {i + 1}
               </button>
@@ -1394,7 +1405,11 @@ export function RiderKitPointerEditor({
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab",
                   isOn(pointer) ? "opacity-100" : "opacity-45"
                 )}
-                style={{ left: `${x}%`, top: `${y}%` }}
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  ...(isOpen ? {} : { borderColor: pointerColors(pointer.color, pointer.pulseColor).pulse }),
+                }}
               >
                 {index + 1}
               </button>
@@ -1690,8 +1705,10 @@ function CountdownEditorStatus({
         {timer.valid && !isDone ? (
           <div role="timer" aria-label="Countdown editor preview" className="flex gap-1.5">
             {units.map((u) => (
-              <span key={u.label} className="rounded-lg bg-black/45 px-2 py-1.5 text-center">
-                <span className="block font-mono text-sm font-bold tabular-nums text-saffron-300">
+              /* .cd-chip / .cd-ink keep the preview readable on both themes:
+                 pale plate with a gold edge in light, dark plate in dark. */
+              <span key={u.label} className="cd-chip rounded-lg px-2 py-1.5 text-center">
+                <span className="cd-ink block font-mono text-sm font-bold tabular-nums">
                   {String(u.value).padStart(2, "0")}
                 </span>
                 <span className="block text-[8px] font-bold uppercase text-zinc-600">{u.label}</span>
@@ -1718,6 +1735,250 @@ function CountdownEditorStatus({
               ? names.join(" · ")
               : "No sections selected yet"}
         </p>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════ Odometer editor (The Machine) ═══════════════ */
+
+/** Ladder chip for the dashboard: cleared, in progress or still ahead. */
+function OdometerChip({ value, state }: { value: number; state: MilestoneState }) {
+  return (
+    <span
+      title={`${value.toLocaleString("en-IN")} km — ${state === "cleared" ? "cleared" : state === "active" ? "in progress" : "upcoming"}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[10px] font-bold",
+        state === "cleared" && "border-saffron-400/45 bg-saffron-400/15 text-saffron-300",
+        state === "active" && "border-saffron-400 bg-saffron-400 text-on-gold",
+        state === "upcoming" && "border-white/10 bg-white/[0.04] text-zinc-500"
+      )}
+    >
+      {state === "cleared" && <Check className="h-2.5 w-2.5" />}
+      {formatMilestone(value)}
+    </span>
+  );
+}
+
+/**
+ * The Machine's odometer. One reading chases a ladder of milestones: the
+ * target follows the reading, so crossing 100 km hands the bike 500 km and so
+ * on up to 50,000 km. Past the last built-in rung the rider files their own
+ * targets here, and those join the same ladder.
+ */
+export function OdometerEditor({
+  km,
+  extraMilestones,
+  updatedAt,
+  onChange,
+}: {
+  km: number;
+  extraMilestones: number[];
+  updatedAt: string;
+  onChange: (patch: { km?: number; extraMilestones?: number[] }) => void;
+}) {
+  const progress = resolveOdometer(km, extraMilestones);
+  const [reading, setReading] = useState(String(km));
+  const [rung, setRung] = useState("");
+
+  // Re-sync when the value changes elsewhere (reset to original, undo), but
+  // never while the typed text still means the same number.
+  useEffect(() => {
+    setReading((prev) => (Number(prev) === km ? prev : String(km)));
+  }, [km]);
+
+  const commitReading = (raw: string) => {
+    const digits = raw.replace(/[^0-9]/g, "");
+    setReading(digits);
+    onChange({ km: Number(digits) || 0 });
+  };
+
+  const addRung = () => {
+    const value = Math.round(Number(rung.replace(/[^0-9]/g, "")) || 0);
+    if (value <= 0) return;
+    if (!extraMilestones.includes(value)) {
+      onChange({ extraMilestones: [...extraMilestones, value].sort((a, b) => a - b) });
+    }
+    setRung("");
+  };
+
+  const logged = updatedAt
+    ? new Date(updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+    : "";
+
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-white">
+        <Gauge className="h-3.5 w-3.5 text-saffron-400" /> Odometer &amp; milestones
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+        The reading chases a ladder: 100 → 500 → 2,000 km … up to 50,000 km. Cross a rung and the
+        next one takes over by itself — past the half-lakh mark you file your own rungs below.
+      </p>
+
+      <label
+        htmlFor="odo-reading"
+        className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500"
+      >
+        Current odometer reading (km)
+      </label>
+      <input
+        id="odo-reading"
+        inputMode="numeric"
+        value={reading}
+        onChange={(e) => commitReading(e.target.value)}
+        placeholder="e.g. 32000"
+        className={cn(inputCls, "mt-1.5")}
+      />
+
+      <div
+        className={cn(
+          "mt-4 rounded-xl border p-3.5 transition-colors",
+          progress.complete
+            ? "border-emerald-400/40 bg-emerald-400/[0.08]"
+            : "border-saffron-400/25 bg-saffron-400/[0.06]"
+        )}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p
+            className={cn(
+              "text-xs font-semibold",
+              progress.complete ? "text-emerald-300" : "text-white"
+            )}
+          >
+            {progress.complete
+              ? "Every rung cleared"
+              : `Chasing ${progress.target.toLocaleString("en-IN")} km`}
+          </p>
+          <span className="font-mono text-xs font-bold text-saffron-300">{progress.pct}%</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+          <div
+            className="h-full rounded-full bg-saffron-400 transition-all duration-500"
+            style={{ width: `${progress.pct}%` }}
+          />
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
+          {progress.complete
+            ? "Add your next target below to keep the counter moving."
+            : `${progress.travelled.toLocaleString("en-IN")} of ${progress.stretch.toLocaleString("en-IN")} km on this stretch · ${progress.remaining.toLocaleString("en-IN")} km to go`}
+        </p>
+        {logged && <p className="mt-1.5 text-[10px] text-zinc-600">Last logged {logged}</p>}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {progress.ladder.map((m) => (
+          <OdometerChip key={m.value} value={m.value} state={m.state} />
+        ))}
+      </div>
+
+      {/* Every rung listed with how much of that stretch is already ridden. */}
+      <div className="mt-4 overflow-hidden rounded-xl border border-white/[0.07]">
+        <div className="max-h-64 overflow-y-auto no-scrollbar">
+          <table className="w-full border-collapse text-left text-[11px]">
+            <thead className="sticky top-0 bg-ink-900/95 text-[9px] uppercase tracking-[0.14em] text-zinc-500 backdrop-blur-md">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Milestone</th>
+                <th className="px-3 py-2 font-semibold">Ridden</th>
+                <th className="px-3 py-2 text-right font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {progress.ladder.map((m) => (
+                <tr
+                  key={m.value}
+                  className={cn(
+                    "border-t border-white/[0.06]",
+                    m.state === "active" && "bg-saffron-400/[0.07]"
+                  )}
+                >
+                  <td className="whitespace-nowrap px-3 py-2 font-mono font-bold text-zinc-200">
+                    {m.value.toLocaleString("en-IN")} km
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-zinc-400">
+                    {m.travelled.toLocaleString("en-IN")} / {m.stretch.toLocaleString("en-IN")}
+                    {m.state === "active" && (
+                      <span className="ml-2 text-saffron-300">{m.pct}%</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    {m.state === "cleared" && (
+                      <span className="inline-flex items-center gap-1 font-semibold text-emerald-400">
+                        <Check className="h-3 w-3" /> Cleared
+                      </span>
+                    )}
+                    {m.state === "active" && (
+                      <button
+                        type="button"
+                        onClick={() => onChange({ km: m.value })}
+                        title={`Log the reading as ${m.value.toLocaleString("en-IN")} km`}
+                        className="rounded-full bg-saffron-400 px-2.5 py-1 text-[10px] font-bold text-on-gold transition-all hover:brightness-110 active:scale-95"
+                      >
+                        Mark reached
+                      </button>
+                    )}
+                    {m.state === "upcoming" && (
+                      <span className="text-zinc-600">
+                        {Math.max(0, m.value - progress.reading).toLocaleString("en-IN")} km away
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-white/[0.07] pt-3.5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
+          Past 50,000 km — your own rungs
+        </p>
+        <div className="mt-2 flex gap-2">
+          <input
+            value={rung}
+            inputMode="numeric"
+            onChange={(e) => setRung(e.target.value.replace(/[^0-9]/g, ""))}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              addRung();
+            }}
+            placeholder="e.g. 60000"
+            aria-label="New milestone in kilometres"
+            className={cn(inputCls, "flex-1 py-2 text-sm")}
+          />
+          <button
+            type="button"
+            onClick={addRung}
+            disabled={!rung}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add
+          </button>
+        </div>
+        {extraMilestones.length > 0 && (
+          <ul className="mt-2.5 flex flex-wrap gap-1.5">
+            {extraMilestones.map((value) => (
+              <li
+                key={value}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 font-mono text-[10px] font-bold text-zinc-300"
+              >
+                {value.toLocaleString("en-IN")} km
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({ extraMilestones: extraMilestones.filter((v) => v !== value) })
+                  }
+                  aria-label={`Remove the ${value.toLocaleString("en-IN")} km milestone`}
+                  className="text-zinc-500 transition-colors hover:text-red-400"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -1908,10 +2169,9 @@ function SectionsPanel() {
     });
   };
 
-  const setSectionData = (id: string, path: string, v: unknown) => {
+  const writeSectionData = (id: string, nextData: Record<string, unknown>) => {
     const s = sections.find((x) => x.id === id);
     if (!s) return;
-    const nextData = setAt(s.data, path, v);
     // Focus/no-op changes do not arm the countdown.
     if (JSON.stringify(nextData) === JSON.stringify(s.data)) return;
     if (s.type === "countdown") {
@@ -1934,6 +2194,31 @@ function SectionsPanel() {
         sections: next.sections.map((entry) => (entry.id === id ? { ...entry, data: nextData } : entry)),
       };
     });
+  };
+
+  const setSectionData = (id: string, path: string, v: unknown) => {
+    const s = sections.find((x) => x.id === id);
+    if (!s) return;
+    writeSectionData(id, setAt(s.data, path, v) as Record<string, unknown>);
+  };
+
+  /**
+   * Odometer writes touch two fields at once (the reading and its bookkeeping),
+   * so they go through the shared writer as one revision.
+   */
+  const setMachineOdometer = (patch: { km?: number; extraMilestones?: number[] }) => {
+    if (!selected) return;
+    const data = selected.data as unknown as MachineData;
+    const next: MachineData = {
+      ...data,
+      km: typeof patch.km === "number" ? Math.max(0, Math.round(patch.km)) : data.km,
+      odometer: {
+        ...(data.odometer ?? {}),
+        ...(patch.extraMilestones ? { extraMilestones: patch.extraMilestones } : {}),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    writeSectionData(selected.id, next as unknown as Record<string, unknown>);
   };
 
   const fields = selected
@@ -2146,6 +2431,19 @@ function SectionsPanel() {
                       mainImage={(getAt(selected.data, "mainImage") as string) ?? ""}
                       onChange={(v) => setSectionData(selected.id, "hotspots", v)}
                       onItemToggle={(i, on) => toggleChild(selected.id, "hotspots", i, on)}
+                    />
+                  );
+                }
+                if (selected.type === "machine" && f.path === "km") {
+                  return (
+                    <OdometerEditor
+                      key="km"
+                      km={Number(getAt(selected.data, "km") ?? 0)}
+                      extraMilestones={
+                        (getAt(selected.data, "odometer.extraMilestones") as number[] | undefined) ?? []
+                      }
+                      updatedAt={String(getAt(selected.data, "odometer.updatedAt") ?? "")}
+                      onChange={setMachineOdometer}
                     />
                   );
                 }
@@ -2725,6 +3023,7 @@ function SettingsPanel() {
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -2768,20 +3067,55 @@ function SettingsPanel() {
     setMsg({ ok: true, text: "Password updated. Use it next time you sign in." });
   };
 
+  /** The editor's working copy, exactly as it would be published. */
+  const snapshotJson = () =>
+    JSON.stringify({ ...draft, loaderLogo: loaderDraft }, null, 2);
+
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify({ ...draft, loaderLogo: loaderDraft }, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "pb-site-content-draft.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([snapshotJson()], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "pb-site-content-draft.json";
+      a.rel = "noopener";
+      // Firefox and Safari only start a programmatic download when the anchor
+      // is in the document, and revoking the URL in the same tick can cancel a
+      // download that has not begun yet — between them the button silently did
+      // nothing. Append, click, remove, then release the blob later.
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setBackupMsg({ ok: true, text: "Exported — check your downloads folder." });
+    } catch {
+      setBackupMsg({
+        ok: false,
+        text: "Export failed. Use Copy JSON instead, or allow downloads for this site.",
+      });
+    }
+  };
+
+  const copyJson = async () => {
+    const json = snapshotJson();
+    try {
+      await navigator.clipboard.writeText(json);
+      setBackupMsg({
+        ok: true,
+        text: `Copied ${Math.round(json.length / 1024)} KB of JSON to your clipboard.`,
+      });
+    } catch {
+      setBackupMsg({
+        ok: false,
+        text: "The browser blocked the clipboard. Export the file instead.",
+      });
+    }
   };
 
   const importJson = (file: File) => {
     const reader = new FileReader();
+    reader.onerror = () =>
+      setBackupMsg({ ok: false, text: "Couldn't read that file — try exporting it again." });
     reader.onload = () => {
       try {
         const parsed = JSON.parse(String(reader.result)) as {
@@ -2790,13 +3124,13 @@ function SettingsPanel() {
           sections?: unknown[];
         };
         if (parsed?.v !== 1 || !Array.isArray(parsed.sections) || !Array.isArray(parsed.nav)) {
-          setMsg({ ok: false, text: "That file doesn't look like a valid PB content export." });
+          setBackupMsg({ ok: false, text: "That file doesn't look like a valid PB content export." });
           return;
         }
         updateDraft(() => parsed as never);
-        setMsg({ ok: true, text: "Content imported successfully." });
+        setBackupMsg({ ok: true, text: "Imported into the editor. Press Save Changes to publish it." });
       } catch {
-        setMsg({ ok: false, text: "Couldn't read that file — is it valid JSON?" });
+        setBackupMsg({ ok: false, text: "Couldn't read that file — is it valid JSON?" });
       }
     };
     reader.readAsText(file);
@@ -3019,6 +3353,12 @@ function SettingsPanel() {
               <Download className="h-4 w-4" /> Export JSON
             </button>
             <button
+              onClick={copyJson}
+              className="inline-flex items-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950"
+            >
+              <Copy className="h-4 w-4" /> Copy JSON
+            </button>
+            <button
               onClick={() => fileRef.current?.click()}
               className="inline-flex items-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950"
             >
@@ -3036,6 +3376,16 @@ function SettingsPanel() {
               }}
             />
           </div>
+          {backupMsg && (
+            <p
+              className={cn(
+                "mt-3 text-xs font-medium",
+                backupMsg.ok ? "text-emerald-300" : "text-red-400",
+              )}
+            >
+              {backupMsg.text}
+            </p>
+          )}
         </div>
       </div>
 
@@ -4089,7 +4439,7 @@ function ShopPanel() {
 }
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings" | "users";
+type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
@@ -4100,7 +4450,6 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "theme", label: "Theme colours", icon: Palette },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
-  { id: "users", label: "Users", icon: Users },
 ];
 
 export default function AdminPage() {
@@ -4299,7 +4648,6 @@ export default function AdminPage() {
           {tab === "theme" && <ThemePanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
-          {tab === "users" && <UserManagementPanel />}
         </main>
       </div>
 

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   EyeOff,
   Pencil,
   RotateCcw,
@@ -16,9 +18,39 @@ import { cn } from "../utils/cn";
 import InlineSectionEditor from "../admin/InlineSectionEditor";
 
 const MIN_H = 180;
+/** How much one press of the length arrows adds or removes. */
+const HEIGHT_STEP = 40;
 const clamp = (n: number) => Math.max(0, Math.round(n));
 
 type Edge = "top" | "right" | "bottom" | "left";
+
+/** One icon button inside the section toolbar. */
+function ToolButton({
+  onClick,
+  label,
+  title,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  title: string;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={title}
+      className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full opacity-80 transition-colors hover:bg-black/15 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+    >
+      {children}
+    </button>
+  );
+}
 
 /**
  * Wraps every section so it can be resized and customised from the live site.
@@ -157,6 +189,16 @@ export default function SectionFrame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Grow or shrink the section by one step, measured from what is on screen. */
+  const adjustHeight = (delta: number) => {
+    const current = Math.round(
+      frameRef.current?.getBoundingClientRect().height ?? layout.height ?? 0
+    );
+    const next = Math.max(MIN_H, current + delta);
+    if (next === current) return;
+    setSectionLayout(entry.id, entry.label, { height: next });
+  };
+
   const frameStyle = {
     height: layout.height,
     marginTop: layout.marginTop,
@@ -183,50 +225,64 @@ export default function SectionFrame({
         {children}
       </div>
 
-      <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1 rounded-full bg-black/85 p-1 shadow-xl">
+      {/* Pale pill with a gold rule and dark glyphs, so the controls read
+          the same over a black section or a cream one. z-[70] keeps it above
+          section content (some sections own z-30 controls in this corner) and
+          above the fixed header, which used to swallow every click but Edit. */}
+      <div className="section-chrome section-chrome-plate section-chrome-toolbar pointer-events-none absolute right-3 top-3 z-[70] flex items-center gap-0.5 rounded-full p-1">
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="pointer-events-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/10"
+          className="pointer-events-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-colors hover:bg-black/15"
         >
           <Pencil className="h-3 w-3" /> Edit
         </button>
-        <button
-          type="button"
+        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <ToolButton
           onClick={() => moveSection(entry.id, entry.label, -1)}
-          aria-label="Move section up"
+          label="Move section up"
           title="Move this section up and save"
-          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <ArrowUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+        </ToolButton>
+        <ToolButton
           onClick={() => moveSection(entry.id, entry.label, 1)}
-          aria-label="Move section down"
+          label="Move section down"
           title="Move this section down and save"
-          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <ArrowDown className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+        </ToolButton>
+        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <ToolButton
+          onClick={() => adjustHeight(HEIGHT_STEP)}
+          label="Make section longer"
+          title={`Make this section ${HEIGHT_STEP}px longer and save`}
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </ToolButton>
+        <ToolButton
+          onClick={() => adjustHeight(-HEIGHT_STEP)}
+          label="Make section shorter"
+          title={`Make this section ${HEIGHT_STEP}px shorter and save`}
+          disabled={typeof layout.height === "number" && layout.height <= MIN_H}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </ToolButton>
+        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <ToolButton
           onClick={() => setSectionEnabled(entry.id, entry.label, false)}
-          aria-label="Hide section"
+          label="Hide section"
           title="Hide this section from visitors and save"
-          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <EyeOff className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+        </ToolButton>
+        <ToolButton
           onClick={() => setSectionLayout(entry.id, entry.label, {})}
-          aria-label="Reset section size"
+          label="Reset section size"
           title="Reset section size and save"
-          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full text-zinc-300 hover:bg-white/10"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-        </button>
+        </ToolButton>
       </div>
 
       <div className="pointer-events-none absolute inset-0 border border-dashed border-saffron-400/40" aria-hidden />
@@ -238,7 +294,7 @@ export default function SectionFrame({
           aria-label={`Resize ${entry.label} from the ${edge}`}
           onPointerDown={(e) => startDrag(e, edge)}
           className={cn(
-            "absolute z-20 touch-none bg-saffron-400 opacity-80 hover:opacity-100",
+            "section-chrome absolute z-40 touch-none bg-saffron-400 opacity-80 hover:opacity-100",
             edge === "top" && "left-1/2 top-0 h-3 w-40 -translate-x-1/2 cursor-ns-resize rounded-b-full",
             edge === "bottom" && "bottom-0 left-1/2 h-3 w-40 -translate-x-1/2 cursor-ns-resize rounded-t-full",
             edge === "left" && "left-0 top-1/2 h-28 w-3 -translate-y-1/2 cursor-ew-resize rounded-r-full",
@@ -247,8 +303,8 @@ export default function SectionFrame({
         />
       ))}
 
-      <span className="pointer-events-none absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-black/75 px-3 py-1.5 text-[11px] text-zinc-300">
-        <SlidersHorizontal className="h-3 w-3 text-saffron-300" />
+      <span className="section-chrome section-chrome-plate pointer-events-none absolute left-3 top-3 z-[70] inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px]">
+        <SlidersHorizontal className="h-3 w-3" />
         <span className="font-mono">
           {layout.height ? `${layout.height}px` : "auto"}
           {(layout.marginLeft || layout.marginRight) &&

@@ -4,6 +4,7 @@ import { ArrowUpRight, Check, Crosshair, ShieldCheck, X } from "lucide-react";
 import { isOn } from "../utils/enabled";
 import { type GearItem, type RiderKitData, type RiderKitPointer } from "../store/siteContent";
 import { cn } from "../utils/cn";
+import { pointerColors, waveDelay, withAlpha } from "../utils/pointerColors";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { EASE, Reveal, SectionHeader } from "./ui/motion";
 import Photo from "./ui/Photo";
@@ -21,6 +22,9 @@ const ZONE_LABELS: Record<BodyZone, string> = {
   legs: "Legs",
   feet: "Feet",
 };
+
+/** How far the rider photo magnifies when a gear zone takes focus. */
+const RIDER_ZOOM = 1.65;
 
 const ZONE_ZOOM_POINTS: Record<BodyZone, PercentPoint> = {
   head: { x: 50, y: 16 },
@@ -248,6 +252,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
   const pointForEntry = (entry: GearEntry) =>
     mapPointerEntries.find((pointer) => pointer.entry.index === entry.index)?.point ?? ZONE_ZOOM_POINTS[entry.zone];
   const bubblePoint = bubbleEntry ? zoomPoint ?? pointForEntry(bubbleEntry) : null;
+  const zoomed = Boolean(zoomPoint && bubbleEntry);
   const sameZoneEntries = mapFocusedEntry ? entries.filter((entry) => entry.zone === mapFocusedEntry.zone) : [];
   const orderedEntries = mapFocusedEntry
     ? [
@@ -391,8 +396,8 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                 <div
                   className="absolute inset-0 will-change-transform"
                   style={{
-                    transform: zoomPoint && bubbleEntry ? "scale(1.65)" : "scale(1)",
-                    transformOrigin: zoomPoint && bubbleEntry ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
+                    transform: zoomed ? `scale(${RIDER_ZOOM})` : "scale(1)",
+                    transformOrigin: zoomed && zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
                     transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1), transform-origin 180ms ease-out",
                   }}
                 >
@@ -404,40 +409,93 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                     label="Rider image unavailable"
                   />
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink-950/35 via-transparent to-ink-950/60" aria-hidden="true" />
+
+                  {/*
+                    Markers live inside the zoom layer so they stay pinned to the
+                   gear they mark while the photo magnifies. Each one counter-
+                    scales by 1/zoom, so only its position follows the photo —
+                    its size stays put. While zoomed the unfocused markers fade
+                    and shrink, and only the focused one keeps pulsing.
+                  */}
+                  {mapPointerEntries.map(({ pointer, entry, point, label }, markerIndex) => {
+                    const focused = bubbleIndex === entry.index;
+                    const dimmed = zoomed && !focused;
+                    const scale = (zoomed ? 1 / RIDER_ZOOM : 1) * (dimmed ? 0.6 : 1);
+                    const pulse = !reduceMotion && !dimmed;
+                    // Dashboard colours: `color` tints the pointer itself,
+                    // `pulseColor` drives the ring. Both fall back to gold.
+                    const { dot, pulse: ring } = pointerColors(pointer.color, pointer.pulseColor);
+                    // Staggered by horizontal position → the pointers ripple
+                    // from the left of the rider across to the right.
+                    const wave = waveDelay(point.x);
+                    return (
+                      <div
+                        key={`marker-${pointer.id}-${entry.index}-${markerIndex}`}
+                        className="absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: `${point.x}%`, top: `${point.y}%` }}
+                      >
+                        <button
+                          type="button"
+                          aria-label={`Focus ${itemTitle(entry.item)} at ${label}`}
+                          aria-pressed={pinnedIndex === entry.index}
+                          title={`${label} · ${itemTitle(entry.item)}`}
+                          onFocus={() => focusMapEntry(entry.index, point)}
+                          onBlur={() => {
+                            clearMapHover(entry.index);
+                            setZoomPoint(pinnedIndex === entry.index ? point : null);
+                          }}
+                          onPointerEnter={() => {
+                            if (!focused) focusMapEntry(entry.index, point);
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            togglePin(entry.index, point);
+                          }}
+                          style={{
+                            transform: `scale(${scale})`,
+                            // Unfocused pointers glow instead of simply fading,
+                            // so they stay findable while the map is zoomed in.
+                            borderColor: withAlpha(dot, focused || !zoomed ? 0.9 : 0.6),
+                            boxShadow: dimmed
+                              ? `0 0 12px ${withAlpha(ring, 0.75)}, 0 0 26px ${withAlpha(ring, 0.35)}`
+                              : focused
+                                ? `0 0 18px ${withAlpha(ring, 0.55)}, 0 6px 16px rgba(0,0,0,0.5)`
+                                : "0 6px 16px rgba(0,0,0,0.5)",
+                          }}
+                          className={cn(
+                            "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:scale-110 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                            dimmed ? "opacity-70" : "opacity-100"
+                          )}
+                        >
+                          {pulse ? (
+                            <motion.span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                              style={{ borderColor: ring }}
+                              animate={{ scale: [0.92, 1.5, 0.92], opacity: [0.38, 0.85, 0.38] }}
+                              transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut", delay: wave }}
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                              style={{ borderColor: ring, opacity: 0.6 }}
+                            />
+                          )}
+                          <Crosshair
+                            className="relative h-3.5 w-3.5"
+                            style={{ color: dot }}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="pointer-events-none absolute left-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-white/15 bg-ink-950/70 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-zinc-200 backdrop-blur-md sm:left-5 sm:top-5">
                   <span className="h-1.5 w-1.5 rounded-full bg-saffron-300 shadow-[0_0_10px_rgba(255,196,66,0.8)]" />
                   Illustrative rider · hover to explore
                 </div>
-
-                {mapPointerEntries.map(({ pointer, entry, point, label }, markerIndex) => (
-                  <button
-                    key={`marker-${pointer.id}-${entry.index}-${markerIndex}`}
-                    type="button"
-                    aria-label={`Focus ${itemTitle(entry.item)} at ${label}`}
-                    aria-pressed={pinnedIndex === entry.index}
-                    title={`${label} · ${itemTitle(entry.item)}`}
-                    onFocus={() => focusMapEntry(entry.index, point)}
-                    onBlur={() => {
-                      clearMapHover(entry.index);
-                      setZoomPoint(pinnedIndex === entry.index ? point : null);
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      togglePin(entry.index, point);
-                    }}
-                    style={{ left: `${point.x}%`, top: `${point.y}%` }}
-                    className="absolute z-20 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-ink-950/85 text-saffron-100 shadow-lg shadow-black/50 transition-transform duration-200 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100"
-                  >
-                    <motion.span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-[-3px] rounded-full border border-saffron-200/80"
-                      animate={reduceMotion ? undefined : { scale: [0.92, 1.5, 0.92], opacity: [0.38, 0.72, 0.38] }}
-                      transition={reduceMotion ? undefined : { duration: 1.7, repeat: Infinity, ease: "easeInOut", delay: markerIndex * 0.1 }}
-                    />
-                    <Crosshair className="relative h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                ))}
 
                 <AnimatePresence>
                   {bubbleEntry && bubblePoint && (

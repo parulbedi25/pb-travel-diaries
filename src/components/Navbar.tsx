@@ -6,7 +6,7 @@ import {
   useSpring,
   useMotionValueEvent,
 } from "framer-motion";
-import { Menu, X, ArrowUpRight, Sun, Moon, SlidersHorizontal, Eye, EyeOff, UserRound } from "lucide-react";
+import { Menu, X, ArrowUpRight, Sun, Moon, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
 import { isAdminSession, resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
 import { cn } from "../utils/cn";
@@ -104,6 +104,14 @@ export default function Navbar() {
     };
   }, [open]);
 
+  // Flags the open overlay on <html> so the live-site section controls can
+  // step out of the way instead of floating above the menu.
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.setAttribute("data-nav-open", "true");
+    return () => document.documentElement.removeAttribute("data-nav-open");
+  }, [open]);
+
   return (
     <>
       <motion.div
@@ -180,14 +188,6 @@ export default function Navbar() {
               </button>
             )}
             <ThemeToggle />
-            <a
-              href="#/account"
-              aria-label="Sign in or create an account"
-              title="Sign in or create an account"
-              className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:text-white"
-            >
-              <UserRound className="h-4 w-4" />
-            </a>
             <a
               href="#/admin"
               aria-label="Admin dashboard"
