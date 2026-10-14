@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Volume2, VolumeX, Play } from "lucide-react";
 import { resolveFooter, useSite, type BenefitsData } from "../store/siteContent";
+import Photo from "./ui/Photo";
 import { IMAGES, SHOWREEL_VIDEO } from "../data/content";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { isOn } from "../utils/enabled";
@@ -68,8 +69,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
             <video
               ref={videoRef}
               className="aspect-[16/10] w-full object-cover sm:aspect-[21/9]"
-              src={SHOWREEL_VIDEO}
-              poster={IMAGES.videoPoster}
+              {...(SHOWREEL_VIDEO ? { src: SHOWREEL_VIDEO, poster: IMAGES.videoPoster } : {})}
               muted
               loop
               playsInline
@@ -113,11 +113,11 @@ export default function Benefits({ data }: { data: BenefitsData }) {
         <div className="mt-14 grid gap-6 lg:grid-cols-12">
           <Reveal className="lg:col-span-5">
             <div className="group relative h-full min-h-[420px] overflow-hidden rounded-[2rem] border border-white/10">
-              <img
+              <Photo
                 src={IMAGES.portrait}
                 alt="PB filming the mountains with his camera"
                 className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1.4s] ease-out group-hover:scale-105"
-                loading="lazy"
+                label="Photo unavailable"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/30 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-7 sm:p-8">

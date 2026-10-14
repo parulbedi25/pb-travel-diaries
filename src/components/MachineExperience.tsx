@@ -324,7 +324,9 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       el.style.setProperty("--wb", String(rgb[2]));
     };
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    // No crossOrigin handshake: the bike photo is served from public/media
+    // alongside the app, so its pixels are readable without CORS. A remote URL
+    // would taint the canvas instead, which the try/catch below absorbs.
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
