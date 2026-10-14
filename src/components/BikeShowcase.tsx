@@ -174,7 +174,9 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
 
               <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-black/70 px-3.5 py-1.5 text-xs font-bold tracking-wide text-white backdrop-blur-md">
+                {/* Solid gold in both themes: the old black plate was
+                    unreadable on the light theme's pale bike photo. */}
+                <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">
                   HANLE BLACK
                 </span>
                 <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">

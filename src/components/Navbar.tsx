@@ -104,6 +104,14 @@ export default function Navbar() {
     };
   }, [open]);
 
+  // Flags the open overlay on <html> so the live-site section controls can
+  // step out of the way instead of floating above the menu.
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.setAttribute("data-nav-open", "true");
+    return () => document.documentElement.removeAttribute("data-nav-open");
+  }, [open]);
+
   return (
     <>
       <motion.div

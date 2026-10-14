@@ -473,6 +473,121 @@
   }
 }
 
+/* Live-site section chrome (toolbar, size badge, resize handles) sits above
+   the section content so its controls stay clickable. Hide it while the
+   mobile navigation overlay is open, so it never floats on top of the menu. */
+[data-nav-open="true"] .section-chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The two floating toolbars are pale plates with a gold rule rather than a
+   solid gold fill — the glyphs are dark ink either way, so the controls read
+   the same against a black section or a cream one. The resize grips keep the
+   solid yellow fill: they are the one bit of chrome that should read as a
+   solid handle in both themes. */
+.section-chrome-plate {
+  background-color: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(245, 179, 1, 0.75);
+  /* Same ink as .text-on-gold: gold is always a light surface, so the glyphs
+     stay dark whichever theme the page underneath is using. */
+  color: #171513;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.section-chrome-toolbar:hover,
+.section-chrome-toolbar:focus-visible {
+  border-color: rgba(245, 179, 1, 0.95);
+}
+
+/* ── Live tracker status plate ─────────────────────────────────────────────
+   "● LIVE — ON THE ROAD" sits on the map card, which is near-black in dark
+   mode and cream in light mode. Its fill was a literal black that stayed
+   black on the pale card, so the plate now tracks the ink token: dark glass
+   on dark, pale glass on light, gold rule in both. */
+.live-plate {
+  background: rgba(7, 7, 7, 0.85);
+  border-color: rgba(252, 211, 77, 0.5);
+  box-shadow: 0 0 32px rgba(251, 191, 36, 0.25);
+}
+.live-plate:hover {
+  border-color: rgba(253, 230, 138, 0.7);
+  box-shadow: 0 0 44px rgba(251, 191, 36, 0.4);
+}
+[data-theme="light"] .live-plate {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(245, 179, 1, 0.75);
+  box-shadow: 0 8px 24px rgba(23, 21, 19, 0.14);
+}
+[data-theme="light"] .live-plate:hover {
+  border-color: rgba(245, 179, 1, 0.95);
+  box-shadow: 0 10px 30px rgba(23, 21, 19, 0.2);
+}
+/* The corner arrow follows --gold-ink as well, lighter than the label. */
+.live-plate-arrow {
+  color: var(--gold-ink);
+  opacity: 0.7;
+}
+
+/* ── Countdown plates ──────────────────────────────────────────────────────
+   The flip-clock digits print on near-black plates. That literal colour is
+   unreadable on the light theme, so light mode swaps in a pale plate with the
+   gold rule the rest of the light theme uses. */
+.cd-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="light"] .cd-panel {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(245, 179, 1, 0.55);
+}
+
+.cd-tile {
+  background: #0b0b0b;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    0 6px 20px rgba(0, 0, 0, 0.5);
+}
+[data-theme="light"] .cd-tile {
+  background: #fdfaf3;
+  border-color: rgba(245, 179, 1, 0.9);
+  box-shadow: 0 6px 16px rgba(23, 21, 19, 0.1);
+}
+
+/* Hairline across the middle of a flip digit — the flip-clock seam. */
+.cd-split {
+  background: rgba(255, 255, 255, 0.14);
+}
+[data-theme="light"] .cd-split {
+  background: rgba(23, 21, 19, 0.16);
+}
+
+/* Digits and small readouts follow --gold-ink: bright gold on black, the
+   readable deep gold on pale plates. */
+.cd-digit,
+.cd-ink,
+.text-gold-ink {
+  color: var(--gold-ink, #f5b301);
+}
+.cd-digit {
+  text-shadow: 0 0 18px rgba(245, 179, 1, 0.55);
+}
+[data-theme="light"] .cd-digit {
+  text-shadow: none;
+}
+
+/* Compact preview chips in the dashboard's Countdown editor. */
+.cd-chip {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid transparent;
+}
+[data-theme="light"] .cd-chip {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(245, 179, 1, 0.85);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

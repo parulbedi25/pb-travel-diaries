@@ -159,25 +159,18 @@ function LandingPage() {
     return () => clearTimeout(t);
   }, [toastOpen]);
 
-  // ── Countdown fade-out: "live" → "fading" (1s) → "gone" (unmounted) ──
-  const [cdPhase, setCdPhase] = useState<"live" | "fading" | "gone">(() =>
-    finished ? "gone" : "live"
-  );
+  // ── Which sections are visible right now ──
+  // The timer clears the instant it reaches zero. It used to shrink away for a
+  // second first, which read as a small countdown flashing before the revealed
+  // sections appeared.
+  const [countdownGone, setCountdownGone] = useState(finished);
 
   useEffect(() => {
-    if (!finished) {
-      setCdPhase("live");
-      return;
-    }
-    if (cdPhase !== "live") return;
-    setCdPhase("fading");
-    const t = setTimeout(() => setCdPhase("gone"), 1050);
-    return () => clearTimeout(t);
-  }, [finished, cdPhase]);
+    setCountdownGone(finished);
+  }, [finished]);
 
-  // ── Which sections are visible right now ──
   const revealIds = new Set(cd.revealSectionIds ?? []);
-  const showCountdown = countdownOn && cdPhase !== "gone";
+  const showCountdown = countdownOn && !countdownGone;
   const isRevealed = (s: SectionEntry) =>
     finished && !s.enabled && revealIds.has(s.id) && s.type !== "countdown";
   const others = content.sections.filter(
@@ -192,31 +185,15 @@ function LandingPage() {
 
   // A countdown with no other sections takes over the page: no header, no footer.
   if (countdownOn && others.length === 0) {
+    if (!countdownGone) return <CountdownPage data={cd} />;
     return (
-      <>
-        {cdPhase !== "gone" && (
-          <motion.div
-            initial={false}
-            animate={
-              cdPhase === "fading"
-                ? { opacity: 0, filter: "blur(10px)", scale: 0.985 }
-                : { opacity: 1, filter: "blur(0px)", scale: 1 }
-            }
-            transition={{ duration: 1, ease: EASE }}
-          >
-            <CountdownPage data={cd} />
-          </motion.div>
-        )}
-        {cdPhase === "gone" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.9, ease: EASE }}
-          >
-            <DonePage data={cd} />
-          </motion.div>
-        )}
-      </>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, ease: EASE }}
+      >
+        <DonePage data={cd} />
+      </motion.div>
     );
   }
 
@@ -231,24 +208,10 @@ function LandingPage() {
       <Navbar />
       <main>
         {content.sections.map((entry) => {
-          // Countdown: fades and collapses in place, then unmounts.
+          // The countdown is simply gone once its timer has passed.
           if (entry.type === "countdown") {
             if (!showCountdown) return null;
-            return (
-              <motion.div
-                key={entry.id}
-                initial={false}
-                animate={
-                  cdPhase === "fading"
-                    ? { opacity: 0, height: 0, filter: "blur(8px)" }
-                    : { opacity: 1, height: "auto", filter: "blur(0px)" }
-                }
-                transition={{ duration: 1, ease: EASE }}
-                className="overflow-hidden"
-              >
-                <Section entry={entry} />
-              </motion.div>
-            );
+            return <Section key={entry.id} entry={entry} />;
           }
 
           const revealed = isRevealed(entry);
@@ -261,7 +224,7 @@ function LandingPage() {
                 key={entry.id}
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.9, delay: 0.45, ease: EASE }}
+                transition={{ duration: 0.9, ease: EASE }}
               >
                 <SectionFrame entry={entry}>
                   <Section entry={entry} revealed />

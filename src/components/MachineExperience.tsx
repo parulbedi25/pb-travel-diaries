@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   Cog,
   Download,
   ExternalLink,
@@ -24,11 +25,77 @@ import type { BikeHotspot, MachineData } from "../store/siteContent";
 import { isAdminSession, useSite } from "../store/siteContent";
 import { getMedia } from "../admin/mediaLibrary";
 import { isOn } from "../utils/enabled";
+import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
+import { pointerColors, waveDelay, withAlpha } from "../utils/pointerColors";
 import { SectionHeader, CountUp, EASE } from "./ui/motion";
 import Photo from "./ui/Photo";
 import { cn } from "../utils/cn";
 
 type Block = { id: string; label: string; content: ReactNode; width: number };
+
+/**
+ * Semi-circular gauge for the stretch the bike is riding right now. Pure SVG,
+ * so it scales with the card and costs nothing to animate (dash offset only).
+ */
+function StretchGauge({ pct }: { pct: number }) {
+  const r = 46;
+  const cx = 56;
+  const cy = 56;
+  const arc = Math.PI * r; // length of a half circle
+  const clamped = Math.min(100, Math.max(0, pct));
+  const d = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`;
+
+  return (
+    <div className="relative h-14 w-28 shrink-0" role="img" aria-label={`${clamped}% of the current milestone`}>
+      <svg viewBox="0 0 112 64" className="h-full w-full overflow-visible" aria-hidden>
+        <path
+          d={d}
+          fill="none"
+          className="stroke-white/10"
+          strokeWidth="9"
+          strokeLinecap="round"
+        />
+        <motion.path
+          d={d}
+          fill="none"
+          className="stroke-saffron-400"
+          strokeWidth="9"
+          strokeLinecap="round"
+          strokeDasharray={arc}
+          initial={{ strokeDashoffset: arc }}
+          whileInView={{ strokeDashoffset: arc - (clamped / 100) * arc }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 1.2, ease: EASE }}
+        />
+      </svg>
+      <p className="absolute inset-x-0 bottom-0 text-center font-display text-lg font-bold leading-none text-white">
+        {clamped}%
+      </p>
+    </div>
+  );
+}
+
+/** One rung of the odometer ladder: cleared, in progress or still ahead. */
+function MilestoneChip({ value, state }: { value: number; state: MilestoneState }) {
+  return (
+    <span
+      title={
+        state === "upcoming"
+          ? `${value.toLocaleString("en-IN")} km — still ahead`
+          : `${value.toLocaleString("en-IN")} km — ${state === "cleared" ? "cleared" : "in progress"}`
+      }
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-1 font-mono text-[10px] font-bold",
+        state === "cleared" && "border-saffron-400/45 bg-saffron-400/15 text-saffron-300",
+        state === "active" && "border-saffron-400 bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/25",
+        state === "upcoming" && "border-white/10 bg-white/[0.04] text-zinc-500"
+      )}
+    >
+      {state === "cleared" && <Check className="h-2.5 w-2.5" />}
+      {formatMilestone(value)}
+    </span>
+  );
+}
 
 const SPECS = [
   { icon: Cog, v: "452cc", l: "Liquid-cooled Sherpa single" },
@@ -353,7 +420,16 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     a.click();
   };
 
-  const odoPct = Math.min(100, Math.round((data.km / 50000) * 100));
+  // Where the bike sits on the milestone ladder: the target follows the
+  // reading, so crossing a rung promotes the bike to the next one on its own.
+  const odo = resolveOdometer(data.km, data.odometer?.extraMilestones);
+  const odoLogged = data.odometer?.updatedAt
+    ? new Date(data.odometer.updatedAt).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
   const indexed = spots.map((spot, idx) => ({ spot, idx }));
   // Only pointer hover/pin moves an item to the top of the list.
   const ordered =
@@ -396,7 +472,9 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
       <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-black/70 px-3.5 py-1.5 text-xs font-bold tracking-wide text-white backdrop-blur-md">HANLE BLACK</span>
+        {/* Solid gold in both themes: the old black plate was unreadable on
+            the light theme's pale bike photo. */}
+        <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">HANLE BLACK</span>
         <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">Sherpa 450 · 2024</span>
       </div>
 
@@ -404,6 +482,12 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         const x = clampPct(h.x);
         const y = clampPct(h.y);
         const isOn = focusIdx === i;
+        // Dashboard colours: `color` tints the dot, `pulseColor` drives the
+        // pulsing wave. Both fall back to gold when left empty.
+        const { dot, pulse: ring } = pointerColors(h.color, h.pulseColor);
+        // Same left-to-right wave as the rider map: the bike's pointers
+        // ripple across the photo instead of pulsing in unison.
+        const wave = waveDelay(x);
         return (
           <div
             key={`${h.title}-${i}`}
@@ -418,7 +502,13 @@ export default function MachineExperience({ data }: { data: MachineData }) {
               setHoverIdx((prev) => (prev === i ? null : prev));
             }}
           >
-            {isOn && <span className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/20 blur-2xl ring-2 ring-saffron-300/50" aria-hidden />}
+            {isOn && (
+              <span
+                className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl ring-2"
+                style={{ backgroundColor: withAlpha(ring, 0.2), "--tw-ring-color": withAlpha(ring, 0.5) } as React.CSSProperties}
+                aria-hidden
+              />
+            )}
             <button
               type="button"
               data-pointer-index={i}
@@ -429,21 +519,23 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             >
               <span
                 data-pointer-active={isOn ? "true" : undefined}
-                className="pointer-pulse pointer-events-none absolute h-10 w-10 rounded-full bg-saffron-400/60"
+                className="pointer-pulse pointer-events-none absolute h-10 w-10 rounded-full"
+                style={{ backgroundColor: withAlpha(ring, 0.6), animationDelay: `${wave}s` }}
                 aria-hidden
               />
               <span
                 className={cn(
                   "relative grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur-md transition-all duration-300",
-                  isOn
-                    ? "scale-110 border-white shadow-lg shadow-saffron-400/60"
-                    : "border-white/60 bg-saffron-400/25 hover:scale-110 hover:border-white hover:bg-saffron-400/35"
+                  isOn ? "scale-110 border-white" : "border-white/60 hover:scale-110 hover:border-white"
                 )}
-                style={h.color ? { backgroundColor: isOn ? h.color : `${h.color}59`, borderColor: "rgba(255,255,255,0.75)", boxShadow: isOn ? `0 8px 24px ${h.color}66` : undefined } : undefined}
+                style={{
+                  backgroundColor: withAlpha(dot, isOn ? 0.55 : 0.25),
+                  boxShadow: isOn ? `0 8px 24px ${withAlpha(ring, 0.4)}` : undefined,
+                }}
               >
                 <span
-                  className="h-2.5 w-2.5 rounded-full bg-saffron-400 shadow-[0_0_8px_var(--color-saffron-400)]"
-                  style={h.color ? { backgroundColor: h.color, boxShadow: `0 0 8px ${h.color}` } : undefined}
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: dot, boxShadow: `0 0 8px ${dot}` }}
                 />
               </span>
             </button>
@@ -647,18 +739,64 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const pointerGuide = (
-    <div className="flex h-full flex-col justify-between gap-5 rounded-[2rem] glass p-6 sm:p-7">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">Odometer</p>
-        <p className="mt-1 text-[11px] text-zinc-600">Every kilometre on the bike, logged</p>
-      </div>
-      <div className="border-t border-white/10 pt-4">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="font-semibold text-zinc-300">Odometer to 50,000 km</span>
-          <span className="font-mono text-saffron-300">{data.km.toLocaleString("en-IN")} km</span>
+    <div className="flex h-full flex-col gap-5 rounded-[2rem] glass p-6 sm:p-7">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">Odometer</p>
+          <p className="mt-1 text-[11px] text-zinc-600">Every kilometre on the bike, logged</p>
         </div>
-        <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/[0.07]"><div className="h-full rounded-full bg-saffron-400" style={{ width: `${odoPct}%` }} /></div>
-        <p className="mt-2 text-[11px] text-zinc-500">{Math.max(0, 50000 - data.km).toLocaleString("en-IN")} km to the half-lakh milestone</p>
+        <span className="shrink-0 rounded-full border border-saffron-400/30 bg-saffron-400/10 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-gold-ink">
+          {odo.cleared}/{odo.ladder.length} rungs
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <StretchGauge pct={odo.pct} />
+        <div className="min-w-0 text-right">
+          <p className="font-display text-4xl font-bold leading-none text-white sm:text-[2.75rem]">
+            <CountUp to={odo.reading} />
+          </p>
+          <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            km on the clock{odoLogged ? ` · logged ${odoLogged}` : ""}
+          </p>
+          <p className="mt-1.5 font-mono text-xs font-bold text-saffron-300">
+            {odo.remaining.toLocaleString("en-IN")} km to {formatMilestone(odo.target)}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress across the stretch the bike is riding right now. */}
+      <div>
+        <div className="flex items-center justify-between gap-3 text-[11px]">
+          <span className="font-semibold text-zinc-300">
+            {odo.from.toLocaleString("en-IN")} → {odo.target.toLocaleString("en-IN")} km
+          </span>
+          <span className="font-mono font-bold text-saffron-300">
+            {odo.remaining.toLocaleString("en-IN")} km to go
+          </span>
+        </div>
+        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/[0.07]">
+          <motion.div
+            className="h-full rounded-full bg-saffron-400"
+            initial={{ width: 0 }}
+            whileInView={{ width: `${odo.pct}%` }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 1.1, ease: EASE }}
+          />
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+          {odo.complete
+            ? "Every milestone on the board is behind the bike — add the next one from the dashboard."
+            : `${odo.travelled.toLocaleString("en-IN")} of ${odo.stretch.toLocaleString("en-IN")} km ridden on this stretch`}
+          {` · ${odo.overallPct}% of the way to ${formatMilestone(odo.ladder[odo.ladder.length - 1]?.value ?? 0)}`}
+        </p>
+      </div>
+
+      {/* The ladder: 100 km → 500 km → … → 50,000 km, then the rider's own. */}
+      <div className="mt-auto flex flex-wrap gap-1.5 border-t border-white/10 pt-4">
+        {odo.ladder.map((m) => (
+          <MilestoneChip key={m.value} value={m.value} state={m.state} />
+        ))}
       </div>
     </div>
   );

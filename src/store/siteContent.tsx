@@ -483,6 +483,8 @@ export interface BikeHotspot {
   title: string;
   /** Pointer colour (hex). Empty = the default gold pointer. */
   color?: string;
+  /** Colour of the pulsing ring / wave. Empty = matches the pointer colour. */
+  pulseColor?: string;
   desc: string;
   price: string;
   image: string;
@@ -507,6 +509,16 @@ export interface MachineSubsectionLayout {
     width: number;
   };
 }
+/**
+ * Odometer bookkeeping for The Machine. The reading itself lives in `km`;
+ * this holds the rungs the rider adds once the built-in ladder is behind them.
+ */
+export interface MachineOdometer {
+  /** Extra milestones (km) filed from the dashboard, used past 50,000 km. */
+  extraMilestones?: number[];
+  /** When the reading was last updated, as an ISO timestamp. */
+  updatedAt?: string;
+}
 export interface MachineData {
   eyebrow: string;
   titleA: string;
@@ -516,6 +528,8 @@ export interface MachineData {
   mainImage: string;
   mainImageAlt: string;
   km: number;
+  /** Milestone bookkeeping behind the odometer card. */
+  odometer?: MachineOdometer;
   namePlate: string;
   namePlateEn: string;
   plateSub: string;
@@ -588,6 +602,10 @@ export interface RiderKitPointer {
   x: number;
   y: number;
   radius: number;
+  /** Pointer colour (hex). Empty = the default gold pointer. */
+  color?: string;
+  /** Colour of the pulsing ring. Empty = matches the pointer colour. */
+  pulseColor?: string;
   enabled?: boolean;
 }
 export interface RiderKitData {
@@ -831,10 +849,12 @@ const MACHINE: MachineData = {
   titleHi: "طویل",
   titleB: " (Taweel) — Himalayan 450, Hanle Black.",
   sub: "32,000 km together across 19 states. One seized chain, zero regrets. Tap the + markers to highlight each accessory.",
-  mainImage:
-    "https://images.pexels.com/photos/27539736/pexels-photo-27539736.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  // Served from public/media, so a build never needs the internet to show the
+  // bike. Swapping that file keeps every existing pointer position.
+  mainImage: "/media/himalayan-450.jpg",
   mainImageAlt: "طویل (Taweel) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
   km: 32000,
+  odometer: { extraMilestones: [], updatedAt: "" },
   namePlate: "طویل",
   namePlateEn: "Taweel",
   plateSub: "Named for the long roads out of Nangal Dam — طویل means long",
@@ -1426,8 +1446,9 @@ function loadContent(): SiteContent {
       }
     }
 
-    // Add the supplied Royal Enfield product images to older saved wardrobes
-    // once, while preserving all existing copy and custom gear photos.
+    // Swap in the supplied Royal Enfield product photos on older saved
+    // wardrobes once. This only updates image paths on items the site already
+    // has — a pick you deleted stays deleted, and no product is re-added.
     if (shouldMigrateRiderKitGear && defaultGears) {
       const gearIndex = allSections.findIndex((section) => section.type === "gears");
       const currentGears = gearIndex >= 0 ? allSections[gearIndex] : undefined;
@@ -1435,28 +1456,17 @@ function loadContent(): SiteContent {
         const currentItems = Array.isArray(currentGears.data.items)
           ? [...(currentGears.data.items as GearItem[])]
           : [];
-        const defaultItems = Array.isArray(defaultGears.data.items)
-          ? (defaultGears.data.items as GearItem[])
-          : [];
-        const addedNames = new Set([
-          "Optimus Dual Sport Helmet — Black & Gold",
-          "Arizona Leather Gloves — Tan",
-          "Nirvik V2 Print Class A Riding Jacket — Black & Gold",
-          "Classic Sling Bag — Rose Gold",
-          "Super Meteor 650 x Sena 50S Intercom",
-        ]);
-        let nextItems = currentItems.map((item) =>
-          item?.name === "Wanderer Waterproof Boots" && item.image?.includes("BOA240001-BLACK_1_HERO.jpg")
-            ? { ...item, image: "/images/gear/wanderer-waterproof-boots.webp" }
-            : item
+        const suppliedPhotos: Record<string, string> = {
+          "Wanderer Waterproof Boots": "/images/gear/wanderer-waterproof-boots.webp",
+          "Optimus Dual Sport Helmet — Black & Gold": "/images/gear/optimus-dual-sport-helmet-black-gold.webp",
+          "Arizona Leather Gloves — Tan": "/images/gear/arizona-leather-gloves-tan.webp",
+          "Nirvik V2 Print Class A Riding Jacket — Black & Gold": "/images/gear/nirvik-v2-jacket-black-gold.webp",
+          "Classic Sling Bag — Rose Gold": "/images/gear/classic-sling-rose-gold.webp",
+          "Super Meteor 650 x Sena 50S Intercom": "/images/gear/sena-50s-intercom.webp",
+        };
+        const nextItems = currentItems.map((item) =>
+          item && suppliedPhotos[item.name] ? { ...item, image: suppliedPhotos[item.name] } : item
         );
-        const existingNames = new Set(nextItems.map((item) => item?.name));
-        for (const item of defaultItems) {
-          if (addedNames.has(item.name) && !existingNames.has(item.name)) {
-            nextItems = [...nextItems, structuredClone(item)];
-            existingNames.add(item.name);
-          }
-        }
         allSections[gearIndex] = {
           ...currentGears,
           data: { ...currentGears.data, items: nextItems },
@@ -2010,10 +2020,15 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       const existing = content.sections.find((s) => s.id === id)?.layout ?? {};
       const next: NonNullable<SectionEntry["layout"]> = {};
       const keys = ["height", "marginTop", "marginBottom", "marginLeft", "marginRight"] as const;
-      keys.forEach((key) => {
-        const value = patch[key] ?? existing[key];
-        if (typeof value === "number" && value > 0) next[key] = value;
-      });
+      // An empty patch is the toolbar's "reset to auto": it clears the saved
+      // geometry instead of falling back to it.
+      const isReset = Object.keys(patch).length === 0;
+      if (!isReset) {
+        keys.forEach((key) => {
+          const value = patch[key] ?? existing[key];
+          if (typeof value === "number" && value > 0) next[key] = value;
+        });
+      }
       const apply = (c: SiteContent): SiteContent => ({
         ...c,
         sections: c.sections.map((s) => (s.id === id ? { ...s, layout: next } : s)),
@@ -2035,9 +2050,16 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       const reorder = (c: SiteContent) => {
         const sections = [...c.sections];
         const from = sections.findIndex((s) => s.id === id);
-        const to = from + direction;
-        if (from < 0 || to < 0 || to >= sections.length) return c;
-        [sections[from], sections[to]] = [sections[to], sections[from]];
+        if (from < 0) return c;
+        // Step over entries visitors never see (switched-off sections, and the
+        // countdown/maintenance switches parked at the top of the list). A
+        // straight neighbour swap silently did nothing whenever the adjacent
+        // entry was hidden.
+        let to = from + direction;
+        while (to >= 0 && to < sections.length && !sections[to].enabled) to += direction;
+        if (to < 0 || to >= sections.length) return c;
+        const [moved] = sections.splice(from, 1);
+        sections.splice(to, 0, moved);
         return { ...c, sections };
       };
       const nextContent = reorder(content);
