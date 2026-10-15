@@ -77,6 +77,8 @@ import { pointerColors } from "../utils/pointerColors";
 import ImageField from "./ImageField";
 import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
+import SocialIconsEditor from "./SocialIconsEditor";
+import Switch from "./Switch";
 import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
@@ -597,43 +599,6 @@ function setAt<T>(obj: T, path: string, value: unknown): T {
 
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
-
-function Switch({
-  on,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  on: boolean;
-  onChange: (v: boolean) => void;
-  label?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      aria-disabled={disabled}
-      disabled={disabled}
-      onClick={() => {
-        if (!disabled) onChange(!on);
-      }}
-      className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
-        disabled && "cursor-not-allowed opacity-50",
-        on ? "bg-saffron-400" : "bg-white/15"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
-          on ? "left-[22px]" : "left-0.5"
-        )}
-      />
-    </button>
-  );
-}
 
 export function FieldRow({
   field,
@@ -4101,6 +4066,9 @@ function FooterPanel() {
     );
 
   // Social links
+  const setSocials = (next: FooterSocial[], action: string) =>
+    write(action, (cur) => ({ ...cur, socials: next }));
+
   const setSocial = (id: string, patch: Partial<FooterSocial>) =>
     write("Edited site-wide social links", (cur) =>
       patch.enabled !== undefined
@@ -4315,28 +4283,11 @@ function FooterPanel() {
             <p className="mt-0.5 text-[11px] text-zinc-500">
               Set each profile URL and visibility for the footer, showreel card, and live tracker.
             </p>
-            <ul className="mt-4 flex flex-col gap-2.5">
-              {f.socials.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"
-                >
-                  <span className="w-28 text-sm font-medium text-zinc-200">{s.label}</span>
-                  <input
-                    value={s.href}
-                    onChange={(e) => setSocial(s.id, { href: e.target.value })}
-                    aria-label={`${s.label} profile URL`}
-                    placeholder="https://…"
-                    className={cn(inputCls, "min-w-0 flex-1 py-2 font-mono text-xs")}
-                  />
-                  <Switch
-                    on={s.enabled}
-                    onChange={(v) => setSocial(s.id, { enabled: v })}
-                    label={`Show ${s.label} icons site-wide`}
-                  />
-                </li>
-              ))}
-            </ul>
+            <SocialIconsEditor
+              socials={f.socials}
+              onPatch={(id, patch) => setSocial(id, patch)}
+              onChange={(next, action) => setSocials(next, action)}
+            />
           </div>
 
           <div className="grid gap-4 rounded-3xl glass p-5">

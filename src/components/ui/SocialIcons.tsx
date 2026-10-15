@@ -1,3 +1,28 @@
+import {
+  AtSign,
+  Calendar,
+  Camera,
+  Film,
+  Globe,
+  Heart,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Music2,
+  Phone,
+  Play,
+  Podcast,
+  Rss,
+  Send,
+  Share2,
+  ShoppingBag,
+  ThumbsUp,
+  Users,
+  Video,
+} from "lucide-react";
+import type { ComponentType } from "react";
 import { cn } from "../../utils/cn";
 
 type IconProps = { className?: string };
@@ -58,12 +83,76 @@ export function FacebookIcon({ className }: IconProps) {
   );
 }
 
-export const SOCIALS = [
-  { label: "YouTube", Icon: YouTubeIcon },
-  { label: "Instagram", Icon: InstagramIcon },
-  { label: "X (Twitter)", Icon: XIcon },
-  { label: "Facebook", Icon: FacebookIcon },
+export type SocialIconComponent = ComponentType<{ className?: string }>;
+
+export interface SocialIconSpec {
+  /** Stored on the social link, so renaming a label never changes its icon. */
+  key: string;
+  label: string;
+  Icon: SocialIconComponent;
+}
+
+/**
+ * Everything an admin can pick from.
+ *
+ * The four brand marks are drawn here because lucide dropped its brand icons.
+ * The rest are generic glyphs rather than official logos — they cover the
+ * platforms people actually link to without shipping a mark that is subtly
+ * wrong, and the set is easy to extend.
+ */
+export const SOCIAL_ICONS: SocialIconSpec[] = [
+  { key: "youtube", label: "YouTube", Icon: YouTubeIcon },
+  { key: "instagram", label: "Instagram", Icon: InstagramIcon },
+  { key: "x", label: "X (Twitter)", Icon: XIcon },
+  { key: "facebook", label: "Facebook", Icon: FacebookIcon },
+  { key: "website", label: "Website", Icon: Globe },
+  { key: "mail", label: "Email", Icon: Mail },
+  { key: "phone", label: "Phone", Icon: Phone },
+  { key: "location", label: "Location", Icon: MapPin },
+  { key: "chat", label: "Chat", Icon: MessageCircle },
+  { key: "send", label: "Send / Telegram", Icon: Send },
+  { key: "music", label: "Music", Icon: Music2 },
+  { key: "podcast", label: "Podcast", Icon: Podcast },
+  { key: "camera", label: "Photos", Icon: Camera },
+  { key: "video", label: "Video", Icon: Video },
+  { key: "play", label: "Play", Icon: Play },
+  { key: "store", label: "Store", Icon: ShoppingBag },
+  { key: "calendar", label: "Calendar", Icon: Calendar },
+  { key: "rss", label: "RSS", Icon: Rss },
+  { key: "link", label: "Link", Icon: LinkIcon },
+  { key: "heart", label: "Heart", Icon: Heart },
+  { key: "mention", label: "Mention", Icon: AtSign },
+  { key: "community", label: "Community", Icon: Users },
+  { key: "film", label: "Film", Icon: Film },
+  { key: "image", label: "Image", Icon: ImageIcon },
+  { key: "share", label: "Share", Icon: Share2 },
+  { key: "thumbs", label: "Thumbs up", Icon: ThumbsUp },
 ];
+
+/** Label-keyed view of the registry, for anything still matching by label. */
+export const SOCIALS: { label: string; Icon: SocialIconComponent }[] = SOCIAL_ICONS.map(
+  ({ label, Icon }) => ({ label, Icon })
+);
+
+export const socialIconLabel = (key: string | undefined): string =>
+  SOCIAL_ICONS.find((s) => s.key === key)?.label ?? "";
+
+/**
+ * Resolve the icon for a saved social link: the stored key wins, then a label
+ * match so links saved before the icon picker existed keep their mark.
+ */
+export function resolveSocialIcon(
+  social?: { label?: string; icon?: string } | null
+): SocialIconComponent | null {
+  if (!social) return null;
+  if (social.icon) {
+    const byKey = SOCIAL_ICONS.find((s) => s.key === social.icon);
+    if (byKey) return byKey.Icon;
+  }
+  const label = (social.label ?? "").trim().toLowerCase();
+  if (!label) return null;
+  return SOCIAL_ICONS.find((s) => s.label.toLowerCase() === label)?.Icon ?? null;
+}
 
 /** Opens external URLs in a new tab, while keeping in-page links local. */
 export function externalLinkProps(href: string): { target: "_blank"; rel: "noreferrer" } | {} {

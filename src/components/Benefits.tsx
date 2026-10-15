@@ -5,7 +5,7 @@ import Photo from "./ui/Photo";
 import { IMAGES, SHOWREEL_VIDEO } from "../data/content";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { isOn } from "../utils/enabled";
-import { SOCIALS, externalLinkProps } from "./ui/SocialIcons";
+import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 
 export default function Benefits({ data }: { data: BenefitsData }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -137,7 +137,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                   {socialLinks.length > 0 && (
                     <div className="flex flex-wrap justify-end gap-2">
                       {socialLinks.map((social) => {
-                        const Icon = SOCIALS.find((item) => item.label === social.label)?.Icon;
+                        const Icon = resolveSocialIcon(social);
                         return (
                           <a
                             key={social.id}

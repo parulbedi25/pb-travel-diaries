@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ArrowUp } from "lucide-react";
 import { Logo } from "./Navbar";
-import { SOCIALS, externalLinkProps } from "./ui/SocialIcons";
+import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 import { resolveFooter, useSite, type FooterSettings } from "../store/siteContent";
 
 /**
@@ -34,7 +34,7 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
             {socials.length > 0 && (
               <div className="mt-6 flex gap-2.5">
                 {socials.map((s) => {
-                  const Icon = SOCIALS.find((x) => x.label === s.label)?.Icon;
+                  const Icon = resolveSocialIcon(s);
                   return (
                     <a
                       key={s.id}

@@ -116,8 +116,11 @@ export interface FooterColumn {
 }
 export interface FooterSocial {
   id: string;
-  /** Must match a built-in social icon label: YouTube, Instagram, X (Twitter), Facebook. */
+  /** Free text shown as the accessible name, e.g. "YouTube". */
   label: string;
+  /** Key into SOCIAL_ICONS. Optional: links saved before the icon picker fall
+   *  back to matching `label` against the registry. */
+  icon?: string;
   /** Shared profile URL used by matching social icons across the site. */
   href: string;
   /** Show or hide this platform's icons site-wide. */
