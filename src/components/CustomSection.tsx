@@ -1,10 +1,83 @@
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import type { CustomData } from "../store/siteContent";
+import type { CustomData, SectionEntry } from "../store/siteContent";
+import { isAdminSession, useSite } from "../store/siteContent";
+import type { SectionBlock } from "../blocks/types";
+import BlockCanvas from "./blocks/BlockCanvas";
 import { Reveal } from "./ui/motion";
 import { cn } from "../utils/cn";
 
-/** Generic block the admin can insert anywhere on the page. */
-export default function CustomSection({ data }: { data: CustomData }) {
+/**
+ * A `custom` section renders one of two ways.
+ *
+ * Sections created before the composer shipped carry the original fixed
+ * fields (eyebrow, title, sub, image, button) and keep rendering exactly as
+ * they always have. A section whose data carries a `blocks` array is a
+ * composed section and renders those blocks instead.
+ */
+export default function CustomSection({
+  data,
+  entry,
+}: {
+  data: CustomData;
+  entry?: SectionEntry;
+}) {
+  const raw = entry?.data?.blocks;
+  if (Array.isArray(raw)) {
+    return <ComposedSection entry={entry!} blocks={raw as SectionBlock[]} />;
+  }
+  return <LegacyCustomSection data={data} />;
+}
+
+function ComposedSection({
+  entry,
+  blocks,
+}: {
+  entry: SectionEntry;
+  blocks: SectionBlock[];
+}) {
+  const { draft, updateSectionField, saveDraft, previewAsVisitor } = useSite();
+  const admin = isAdminSession() && !previewAsVisitor;
+
+  // While building, show the working copy so an edit appears the moment it is
+  // typed. `updateSectionField` only writes the draft, and the published
+  // content is what visitors see.
+  const draftBlocks = draft.sections.find((s) => s.id === entry.id)?.data?.blocks;
+  const shown = (admin && Array.isArray(draftBlocks) ? draftBlocks : blocks) as SectionBlock[];
+
+  // Publishing has to wait for the draft to settle: `saveDraft` closes over
+  // the draft, so calling it in the same tick as the edit would publish the
+  // previous state. `tick` covers commits with no draft change, such as
+  // closing the editor after typing.
+  const pending = useRef(false);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!pending.current) return;
+    pending.current = false;
+    saveDraft("Edited a composed section");
+  }, [draft, tick, saveDraft]);
+
+  const publish = () => {
+    pending.current = true;
+    setTick((t) => t + 1);
+  };
+
+  return (
+    <section aria-label={entry.label || "Section"} className="relative py-20 sm:py-28">
+      <div className="mx-auto max-w-7xl px-5 sm:px-8">
+        <BlockCanvas
+          blocks={shown}
+          editable={admin}
+          sectionLabel={entry.label}
+          onChange={(next) => updateSectionField(entry.id, entry.label, "blocks", next)}
+          onCommit={publish}
+        />
+      </div>
+    </section>
+  );
+}
+
+function LegacyCustomSection({ data }: { data: CustomData }) {
   const imageRight = data.layout === "image-right";
 
   return (

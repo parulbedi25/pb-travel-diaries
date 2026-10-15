@@ -76,6 +76,8 @@ import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/
 import { pointerColors } from "../utils/pointerColors";
 import ImageField from "./ImageField";
 import ImagesField from "./ImagesField";
+import BlockComposer from "./BlockComposer";
+import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
 import {
@@ -2310,7 +2312,7 @@ function SectionsPanel() {
   };
 
   const addSection = () => {
-    logAction("Added a Custom Section block");
+    logAction("Added a composed section");
     const id = `sec-custom-${Date.now()}`;
     updateDraft((c) => ({
       ...c,
@@ -2319,17 +2321,23 @@ function SectionsPanel() {
         {
           id,
           type: "custom",
-          label: "Custom section",
+          label: "New section",
           enabled: true,
+          // A section starts as an empty canvas plus one heading and one
+          // paragraph, so it is immediately editable rather than blank.
           data: {
-            eyebrow: "New section",
-            title: "A fresh story block",
-            sub: "Describe it here — visitors will see this right on the page.",
-            image: "",
-            imageAlt: "",
-            buttonLabel: "Learn more",
-            buttonHref: "#top",
-            layout: "image-right",
+            blocks: [
+              { ...createBlock("heading"), data: { eyebrow: "", text: "A fresh section", level: "h2", align: "left" } },
+              {
+                ...createBlock("text"),
+                data: {
+                  body: "Describe it here — visitors will see this right on the page.",
+                  align: "left",
+                  columns: "1",
+                  size: "base",
+                },
+              },
+            ],
           },
         },
       ],
@@ -2434,9 +2442,17 @@ function SectionsPanel() {
     writeSectionData(selected.id, next as unknown as Record<string, unknown>);
   };
 
+  // A `custom` section carrying a `blocks` array is composed from the
+  // component palette. The older fixed fields still drive sections that were
+  // built before the composer existed, so those keep rendering untouched.
+  const composedBlocks =
+    selected && Array.isArray(selected.data?.blocks) ? (selected.data.blocks as SectionBlock[]) : null;
+
   const fields = selected
     ? selected.type === "custom"
-      ? CUSTOM_FIELDS
+      ? composedBlocks
+        ? []
+        : CUSTOM_FIELDS
       : SECTION_FIELDS[selected.type]
     : [];
 
@@ -2635,6 +2651,13 @@ function SectionsPanel() {
               />
             )}
             <div className="grid max-h-[65vh] gap-5 overflow-y-auto pr-2 no-scrollbar">
+              {composedBlocks && selected && (
+                <BlockComposer
+                  blocks={composedBlocks}
+                  sectionLabel={selected.label}
+                  onChange={(next) => setSectionData(selected.id, "blocks", next)}
+                />
+              )}
               {fields.map((f) => {
                 if (selected.type === "countdown" && f.kind === "reveal") {
                   return (
