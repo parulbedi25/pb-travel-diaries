@@ -171,6 +171,8 @@ type PanelResizeDrag = {
 const PANEL_MIN_W = 190;
 const PANEL_MIN_H = 170;
 const PANEL_GAP = 16;
+/** How far the photo magnifies on a focused pointer. Same as the rider map. */
+const MACHINE_ZOOM = 1.65;
 
 /**
  * Pointer bubble. Positioned in pixels and clamped to the bike image so it is
@@ -297,6 +299,15 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   // The bike's pointers pulse exactly like the rider map's; visitors who ask
   // for less motion get the still ring instead.
   const reduceMotion = useReducedMotion();
+  // Zoom follows the focus, as it does on the rider map: hovering or pinning a
+  // pointer magnifies the photo on that pointer. The pointers live inside the
+  // zoom layer, so they travel with the part they mark and counter-scale to
+  // keep their size.
+  const focusedSpot = focusIdx !== null ? spots[focusIdx] : undefined;
+  const zoomPoint = focusedSpot
+    ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
+    : null;
+  const zoomed = Boolean(zoomPoint);
   const isExpanded = (idx: number) => (focusIdx === null ? listOpen === idx : idx === focusIdx);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -467,8 +478,17 @@ export default function MachineExperience({ data }: { data: MachineData }) {
           right padding, so pointers are positioned against the image box. */}
       <div
         ref={imageAreaRef}
-        className="machine-image-area relative w-full"
+        className="machine-image-area relative w-full overflow-hidden"
       >
+        <div
+          className="relative will-change-transform"
+          style={{
+            transform: zoomed ? `scale(${MACHINE_ZOOM})` : "scale(1)",
+            transformOrigin: zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
+            transition:
+              "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1), transform-origin 180ms ease-out",
+          }}
+        >
       <Photo
         src={data.mainImage}
         alt={data.mainImageAlt}
@@ -477,12 +497,6 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         label="Bike photo unavailable"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
-      <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
-        {/* Solid gold in both themes: the old black plate was unreadable on
-            the light theme's pale bike photo. */}
-        <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">HANLE BLACK</span>
-        <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">Sherpa 450 · 2024</span>
-      </div>
 
       {spots.map((h, i) => {
         const x = clampPct(h.x);
@@ -494,7 +508,14 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         // Same left-to-right wave as the rider map: the bike's pointers
         // ripple across the photo instead of pulsing in unison.
         const wave = waveDelay(x);
-        const pulse = !reduceMotion;
+        // While the photo is magnified the pointers that are not the focus
+        // settle: no pulse, and a little smaller, so the focused one reads on
+        // its own — the same as the rider map's markers when zoomed.
+        const dimmed = zoomed && !isOn;
+        // Counter-scale by the zoom so only the pointer's position follows the
+        // photo, not its size; the focused one keeps a little extra.
+        const scale = (zoomed ? 1 / MACHINE_ZOOM : 1) * (dimmed ? 0.6 : 1) * (isOn ? 1.1 : 1);
+        const pulse = !reduceMotion && !dimmed;
         return (
           <div
             key={`${h.title}-${i}`}
@@ -516,16 +537,23 @@ export default function MachineExperience({ data }: { data: MachineData }) {
               aria-pressed={pinnedIdx === i}
               aria-label={`Show ${h.title}`}
               style={{
+                // Counter-scale, so the pointer keeps its size while the photo
+                // magnifies underneath it.
+                transform: `scale(${scale})`,
                 // The pointer's own colour on the border and the crosshair;
-                // the focused one picks up a glow in its pulse colour.
-                borderColor: withAlpha(dot, 0.9),
-                boxShadow: isOn
-                  ? `0 0 18px ${withAlpha(ring, 0.55)}, 0 6px 16px rgba(0,0,0,0.5)`
-                  : "0 6px 16px rgba(0,0,0,0.5)",
+                // the focused one picks up a glow in its pulse colour, and the
+                // dimmed ones glow instead of simply fading so they stay
+                // findable while the photo is zoomed in.
+                borderColor: withAlpha(dot, isOn || !zoomed ? 0.9 : 0.6),
+                boxShadow: dimmed
+                  ? `0 0 12px ${withAlpha(ring, 0.75)}, 0 0 26px ${withAlpha(ring, 0.35)}`
+                  : isOn
+                    ? `0 0 18px ${withAlpha(ring, 0.55)}, 0 6px 16px rgba(0,0,0,0.5)`
+                    : "0 6px 16px rgba(0,0,0,0.5)",
               }}
               className={cn(
-                "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:scale-110 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
-                isOn && "scale-110"
+                "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                dimmed ? "opacity-70" : "opacity-100"
               )}
             >
               {pulse ? (
@@ -548,6 +576,14 @@ export default function MachineExperience({ data }: { data: MachineData }) {
           </div>
         );
       })}
+        </div>
+
+      <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
+        {/* Solid gold in both themes: the old black plate was unreadable on
+            the light theme's pale bike photo. */}
+        <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">HANLE BLACK</span>
+        <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">Sherpa 450 · 2024</span>
+      </div>
 
       {/* ── Bubble, clamped inside the bike image ── */}
       <AnimatePresence>

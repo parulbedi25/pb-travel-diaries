@@ -366,12 +366,21 @@
    bleed through behind the bike as a grey panel. The parts list keeps its
    wash; only the area behind the bike is covered. */
 .machine-image-area {
-  background-image: radial-gradient(
-    ellipse 45% 46% at 50% 54%,
-    rgba(255, 248, 224, 0.26) 0%,
-    rgba(255, 240, 190, 0.13) 45%,
-    transparent 74%
-  );
+  background-image:
+    /* Broad spread. The first version hugged the bike and left the big
+       HIMALAYAN letters at the edges of the frame unlit. */
+    radial-gradient(
+      ellipse 88% 92% at 50% 52%,
+      rgba(255, 240, 186, 0.17) 0%,
+      rgba(255, 236, 168, 0.09) 52%,
+      transparent 86%
+    ),
+    /* A little more light where the bike itself sits. */
+    radial-gradient(
+      ellipse 44% 46% at 50% 55%,
+      rgba(255, 249, 230, 0.18) 0%,
+      transparent 72%
+    );
 }
 [data-theme="light"] .machine-image-area {
   background-color: var(--color-ink-950);
