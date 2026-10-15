@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import type { FooterSocial } from "../store/siteContent";
 import { SOCIAL_ICONS, resolveSocialIcon, socialIconLabel } from "../components/ui/SocialIcons";
@@ -8,12 +9,21 @@ import { cn } from "../utils/cn";
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
 
+const BUBBLE_W = 288; // matches w-72 below
+const BUBBLE_MAX_H = 320;
+
+interface BubblePos {
+  top: number;
+  left: number;
+  caret: number;
+}
+
 /**
  * The footer's social icons, as a reorderable list.
  *
  * Drag a row by the grip on its left to change the order the icons appear in
- * on the site. Each row shows the icon it will use, and the pencil under the
- * icon opens a bubble of choices.
+ * on the site. Hovering an icon reveals a pencil over its middle; clicking
+ * opens a bubble of choices.
  */
 export default function SocialIconsEditor({
   socials,
@@ -27,25 +37,68 @@ export default function SocialIconsEditor({
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
-  // Only a drag that began on the grip is allowed to reorder the list, so
-  // selecting text in the URL field still behaves normally.
+  const [bubble, setBubble] = useState<BubblePos | null>(null);
+  const anchorRef = useRef<HTMLElement | null>(null);
+  // Only a drag that began on the grip reorders the list, so selecting text in
+  // the URL field still behaves normally.
   const armed = useRef<string | null>(null);
+
+  /**
+   * The bubble is rendered into the body rather than inside the row: the
+   * dashboard's editor column scrolls and clips, and the cards below it were
+   * painting over the bubble. Fixed positioning also keeps it in the viewport
+   * when the panel is scrolled.
+   */
+  const place = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = r.bottom + 10;
+    const flip = below + BUBBLE_MAX_H > window.innerHeight && r.top - 10 - BUBBLE_MAX_H > 0;
+    const top = flip ? r.top - 10 - BUBBLE_MAX_H : below;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - BUBBLE_W - 8));
+    setBubble({ top, left, caret: Math.max(12, r.left + r.width / 2 - left) });
+  }, []);
+
+  const closePicker = useCallback(() => {
+    setPickerFor(null);
+    setBubble(null);
+    anchorRef.current = null;
+  }, []);
+
+  const togglePicker = (id: string, el: HTMLElement) => {
+    if (pickerFor === id) {
+      closePicker();
+      return;
+    }
+    anchorRef.current = el;
+    setPickerFor(id);
+    place();
+  };
 
   useEffect(() => {
     if (!pickerFor) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPickerFor(null);
+      if (e.key === "Escape") closePicker();
     };
     const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement | null)?.closest("[data-icon-bubble]")) setPickerFor(null);
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-icon-bubble]") || target?.closest("[data-icon-anchor]")) return;
+      closePicker();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onDown);
+    window.addEventListener("resize", place);
+    // Capture, so scrolling the dashboard column moves the bubble with the row
+    // instead of leaving it stranded.
+    window.addEventListener("scroll", place, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
-  }, [pickerFor]);
+  }, [pickerFor, place, closePicker]);
 
   const resetDrag = () => {
     armed.current = null;
@@ -72,7 +125,7 @@ export default function SocialIconsEditor({
         ? spec.label
         : social.label;
     onPatch(social.id, { icon: key, label });
-    setPickerFor(null);
+    closePicker();
   };
 
   const add = () => {
@@ -163,65 +216,31 @@ export default function SocialIconsEditor({
                 <GripVertical className="h-4 w-4" aria-hidden="true" />
               </span>
 
-              <div className="relative shrink-0">
-                <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-white">
-                  {Icon ? (
-                    <Icon className="h-5 w-5" />
-                  ) : (
-                    <span className="text-xs font-semibold">{(s.label || "?").trim().charAt(0)}</span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Change the ${s.label || "social"} icon`}
-                  aria-expanded={pickerFor === s.id}
-                  onClick={() => setPickerFor(pickerFor === s.id ? null : s.id)}
-                  className="absolute -bottom-1.5 left-1/2 grid h-5 w-5 -translate-x-1/2 place-items-center rounded-full border border-white/15 bg-ink-900 text-zinc-300 shadow-md transition-colors hover:border-saffron-400/60 hover:text-white"
-                >
-                  <Pencil className="h-2.5 w-2.5" aria-hidden="true" />
-                </button>
-
-                {pickerFor === s.id && (
-                  <div
-                    data-icon-bubble
-                    role="dialog"
-                    aria-label="Choose an icon"
-                    className="absolute left-0 top-full z-50 mt-3 w-[17rem] rounded-2xl border border-white/10 bg-ink-950/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="absolute -top-1.5 left-6 h-3 w-3 rotate-45 border-l border-t border-white/10 bg-ink-950"
-                    />
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                      Choose an icon
-                    </p>
-                    <div className="grid max-h-56 grid-cols-6 gap-1.5 overflow-y-auto pr-1">
-                      {SOCIAL_ICONS.map((spec) => {
-                        const PickIcon = spec.Icon;
-                        const active = spec.key === s.icon;
-                        return (
-                          <button
-                            key={spec.key}
-                            type="button"
-                            aria-label={spec.label}
-                            aria-pressed={active}
-                            title={spec.label}
-                            onClick={() => pickIcon(s, spec.key)}
-                            className={cn(
-                              "grid h-9 w-9 place-items-center rounded-lg border transition-colors",
-                              active
-                                ? "border-saffron-400 bg-saffron-400/15 text-saffron-300"
-                                : "border-white/10 text-zinc-300 hover:border-white/25 hover:text-white"
-                            )}
-                          >
-                            <PickIcon className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+              <button
+                type="button"
+                data-icon-anchor
+                onClick={(e) => togglePicker(s.id, e.currentTarget)}
+                aria-label={`Change the ${s.label || "social"} icon`}
+                aria-expanded={pickerFor === s.id}
+                title="Change icon"
+                className="group relative grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-white transition-colors hover:border-saffron-300/50 focus:outline-none focus-visible:border-saffron-400 focus-visible:ring-2 focus-visible:ring-saffron-400/60"
+              >
+                {Icon ? (
+                  <Icon className="h-5 w-5" />
+                ) : (
+                  <span className="text-xs font-semibold">{(s.label || "?").trim().charAt(0)}</span>
                 )}
-              </div>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute inset-0 grid place-items-center rounded-xl bg-ink-950/60 opacity-0 transition-opacity duration-200",
+                    "group-hover:opacity-100 group-focus-visible:opacity-100",
+                    pickerFor === s.id && "opacity-100"
+                  )}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </button>
 
               <input
                 value={s.label}
@@ -274,6 +293,60 @@ export default function SocialIconsEditor({
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
         Add icon
       </button>
+
+      {pickerFor &&
+        bubble &&
+        createPortal(
+          <div
+            data-icon-bubble
+            role="dialog"
+            aria-label="Choose an icon"
+            style={{ top: bubble.top, left: bubble.left, width: BUBBLE_W }}
+            className="fixed z-[200] rounded-2xl border border-white/10 bg-ink-950/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl"
+          >
+            <span
+              aria-hidden="true"
+              style={{ left: bubble.caret - 6 }}
+              className="absolute -top-1.5 h-3 w-3 rotate-45 border-l border-t border-white/10 bg-ink-950"
+            />
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+              Choose an icon
+            </p>
+            <div className="grid max-h-64 grid-cols-6 gap-1.5 overflow-y-auto pr-1">
+              {SOCIAL_ICONS.map((spec) => {
+                const PickIcon = spec.Icon;
+                const active = spec.key === iconKeyOf(socials, pickerFor);
+                return (
+                  <button
+                    key={spec.key}
+                    type="button"
+                    aria-label={spec.label}
+                    aria-pressed={active}
+                    title={spec.label}
+                    onClick={() => {
+                      const social = socials.find((x) => x.id === pickerFor);
+                      if (social) pickIcon(social, spec.key);
+                    }}
+                    className={cn(
+                      "grid h-9 w-9 place-items-center rounded-lg border transition-colors",
+                      active
+                        ? "border-saffron-400 bg-saffron-400/15 text-saffron-300"
+                        : "border-white/10 text-zinc-300 hover:border-white/25 hover:text-white"
+                    )}
+                  >
+                    <PickIcon className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
+}
+
+/** The icon key currently set on the row whose bubble is open. */
+function iconKeyOf(socials: FooterSocial[], id: string): string | undefined {
+  return socials.find((s) => s.id === id)?.icon;
 }
