@@ -116,8 +116,13 @@ export interface FooterColumn {
 }
 export interface FooterSocial {
   id: string;
-  /** Must match a built-in social icon label: YouTube, Instagram, X (Twitter), Facebook. */
+  /** Free text shown as the accessible name, e.g. "YouTube". */
   label: string;
+  /** Key into SOCIAL_ICONS. Optional: links saved before the icon picker fall
+   *  back to matching `label` against the registry. */
+  icon?: string;
+  /** Optional custom colour for this icon, overriding the theme's. */
+  color?: string;
   /** Shared profile URL used by matching social icons across the site. */
   href: string;
   /** Show or hide this platform's icons site-wide. */
@@ -564,6 +569,11 @@ export interface GearItem {
   model: string;
   description: string;
   image: string;
+  /**
+   * Extra photos shown as a slider on the shop page. The first photo stays in
+   * `image` so a product without a gallery behaves exactly as it always did.
+   */
+  images?: string[];
   imageAlt: string;
   highlights: string[];
   fit: string;
@@ -943,91 +953,6 @@ const GEARS: GearsData = {
       enabled: true,
       category: "Helmet",
       bodyPart: "Head",
-      id: "gear-zennith-modular-helmet",
-      name: "Zennith Modular Helmet",
-      brand: "Royal Enfield",
-      model: "Black · ISI + DOT",
-      description: "The official listing shows the Zennith as a modular helmet with ISI and DOT certifications.",
-      image: "",
-      imageAlt: "Black Zennith Modular Helmet from the Royal Enfield Store",
-      highlights: ["ISI + DOT", "Modular helmet"],
-      fit: "Sizes M, L and XL listed",
-      usedFor: "Urban · Summer, rain and winter",
-      price: "₹2,990",
-      link: "https://royalenfield.store/in/en/commando-mod-solid-id-ab-matt-black-xl60",
-    },
-    {
-      enabled: true,
-      category: "Jacket",
-      bodyPart: "Torso",
-      id: "gear-windfarer-v3-class-a-riding-jacket",
-      name: "Windfarer V3 Class A Riding Jacket",
-      brand: "Royal Enfield",
-      model: "Black · Class A",
-      description: "Royal Enfield lists the Windfarer V3 for urban and touring use, across summer, rain and winter conditions.",
-      image: "",
-      imageAlt: "Black Windfarer V3 Class A Riding Jacket from the Royal Enfield Store",
-      highlights: ["Class A", "Urban & touring", "Certified · SealPro"],
-      fit: "Sizes S–4XL listed",
-      usedFor: "Urban · Touring · Summer, rain and winter",
-      price: "₹9,990",
-      link: "https://royalenfield.store/in/en/windfarer-v3-black-1-61-m-8xl",
-    },
-    {
-      enabled: true,
-      category: "Gloves",
-      bodyPart: "Hands",
-      id: "gear-mx-pro-gloves",
-      name: "MX Pro Gloves",
-      brand: "Royal Enfield",
-      model: "CE certified · L1-KP",
-      description: "The official listing describes these gloves as lightweight, abrasion-resistant and CE certified.",
-      image: "",
-      imageAlt: "MX Pro riding gloves from the Royal Enfield Store",
-      highlights: ["Lightweight", "Abrasion resistant", "CE certified · L1-KP"],
-      fit: "Sizes XS–3XL listed",
-      usedFor: "Cruising · Adventure · Touring · Urban",
-      price: "₹3,500",
-      link: "https://royalenfield.store/in/en/mx-pro-gloves-light-olive-23-6-cm-xs",
-    },
-    {
-      enabled: true,
-      category: "Trousers",
-      bodyPart: "Legs",
-      id: "gear-tripper-riding-trouser",
-      name: "Tripper Riding Trouser",
-      brand: "Royal Enfield",
-      model: "Multi Stripe · Class A",
-      description: "Royal Enfield lists CE Level 2 knee and hip protection, with 600D polyester at impact zones.",
-      image: "",
-      imageAlt: "Multi Stripe Tripper Riding Trouser from the Royal Enfield Store",
-      highlights: ["Class A certified", "CE Level 2 knee and hip protection", "600D polyester at impact zones"],
-      fit: "Sizes 28–44 listed",
-      usedFor: "Urban · Touring · Summer, winter and rain",
-      price: "₹6,750",
-      link: "https://royalenfield.store/in/en/tripper-riding-bblr-multi-1-24-m-44",
-    },
-    {
-      enabled: true,
-      category: "Boots",
-      bodyPart: "Feet",
-      id: "gear-wanderer-waterproof-boots",
-      name: "Wanderer Waterproof Boots",
-      brand: "Royal Enfield",
-      model: "Black · CE certified",
-      description: "The official product page lists these as waterproof riding boots for cruising and adventure use.",
-      image: "/images/gear/wanderer-waterproof-boots.webp",
-      imageAlt: "Black Wanderer Waterproof Boots from the Royal Enfield Store",
-      highlights: ["CE certified", "Waterproof", "Cruising & adventure"],
-      fit: "Sizes 4–12 listed",
-      usedFor: "Cruising · Adventure · Summer, winter and rain",
-      price: "₹9,990",
-      link: "https://royalenfield.store/in/en/wanderer-wp-ing-boots-red-eu-46-uk-12-1720648806",
-    },
-    {
-      enabled: true,
-      category: "Helmet",
-      bodyPart: "Head",
       id: "gear-optimus-dual-sport-helmet-black-gold",
       name: "Optimus Dual Sport Helmet — Black & Gold",
       brand: "Royal Enfield",
@@ -1043,20 +968,20 @@ const GEARS: GearsData = {
     },
     {
       enabled: true,
-      category: "Gloves",
-      bodyPart: "Hands",
-      id: "gear-arizona-leather-gloves-tan",
-      name: "Arizona Leather Gloves — Tan",
-      brand: "Royal Enfield",
-      model: "GLA240009 · Tan",
-      description: "Tan leather riding gloves with CE Class L1-KP certification and TPR protection at the knuckles and fingers.",
-      image: "/images/gear/arizona-leather-gloves-tan.webp",
-      imageAlt: "Tan Arizona Leather riding gloves from Royal Enfield",
-      highlights: ["CE Class L1-KP", "TPR knuckle and finger protectors", "Perforated leather · touchscreen compatible"],
-      fit: "See the official page for current sizes",
-      usedFor: "Urban · Touring",
-      price: "₹2,790",
-      link: "https://store.royalenfield.com/en/all-leather-gloves-tan-22-6-cm-l",
+      category: "Intercom",
+      bodyPart: "Head",
+      id: "gear-super-meteor-650-x-sena-50s-intercom",
+      name: "Super Meteor 650 X Sena Intercom",
+      brand: "Royal Enfield × Sena",
+      model: "50S · Black",
+      description: "Helmet communication system with Sena Mesh Intercom and sound components developed with Harman Kardon.",
+      image: "/images/gear/sena-50s-intercom.webp",
+      imageAlt: "Royal Enfield and Sena 50S helmet intercom communicator",
+      highlights: ["Sound by Harman Kardon", "Mesh Intercom · 9 channels", "Bluetooth 5.0 · 2 km stated range"],
+      fit: "1 size",
+      usedFor: "Helmet-mounted rider-to-rider communication",
+      price: "₹35,990",
+      link: "https://royalenfield.store/in/en/re-x-sena-50s-intercom-black-free-size",
     },
     {
       enabled: true,
@@ -1080,7 +1005,7 @@ const GEARS: GearsData = {
       category: "Bags & carry",
       bodyPart: "Waist / hip",
       id: "gear-classic-sling-bag-rose-gold",
-      name: "Classic Sling Bag — Rose Gold",
+      name: "Classic Sling Gold",
       brand: "Royal Enfield",
       model: "BGA250007 · Rose Gold",
       description: "Compact cross-body sling shown in the supplied product image. Current Rose Gold store listing and price could not be verified.",
@@ -1089,25 +1014,59 @@ const GEARS: GearsData = {
       highlights: ["Moulded hard-shell upper", "Adjustable cross-body strap", "Free size"],
       fit: "Free size",
       usedFor: "Carrying small essentials",
-      price: "",
+      price: "₹990",
       link: "https://royalenfield.store/in/en/men/bags",
     },
     {
       enabled: true,
-      category: "Intercom",
-      bodyPart: "Head",
-      id: "gear-super-meteor-650-x-sena-50s-intercom",
-      name: "Super Meteor 650 x Sena 50S Intercom",
-      brand: "Royal Enfield × Sena",
-      model: "50S · Black",
-      description: "Helmet communication system with Sena Mesh Intercom and sound components developed with Harman Kardon.",
-      image: "/images/gear/sena-50s-intercom.webp",
-      imageAlt: "Royal Enfield and Sena 50S helmet intercom communicator",
-      highlights: ["Sound by Harman Kardon", "Mesh Intercom · 9 channels", "Bluetooth 5.0 · 2 km stated range"],
-      fit: "1 size",
-      usedFor: "Helmet-mounted rider-to-rider communication",
-      price: "₹35,990",
-      link: "https://royalenfield.store/in/en/re-x-sena-50s-intercom-black-free-size",
+      category: "Gloves",
+      bodyPart: "Hands",
+      id: "gear-phoenix-gloves-brown",
+      name: "Phoenix Gloves — Brown",
+      brand: "Royal Enfield",
+      model: "GLA240009 · Brown",
+      description: "Royal Enfield lists these as L1-KP certified gloves for urban and touring, in summer, winter and rain.",
+      image: "/images/gear/phoenix-gloves-brown.webp",
+      imageAlt: "Royal Enfield Phoenix riding gloves in brown",
+      highlights: ["L1-KP certified", "Urban & touring", "Summer, winter & rain"],
+      fit: "Sizes XS–3XL listed",
+      usedFor: "Urban · Touring · Summer, winter and rain",
+      price: "₹2,390",
+      link: "https://royalenfield.store/in/en/phoenix-gloves-tan-23-4-cm-xs",
+    },
+    {
+      enabled: true,
+      category: "Trousers",
+      bodyPart: "Legs",
+      id: "gear-gravel-riding-trouser",
+      name: "Gravel Riding Trouser",
+      brand: "Royal Enfield",
+      model: "TAS250003 · Black",
+      description: "Royal Enfield lists these as Class A certified trousers for urban, touring, adventure and cruising, in summer and rain.",
+      image: "",
+      imageAlt: "Royal Enfield Gravel riding trousers in black",
+      highlights: ["Class A certified", "Urban, touring, adventure & cruising", "Summer & rain"],
+      fit: "Sizes 28–44 listed",
+      usedFor: "Urban · Touring · Adventure · Cruising · Summer & rain",
+      price: "₹8,530",
+      link: "https://royalenfield.store/in/en/dirt-pant-olive-32",
+    },
+    {
+      enabled: true,
+      category: "Boots",
+      bodyPart: "Feet",
+      id: "gear-wanderer-waterproof-boots",
+      name: "Black Wanderer Waterproof Boots",
+      brand: "Royal Enfield",
+      model: "Black · CE certified",
+      description: "The official product page lists these as waterproof riding boots for cruising and adventure use.",
+      image: "/images/gear/wanderer-waterproof-boots.webp",
+      imageAlt: "Black Wanderer Waterproof Boots from the Royal Enfield Store",
+      highlights: ["CE certified", "Waterproof", "Cruising & adventure"],
+      fit: "Sizes 4–12 listed",
+      usedFor: "Cruising · Adventure · Summer, winter and rain",
+      price: "₹9,990",
+      link: "https://royalenfield.store/in/en/wanderer-wp-ing-boots-red-eu-46-uk-12-1720648806",
     },
   ],
 };
@@ -1122,16 +1081,14 @@ const RIDERKIT: RiderKitData = {
   imageAlt: "Illustrative rider wearing a reference-matched black and gold helmet and jacket, tan gloves, black boots and a hip sling bag",
   items: GEARS.items.map((item) => ({ ...item, sourcePickId: item.id, highlights: [...item.highlights] })),
   mapPointers: [
-    { enabled: true, id: "helmet-zennith", label: "Zennith helmet", gearId: "gear-zennith-modular-helmet", zone: "head", x: 43, y: 15, radius: 7 },
     { enabled: true, id: "helmet", label: "Optimus helmet", gearId: "gear-optimus-dual-sport-helmet-black-gold", zone: "head", x: 52, y: 16, radius: 7 },
     { enabled: true, id: "helmet-intercom", label: "Helmet intercom", gearId: "gear-super-meteor-650-x-sena-50s-intercom", zone: "intercom", x: 64, y: 17, radius: 6 },
-    { enabled: true, id: "windfarer-jacket", label: "Windfarer jacket", gearId: "gear-windfarer-v3-class-a-riding-jacket", zone: "torso", x: 39, y: 39, radius: 10 },
     { enabled: true, id: "jacket", label: "Nirvik jacket", gearId: "gear-nirvik-v2-print-class-a-riding-jacket-black-gold", zone: "torso", x: 55, y: 41, radius: 11 },
-    { enabled: true, id: "left-glove", label: "MX Pro gloves", gearId: "gear-mx-pro-gloves", zone: "hands", x: 34, y: 66, radius: 9 },
-    { enabled: true, id: "right-glove", label: "Arizona gloves", gearId: "gear-arizona-leather-gloves-tan", zone: "hands", x: 68, y: 69, radius: 9 },
+    { enabled: true, id: "left-glove", label: "Phoenix gloves", gearId: "gear-phoenix-gloves-brown", zone: "hands", x: 34, y: 66, radius: 9 },
     { enabled: true, id: "sling-bag", label: "Waist / hip bag", gearId: "gear-classic-sling-bag-rose-gold", zone: "waist", x: 61, y: 57, radius: 8 },
-    { enabled: true, id: "trousers", label: "Riding trousers", gearId: "gear-tripper-riding-trouser", zone: "legs", x: 50, y: 71, radius: 14 },
+    { enabled: true, id: "trousers", label: "Riding trousers", gearId: "gear-gravel-riding-trouser", zone: "legs", x: 50, y: 71, radius: 14 },
     { enabled: true, id: "boots", label: "Riding boots", gearId: "gear-wanderer-waterproof-boots", zone: "feet", x: 50, y: 91, radius: 9 },
+
   ],
 };
 
@@ -1265,7 +1222,7 @@ const CTA: CtaData = {
 
 export const DEFAULT_CONTENT: SiteContent = {
   v: 1,
-  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1"],
+  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1", "phoenix-glove-photo-v1"],
   nav: [
     { id: "nav-live", label: "Live", href: "#/live-map", enabled: true },
     { id: "nav-journey", label: "The Journey", href: "#journey", enabled: true },
@@ -1422,6 +1379,7 @@ function loadContent(): SiteContent {
     const shopPicksNavMigration = "shop-my-picks-nav-v1";
     const gearsMyPicksCopyMigration = "gears-my-picks-copy-v1";
     const riderKitIndependentProductsMigration = "riderkit-independent-products-v1";
+    const phoenixGlovePhotoMigration = "phoenix-glove-photo-v1";
     const shouldMigrateGearsNav = !appliedMigrations.includes(gearsNavMigration);
     const shouldSeedGears = !appliedMigrations.includes(gearsPicksMigration);
     const shouldMigrateGearItemIds = !appliedMigrations.includes(gearItemIdsMigration);
@@ -1431,6 +1389,7 @@ function loadContent(): SiteContent {
     const shouldMigrateRiderKitImage = !appliedMigrations.includes(riderKitImageMigration);
     const shouldMigrateRiderKitPointers = !appliedMigrations.includes(riderKitPointerMigration);
     const shouldMigrateRiderKitProductLinks = !appliedMigrations.includes(riderKitProductLinkMigration);
+    const shouldMigratePhoenixGlovePhoto = !appliedMigrations.includes(phoenixGlovePhotoMigration);
     const shouldMigrateRiderKitProductPointerList = !appliedMigrations.includes(riderKitProductPointerListMigration);
     const shouldMigrateRiderKitLabel = !appliedMigrations.includes(riderKitLabelMigration);
     const shouldMigrateShopPicksNav = !appliedMigrations.includes(shopPicksNavMigration);
@@ -1520,13 +1479,20 @@ function loadContent(): SiteContent {
         const currentItems = Array.isArray(currentGears.data.items)
           ? [...(currentGears.data.items as GearItem[])]
           : [];
+        // Keys cover both the current names and the ones these picks carried
+        // before the catalogue was cut down, so a wardrobe saved under an older
+        // build still gets its photo. Products dropped from the catalogue are
+        // gone from here too.
         const suppliedPhotos: Record<string, string> = {
           "Wanderer Waterproof Boots": "/images/gear/wanderer-waterproof-boots.webp",
+          "Black Wanderer Waterproof Boots": "/images/gear/wanderer-waterproof-boots.webp",
           "Optimus Dual Sport Helmet — Black & Gold": "/images/gear/optimus-dual-sport-helmet-black-gold.webp",
-          "Arizona Leather Gloves — Tan": "/images/gear/arizona-leather-gloves-tan.webp",
           "Nirvik V2 Print Class A Riding Jacket — Black & Gold": "/images/gear/nirvik-v2-jacket-black-gold.webp",
           "Classic Sling Bag — Rose Gold": "/images/gear/classic-sling-rose-gold.webp",
+          "Classic Sling Gold": "/images/gear/classic-sling-rose-gold.webp",
           "Super Meteor 650 x Sena 50S Intercom": "/images/gear/sena-50s-intercom.webp",
+          "Super Meteor 650 X Sena Intercom": "/images/gear/sena-50s-intercom.webp",
+          "Phoenix Gloves — Brown": "/images/gear/phoenix-gloves-brown.webp",
         };
         const nextItems = currentItems.map((item) =>
           item && suppliedPhotos[item.name] ? { ...item, image: suppliedPhotos[item.name] } : item
@@ -1535,6 +1501,36 @@ function loadContent(): SiteContent {
           ...currentGears,
           data: { ...currentGears.data, items: nextItems },
         };
+      }
+    }
+
+    // The Phoenix gloves shipped pointing at a reseller photo that has since
+    // been replaced by the official Royal Enfield shot, and the old file is
+    // gone from the repo. Saved wardrobes still hold the stale path, which
+    // leaves the card blank. Repoint them. This carries its own migration key
+    // so it also reaches browsers that already ran the earlier photo swap.
+    // Matched on id as well as name, since a copy saved under an older build
+    // can predate the current id.
+    if (shouldMigratePhoenixGlovePhoto && defaultGears) {
+      const gearIndex = allSections.findIndex((section) => section.type === "gears");
+      const currentGears = gearIndex >= 0 ? allSections[gearIndex] : undefined;
+      if (currentGears) {
+        const currentItems = Array.isArray(currentGears.data.items)
+          ? [...(currentGears.data.items as GearItem[])]
+          : [];
+        const nextItems = currentItems.map((item) =>
+          item &&
+          (item.id === "gear-phoenix-gloves-brown" ||
+            (typeof item.name === "string" && item.name.trim() === "Phoenix Gloves — Brown"))
+            ? { ...item, image: "/images/gear/phoenix-gloves-brown.webp" }
+            : item
+        );
+        if (nextItems.some((item, i) => item !== currentItems[i])) {
+          allSections[gearIndex] = {
+            ...currentGears,
+            data: { ...currentGears.data, items: nextItems },
+          };
+        }
       }
     }
 
@@ -1735,6 +1731,7 @@ function loadContent(): SiteContent {
       ...(shouldMigrateShopPicksNav ? [shopPicksNavMigration] : []),
       ...(shouldMigrateGearsMyPicksCopy ? [gearsMyPicksCopyMigration] : []),
       ...(shouldMigrateRiderKitIndependentProducts ? [riderKitIndependentProductsMigration] : []),
+      ...(shouldMigratePhoenixGlovePhoto ? [phoenixGlovePhotoMigration] : []),
     ];
 
     // A schedule whose moment has passed switches maintenance on before the

@@ -1,69 +1,196 @@
+import {
+  AtSign,
+  Calendar,
+  Camera,
+  Film,
+  Globe,
+  Heart,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Play,
+  Rss,
+  Send,
+  Share2,
+  ShoppingBag,
+  ThumbsUp,
+  Users,
+  Video,
+} from "lucide-react";
+import type { ComponentType } from "react";
+import { BRAND_PATHS } from "./brandPaths";
 import { cn } from "../../utils/cn";
 
 type IconProps = { className?: string };
 
-function Base({
-  className,
-  children,
-  stroke = false,
-  viewBox = "0 0 24 24",
-}: IconProps & { children: React.ReactNode; stroke?: boolean; viewBox?: string }) {
-  return (
-    <svg
-      viewBox={viewBox}
-      className={cn("h-4 w-4", className)}
-      fill={stroke ? "none" : "currentColor"}
-      stroke={stroke ? "currentColor" : "none"}
-      strokeWidth={stroke ? 2 : undefined}
-      strokeLinecap={stroke ? "round" : undefined}
-      strokeLinejoin={stroke ? "round" : undefined}
-      aria-hidden="true"
-    >
-      {children}
-    </svg>
-  );
+/** Draws one committed brand path on the shared 24x24 grid. */
+function brandMark(path: string) {
+  return function BrandMark({ className }: IconProps) {
+    return (
+      <svg viewBox="0 0 24 24" className={cn("h-4 w-4", className)} fill="currentColor" aria-hidden="true">
+        <path d={path} />
+      </svg>
+    );
+  };
 }
 
-export function YouTubeIcon({ className }: IconProps) {
-  return (
-    <Base className={className}>
-      <path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.5A3.02 3.02 0 0 0 .5 6.19 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .5 5.81 3.02 3.02 0 0 0 2.12 2.14c1.88.5 9.38.5 9.38.5s7.5 0 9.38-.5a3.02 3.02 0 0 0 2.12-2.14A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.5-5.81ZM9.55 15.57V8.43L15.82 12l-6.27 3.57Z" />
-    </Base>
-  );
+const pathFor = (key: string) => BRAND_PATHS.find((b) => b.key === key)?.path ?? "";
+
+/**
+ * Named exports kept because other sections use these marks directly.
+ * They now render the official paths rather than the earlier hand-drawn ones.
+ */
+export const YouTubeIcon = brandMark(pathFor("youtube"));
+export const InstagramIcon = brandMark(pathFor("instagram"));
+export const XIcon = brandMark(pathFor("x"));
+export const FacebookIcon = brandMark(pathFor("facebook"));
+
+export type SocialIconComponent = ComponentType<{ className?: string }>;
+
+export interface SocialIconSpec {
+  /** Stored on the social link, so renaming a label never changes its icon. */
+  key: string;
+  label: string;
+  Icon: SocialIconComponent;
 }
 
-export function InstagramIcon({ className }: IconProps) {
-  return (
-    <Base className={className} stroke>
-      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-    </Base>
-  );
-}
-
-export function XIcon({ className }: IconProps) {
-  return (
-    <Base className={className}>
-      <path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.59l5.24 6.93 6.07-6.93Zm-1.29 19.5h2.04L6.49 3.24H4.3l13.31 17.41Z" />
-    </Base>
-  );
-}
-
-export function FacebookIcon({ className }: IconProps) {
-  return (
-    <Base className={className}>
-      <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.49h-2.8V24C19.62 23.1 24 18.1 24 12.07Z" />
-    </Base>
-  );
-}
-
-export const SOCIALS = [
-  { label: "YouTube", Icon: YouTubeIcon },
-  { label: "Instagram", Icon: InstagramIcon },
-  { label: "X (Twitter)", Icon: XIcon },
-  { label: "Facebook", Icon: FacebookIcon },
+/** The order brands appear in the picker: everyday socials, then work, then the rest. */
+const BRAND_ORDER = [
+  // socials and messaging
+  "instagram",
+  "youtube",
+  "x",
+  "facebook",
+  "linkedin",
+  "whatsapp",
+  "telegram",
+  "discord",
+  "reddit",
+  "twitch",
+  "threads",
+  "snapchat",
+  "tiktok",
+  "pinterest",
+  "mastodon",
+  "bluesky",
+  "signal",
+  "matrix",
+  "tumblr",
+  "flickr",
+  "vk",
+  "line",
+  "wechat",
+  "qq",
+  // career and work
+  "indeed",
+  "glassdoor",
+  "wellfound",
+  "upwork",
+  "fiverr",
+  "dribbble",
+  "behance",
+  "stackoverflow",
+  "gitlab",
+  "producthunt",
+  "handshake",
+  "xing",
+  // creator and media
+  "spotify",
+  "soundcloud",
+  "vimeo",
+  "medium",
+  "substack",
+  "patreon",
+  "github",
+  "devdotto",
+  "hashnode",
+  "wordpress",
+  "notion",
+  // travel, money and meet-ups
+  "strava",
+  "komoot",
+  "airbnb",
+  "tripadvisor",
+  "paypal",
+  "etsy",
+  "zoom",
+  "meetup",
 ];
+
+const brandSpecs: SocialIconSpec[] = BRAND_ORDER.flatMap((key) => {
+    const brand = BRAND_PATHS.find((b) => b.key === key);
+    if (!brand) return [];
+    return [{ key: brand.key, label: brand.label, Icon: brandMark(brand.path) }];
+  });
+
+/** Generic glyphs for anything without an official mark. */
+const genericSpecs: SocialIconSpec[] = [
+  { key: "website", label: "Website", Icon: Globe },
+  { key: "mail", label: "Email", Icon: Mail },
+  { key: "phone", label: "Phone", Icon: Phone },
+  { key: "location", label: "Location", Icon: MapPin },
+  { key: "chat", label: "Chat", Icon: MessageCircle },
+  { key: "send", label: "Send", Icon: Send },
+  { key: "camera", label: "Photos", Icon: Camera },
+  { key: "video", label: "Video", Icon: Video },
+  { key: "play", label: "Play", Icon: Play },
+  { key: "store", label: "Store", Icon: ShoppingBag },
+  { key: "calendar", label: "Calendar", Icon: Calendar },
+  { key: "rss", label: "RSS", Icon: Rss },
+  { key: "link", label: "Link", Icon: LinkIcon },
+  { key: "heart", label: "Heart", Icon: Heart },
+  { key: "mention", label: "Mention", Icon: AtSign },
+  { key: "community", label: "Community", Icon: Users },
+  { key: "film", label: "Film", Icon: Film },
+  { key: "image", label: "Image", Icon: ImageIcon },
+  { key: "share", label: "Share", Icon: Share2 },
+  { key: "thumbs", label: "Thumbs up", Icon: ThumbsUp },
+];
+
+export const SOCIAL_ICONS: SocialIconSpec[] = [...brandSpecs, ...genericSpecs];
+
+/** Label-keyed view of the registry, for anything still matching by label. */
+export const SOCIALS: { label: string; Icon: SocialIconComponent }[] = SOCIAL_ICONS.map(
+  ({ label, Icon }) => ({ label, Icon })
+);
+
+export const socialIconLabel = (key: string | undefined): string =>
+  SOCIAL_ICONS.find((s) => s.key === key)?.label ?? "";
+
+/**
+ * Labels used before the icon picker existed, mapped onto today's keys so a
+ * saved link keeps its mark. "X (Twitter)" is the one that no longer matches
+ * any icon name.
+ */
+const LEGACY_LABELS: Record<string, string> = {
+  "x (twitter)": "x",
+  twitter: "x",
+};
+
+/**
+ * Resolve the icon for a saved social link: the stored key wins, then a label
+ * match so links saved before the icon picker existed keep their mark.
+ */
+export function resolveSocialIcon(
+  social?: { label?: string; icon?: string } | null
+): SocialIconComponent | null {
+  if (!social) return null;
+  if (social.icon) {
+    const byKey = SOCIAL_ICONS.find((s) => s.key === social.icon);
+    if (byKey) return byKey.Icon;
+  }
+  const label = (social.label ?? "").trim().toLowerCase();
+  if (!label) return null;
+  const aliased = LEGACY_LABELS[label] ?? label;
+  return (
+    SOCIAL_ICONS.find((s) => s.key === aliased)?.Icon ??
+    SOCIAL_ICONS.find((s) => s.label.toLowerCase() === label)?.Icon ??
+    null
+  );
+}
 
 /** Opens external URLs in a new tab, while keeping in-page links local. */
 export function externalLinkProps(href: string): { target: "_blank"; rel: "noreferrer" } | {} {

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, Volume2, VolumeX, Play } from "lucide-react";
 import { resolveFooter, useSite, type BenefitsData } from "../store/siteContent";
 import Photo from "./ui/Photo";
 import { IMAGES, SHOWREEL_VIDEO } from "../data/content";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { isOn } from "../utils/enabled";
-import { SOCIALS, externalLinkProps } from "./ui/SocialIcons";
+import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 
 export default function Benefits({ data }: { data: BenefitsData }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -137,16 +137,23 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                   {socialLinks.length > 0 && (
                     <div className="flex flex-wrap justify-end gap-2">
                       {socialLinks.map((social) => {
-                        const Icon = SOCIALS.find((item) => item.label === social.label)?.Icon;
+                        const Icon = resolveSocialIcon(social);
                         return (
                           <a
                             key={social.id}
                             href={social.href.trim()}
                             {...externalLinkProps(social.href)}
                             aria-label={social.label}
-                            className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
+                            className="social-link grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
                           >
-                            {Icon ? <Icon className="h-3.5 w-3.5" /> : <span className="text-xs">{social.label[0]}</span>}
+                            <span
+                                className="social-glyph inline-flex"
+                                style={
+                                  social.color ? ({ "--social-glyph-color": social.color } as CSSProperties) : undefined
+                                }
+                              >
+                              {Icon ? <Icon className="h-3.5 w-3.5" /> : <span className="text-xs">{social.label[0]}</span>}
+                            </span>
                           </a>
                         );
                       })}

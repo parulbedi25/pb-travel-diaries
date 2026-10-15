@@ -75,6 +75,11 @@ import { cn } from "../utils/cn";
 import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
 import { pointerColors } from "../utils/pointerColors";
 import ImageField from "./ImageField";
+import ImagesField from "./ImagesField";
+import BlockComposer from "./BlockComposer";
+import SocialIconsEditor from "./SocialIconsEditor";
+import Switch from "./Switch";
+import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
 import {
@@ -97,7 +102,7 @@ import {
   cascadeNavItem,
   cascadeSection,
 } from "./cascade";
-import { BikeLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
+import { LineLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
 import {
   addAnyMediaFile,
   formatBytes,
@@ -145,7 +150,7 @@ async function verifyPassword(pw: string): Promise<boolean> {
 export interface Field {
   path: string;
   label: string;
-  kind: "text" | "textarea" | "number" | "image" | "toggle" | "strings" | "items" | "datetime" | "reveal" | "color" | "file";
+  kind: "text" | "textarea" | "number" | "image" | "images" | "toggle" | "strings" | "items" | "datetime" | "reveal" | "color" | "file";
   hint?: string;
   fields?: Field[];
   template?: unknown;
@@ -169,6 +174,7 @@ function localInputToIso(value: string): string {
 }
 const TA = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "textarea", hint });
 const IMG = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "image", hint });
+const IMAGES = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "images", hint });
 const STR = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "strings", hint });
 
 const GEAR_ITEM_FIELDS: Field[] = [
@@ -178,6 +184,11 @@ const GEAR_ITEM_FIELDS: Field[] = [
   T("brand", "Brand"),
   T("model", "Model"),
   IMG("image", "Gear photo"),
+  IMAGES(
+    "images",
+    "More photos",
+    "Optional. Every photo here joins the main one as a slider on the shop page — the first slide is the photo above.",
+  ),
   T("imageAlt", "Photo alt text"),
   TA("description", "Why I wear it / notes"),
   STR("highlights", "Highlights / specs", "One per line"),
@@ -196,6 +207,7 @@ const GEAR_ITEM_TEMPLATE = {
   model: "",
   description: "",
   image: "",
+  images: [],
   imageAlt: "",
   highlights: [],
   fit: "",
@@ -588,43 +600,6 @@ function setAt<T>(obj: T, path: string, value: unknown): T {
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
 
-function Switch({
-  on,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  on: boolean;
-  onChange: (v: boolean) => void;
-  label?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      aria-disabled={disabled}
-      disabled={disabled}
-      onClick={() => {
-        if (!disabled) onChange(!on);
-      }}
-      className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
-        disabled && "cursor-not-allowed opacity-50",
-        on ? "bg-saffron-400" : "bg-white/15"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
-          on ? "left-[22px]" : "left-0.5"
-        )}
-      />
-    </button>
-  );
-}
-
 export function FieldRow({
   field,
   value,
@@ -708,6 +683,12 @@ export function FieldRow({
       ) : field.kind === "image" ? (
         <ImageField
           value={(value as string) ?? ""}
+          onChange={(v) => onChange(v)}
+          hint={field.hint}
+        />
+      ) : field.kind === "images" ? (
+        <ImagesField
+          value={(value as string[]) ?? []}
           onChange={(v) => onChange(v)}
           hint={field.hint}
         />
@@ -2296,7 +2277,7 @@ function SectionsPanel() {
   };
 
   const addSection = () => {
-    logAction("Added a Custom Section block");
+    logAction("Added a composed section");
     const id = `sec-custom-${Date.now()}`;
     updateDraft((c) => ({
       ...c,
@@ -2305,17 +2286,23 @@ function SectionsPanel() {
         {
           id,
           type: "custom",
-          label: "Custom section",
+          label: "New section",
           enabled: true,
+          // A section starts as an empty canvas plus one heading and one
+          // paragraph, so it is immediately editable rather than blank.
           data: {
-            eyebrow: "New section",
-            title: "A fresh story block",
-            sub: "Describe it here — visitors will see this right on the page.",
-            image: "",
-            imageAlt: "",
-            buttonLabel: "Learn more",
-            buttonHref: "#top",
-            layout: "image-right",
+            blocks: [
+              { ...createBlock("heading"), data: { eyebrow: "", text: "A fresh section", level: "h2", align: "left" } },
+              {
+                ...createBlock("text"),
+                data: {
+                  body: "Describe it here — visitors will see this right on the page.",
+                  align: "left",
+                  columns: "1",
+                  size: "base",
+                },
+              },
+            ],
           },
         },
       ],
@@ -2420,9 +2407,17 @@ function SectionsPanel() {
     writeSectionData(selected.id, next as unknown as Record<string, unknown>);
   };
 
+  // A `custom` section carrying a `blocks` array is composed from the
+  // component palette. The older fixed fields still drive sections that were
+  // built before the composer existed, so those keep rendering untouched.
+  const composedBlocks =
+    selected && Array.isArray(selected.data?.blocks) ? (selected.data.blocks as SectionBlock[]) : null;
+
   const fields = selected
     ? selected.type === "custom"
-      ? CUSTOM_FIELDS
+      ? composedBlocks
+        ? []
+        : CUSTOM_FIELDS
       : SECTION_FIELDS[selected.type]
     : [];
 
@@ -2621,6 +2616,13 @@ function SectionsPanel() {
               />
             )}
             <div className="grid max-h-[65vh] gap-5 overflow-y-auto pr-2 no-scrollbar">
+              {composedBlocks && selected && (
+                <BlockComposer
+                  blocks={composedBlocks}
+                  sectionLabel={selected.label}
+                  onChange={(next) => setSectionData(selected.id, "blocks", next)}
+                />
+              )}
               {fields.map((f) => {
                 if (selected.type === "countdown" && f.kind === "reveal") {
                   return (
@@ -3402,7 +3404,7 @@ function SettingsPanel() {
                       className="max-h-[64px] max-w-[150px] object-contain"
                     />
                   ) : (
-                    <BikeLoaderMark />
+                    <LineLoaderMark />
                   )}
                 </span>
               </div>
@@ -3478,7 +3480,7 @@ function SettingsPanel() {
                         {loaderDraft ? (
                           <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
                         ) : (
-                          <BikeLoaderMark />
+                          <LineLoaderMark className="ldr-line-sm" />
                         )}
                       </span>
                     </span>
@@ -4064,6 +4066,9 @@ function FooterPanel() {
     );
 
   // Social links
+  const setSocials = (next: FooterSocial[], action: string) =>
+    write(action, (cur) => ({ ...cur, socials: next }));
+
   const setSocial = (id: string, patch: Partial<FooterSocial>) =>
     write("Edited site-wide social links", (cur) =>
       patch.enabled !== undefined
@@ -4278,28 +4283,11 @@ function FooterPanel() {
             <p className="mt-0.5 text-[11px] text-zinc-500">
               Set each profile URL and visibility for the footer, showreel card, and live tracker.
             </p>
-            <ul className="mt-4 flex flex-col gap-2.5">
-              {f.socials.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"
-                >
-                  <span className="w-28 text-sm font-medium text-zinc-200">{s.label}</span>
-                  <input
-                    value={s.href}
-                    onChange={(e) => setSocial(s.id, { href: e.target.value })}
-                    aria-label={`${s.label} profile URL`}
-                    placeholder="https://…"
-                    className={cn(inputCls, "min-w-0 flex-1 py-2 font-mono text-xs")}
-                  />
-                  <Switch
-                    on={s.enabled}
-                    onChange={(v) => setSocial(s.id, { enabled: v })}
-                    label={`Show ${s.label} icons site-wide`}
-                  />
-                </li>
-              ))}
-            </ul>
+            <SocialIconsEditor
+              socials={f.socials}
+              onPatch={(id, patch) => setSocial(id, patch)}
+              onChange={(next, action) => setSocials(next, action)}
+            />
           </div>
 
           <div className="grid gap-4 rounded-3xl glass p-5">
@@ -4355,7 +4343,7 @@ function FooterPanel() {
             <div className="max-h-[78vh] overflow-y-auto rounded-3xl border border-white/10 bg-ink-950">
               {/* inert: preview links must not navigate away from the dashboard */}
               <div inert>
-                <FooterView settings={f} />
+                <FooterView settings={f} preview />
               </div>
             </div>
           ) : (

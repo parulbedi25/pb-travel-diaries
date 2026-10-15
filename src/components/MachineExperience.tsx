@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
   Check,
   Cog,
+  Crosshair,
   Download,
   ExternalLink,
   Eye,
@@ -170,6 +171,10 @@ type PanelResizeDrag = {
 const PANEL_MIN_W = 190;
 const PANEL_MIN_H = 170;
 const PANEL_GAP = 16;
+/** How far the photo magnifies on a focused pointer. Same as the rider map. */
+const MACHINE_ZOOM = 1.65;
+/** How long a pointer stays focused after the cursor leaves it, in ms. */
+const HOVER_GRACE = 200;
 
 /**
  * Pointer bubble. Positioned in pixels and clamped to the bike image so it is
@@ -207,7 +212,10 @@ function AccessoryBubble({
 
       const px = (xPct / 100) * width;
       const py = (yPct / 100) * height;
-      const gap = 12;
+      // Clears the pointer's padded target, which reaches 28px from its
+      // centre — a bubble that close took the hover away from the pointer it
+      // belongs to.
+      const gap = 36;
       const pad = 10;
 
       // Prefer right of the pointer, flip left when it would overflow, then clamp.
@@ -293,6 +301,30 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const [listOpen, setListOpen] = useState<number | null>(null);
   const focusIdx = hoverIdx ?? pinnedIdx;
   const bubbleIdx = hoverIdx ?? pinnedIdx;
+  // The bike's pointers pulse exactly like the rider map's; visitors who ask
+  // for less motion get the still ring instead.
+  const reduceMotion = useReducedMotion();
+  // Zoom follows the focus, as it does on the rider map: hovering or pinning a
+  // pointer magnifies the photo on that pointer. The pointers live inside the
+  // zoom layer, so they travel with the part they mark and counter-scale to
+  // keep their size.
+  // The photo moves underneath the cursor as it magnifies, so a hover that
+  // ends the instant the cursor crosses an edge flickers. Leaving is held for
+  // a moment; entering is immediate, so a pointer is picked up on approach.
+  const leaveTimer = useRef<number | null>(null);
+  const cancelLeave = () => {
+    if (leaveTimer.current !== null) {
+      window.clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+    }
+  };
+  useEffect(() => cancelLeave, []);
+
+  const focusedSpot = focusIdx !== null ? spots[focusIdx] : undefined;
+  const zoomPoint = focusedSpot
+    ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
+    : null;
+  const zoomed = Boolean(zoomPoint);
   const isExpanded = (idx: number) => (focusIdx === null ? listOpen === idx : idx === focusIdx);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -463,8 +495,22 @@ export default function MachineExperience({ data }: { data: MachineData }) {
           right padding, so pointers are positioned against the image box. */}
       <div
         ref={imageAreaRef}
-        className="machine-image-area relative w-full"
+        className="machine-image-area relative w-full overflow-hidden"
       >
+        <div
+          className="relative will-change-transform"
+          style={{
+            transform: zoomed ? `scale(${MACHINE_ZOOM})` : "scale(1)",
+            transformOrigin: zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
+            // Only the scale is animated. The origin is snapped: while it
+            // animates from the centre to the pointer, the pointer itself
+            // slides out from under the cursor, the hover drops, the photo
+            // zooms back out and the pointer returns — a zoom in / zoom out
+            // loop. Snapping the origin means the point under the cursor is
+            // the one that stays put.
+            transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1)",
+          }}
+        >
       <Photo
         src={data.mainImage}
         alt={data.mainImageAlt}
@@ -473,12 +519,6 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         label="Bike photo unavailable"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />
-      <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
-        {/* Solid gold in both themes: the old black plate was unreadable on
-            the light theme's pale bike photo. */}
-        <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">HANLE BLACK</span>
-        <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">Sherpa 450 · 2024</span>
-      </div>
 
       {spots.map((h, i) => {
         const x = clampPct(h.x);
@@ -490,60 +530,97 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         // Same left-to-right wave as the rider map: the bike's pointers
         // ripple across the photo instead of pulsing in unison.
         const wave = waveDelay(x);
+        // While the photo is magnified the pointers that are not the focus
+        // settle: no pulse, and a little smaller, so the focused one reads on
+        // its own — the same as the rider map's markers when zoomed.
+        const dimmed = zoomed && !isOn;
+        // Counter-scale by the zoom so only the pointer's position follows the
+        // photo, not its size; the focused one keeps a little extra.
+        const scale = (zoomed ? 1 / MACHINE_ZOOM : 1) * (dimmed ? 0.6 : 1) * (isOn ? 1.1 : 1);
+        const pulse = !reduceMotion && !dimmed;
         return (
           <div
             key={`${h.title}-${i}`}
-            className="absolute z-20"
+            className={cn(
+              // Padded out well past the visible dot, so a pointer is picked
+              // up as the cursor approaches it rather than only once it is
+              // exactly on top of a 32px target.
+              "absolute z-20 p-3",
+              // While the photo is magnified on one pointer the others stop
+              // taking the hover. They are dimmed and shrunk anyway, and
+              // taking over from here would snap the view to a pointer that
+              // has moved somewhere else entirely.
+              dimmed && "pointer-events-none"
+            )}
             style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
             onMouseEnter={() => {
               if (dragRef.current) return;
+              cancelLeave();
               setHoverIdx(i);
             }}
             onMouseLeave={() => {
               if (dragRef.current) return;
-              setHoverIdx((prev) => (prev === i ? null : prev));
+              cancelLeave();
+              leaveTimer.current = window.setTimeout(() => {
+                leaveTimer.current = null;
+                setHoverIdx((prev) => (prev === i ? null : prev));
+              }, HOVER_GRACE);
             }}
           >
-            {isOn && (
-              <span
-                className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl ring-2"
-                style={{ backgroundColor: withAlpha(ring, 0.2), "--tw-ring-color": withAlpha(ring, 0.5) } as React.CSSProperties}
-                aria-hidden
-              />
-            )}
             <button
               type="button"
               data-pointer-index={i}
               onClick={() => setPinnedIdx((prev) => (prev === i ? null : i))}
               aria-pressed={pinnedIdx === i}
               aria-label={`Show ${h.title}`}
-              className="relative grid place-items-center"
+              style={{
+                // Counter-scale, so the pointer keeps its size while the photo
+                // magnifies underneath it.
+                transform: `scale(${scale})`,
+                // The pointer's own colour on the border and the crosshair;
+                // the focused one picks up a glow in its pulse colour, and the
+                // dimmed ones glow instead of simply fading so they stay
+                // findable while the photo is zoomed in.
+                borderColor: withAlpha(dot, isOn || !zoomed ? 0.9 : 0.6),
+                boxShadow: dimmed
+                  ? `0 0 12px ${withAlpha(ring, 0.75)}, 0 0 26px ${withAlpha(ring, 0.35)}`
+                  : isOn
+                    ? `0 0 18px ${withAlpha(ring, 0.55)}, 0 6px 16px rgba(0,0,0,0.5)`
+                    : "0 6px 16px rgba(0,0,0,0.5)",
+              }}
+              className={cn(
+                "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                dimmed ? "opacity-70" : "opacity-100"
+              )}
             >
-              <span
-                data-pointer-active={isOn ? "true" : undefined}
-                className="pointer-pulse pointer-events-none absolute h-10 w-10 rounded-full"
-                style={{ backgroundColor: withAlpha(ring, 0.6), animationDelay: `${wave}s` }}
-                aria-hidden
-              />
-              <span
-                className={cn(
-                  "relative grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur-md transition-all duration-300",
-                  isOn ? "scale-110 border-white" : "border-white/60 hover:scale-110 hover:border-white"
-                )}
-                style={{
-                  backgroundColor: withAlpha(dot, isOn ? 0.55 : 0.25),
-                  boxShadow: isOn ? `0 8px 24px ${withAlpha(ring, 0.4)}` : undefined,
-                }}
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: dot, boxShadow: `0 0 8px ${dot}` }}
+              {pulse ? (
+                <motion.span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                  style={{ borderColor: ring }}
+                  animate={{ scale: [0.92, 1.5, 0.92], opacity: [0.38, 0.85, 0.38] }}
+                  transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut", delay: wave }}
                 />
-              </span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                  style={{ borderColor: ring, opacity: 0.6 }}
+                />
+              )}
+              <Crosshair className="relative h-3.5 w-3.5" style={{ color: dot }} aria-hidden="true" />
             </button>
           </div>
         );
       })}
+        </div>
+
+      <div className="absolute left-5 top-5 flex flex-wrap items-center gap-2">
+        {/* Solid gold in both themes: the old black plate was unreadable on
+            the light theme's pale bike photo. */}
+        <span className="rounded-full bg-saffron-400 px-3.5 py-1.5 text-xs font-bold tracking-wide text-on-gold shadow-lg shadow-saffron-400/25 backdrop-blur-md">HANLE BLACK</span>
+        <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md">Sherpa 450 · 2024</span>
+      </div>
 
       {/* ── Bubble, clamped inside the bike image ── */}
       <AnimatePresence>

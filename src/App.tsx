@@ -118,6 +118,7 @@ function Section({ entry, revealed = false }: { entry: SectionEntry; revealed?: 
       const d = entry.data as Partial<CustomData>;
       return (
         <CustomSection
+          entry={entry}
           data={{
             eyebrow: d.eyebrow ?? "",
             title: d.title ?? "",

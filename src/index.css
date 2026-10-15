@@ -46,9 +46,15 @@
     from { stroke-dashoffset: 16; }
     to { stroke-dashoffset: 0; }
   }
-  @keyframes ldr-ride {
-    from { transform: translateX(90px); }
-    to { transform: translateX(-90px); }
+  @keyframes ldr-line-sweep {
+    /* Off the left end, across, then held off the right for the last 40% of
+       the loop: a sweep with a beat between passes, not a constant slide. */
+    0% { transform: translateX(-100%); }
+    60%, 100% { transform: translateX(100%); }
+  }
+  @keyframes ldr-line-breathe {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
   @keyframes ldr-bar {
     0% { transform: translateX(-100%); }
@@ -179,11 +185,55 @@
   }
 
   /* ── Loader ── */
-  .ldr-ride {
-    animation: ldr-ride 2.4s linear infinite;
-  }
   .ldr-bar {
     animation: ldr-bar 1.15s ease-in-out infinite;
+  }
+
+  /* ── Built-in loader mark: one yellow line, animated ──
+     The track is faint yellow; the segment that sweeps it has a bright head,
+     and a blurred halo behind the whole line breathes in time with it. */
+  .ldr-line-wrap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: 0.75rem 0;
+  }
+  .ldr-line-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(245, 179, 1, 0.22), transparent 72%);
+    filter: blur(8px);
+    animation: ldr-line-breathe 1.6s ease-in-out infinite;
+  }
+  .ldr-line {
+    position: relative;
+    display: block;
+    width: min(14rem, 62vw);
+    height: 3px;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: rgba(245, 179, 1, 0.16);
+  }
+  .ldr-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      rgba(245, 179, 1, 0) 0%,
+      rgba(245, 179, 1, 0.35) 28%,
+      #ffdf8a 50%,
+      rgba(245, 179, 1, 0.35) 72%,
+      rgba(245, 179, 1, 0) 100%
+    );
+    box-shadow: 0 0 12px rgba(245, 179, 1, 0.55);
+    animation: ldr-line-sweep 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  /* Narrow variant for the dashboard's animation tiles. */
+  .ldr-line-sm .ldr-line {
+    width: 4.5rem;
   }
 
   /* Loader logo/icon motion. Each class drives the whole mark, so an uploaded
@@ -302,6 +352,41 @@
   );
 }
 
+/* The bike photo is a cut-out — roughly 70% of it is transparent — so whatever
+   the image box paints behind it shows through around the bike.
+
+   Dark: a little warm white light behind the bike. The photo is dark on a dark
+   page, so the bike's own dark areas, the HIMALAYAN decal among them, had
+   nothing to read against. The light is deliberately faint: a halo, not a
+   spotlight. Centred on the bike, which sits at about 50% across and a little
+   below the middle of the frame.
+
+   Light: the page colour instead, which covers the wash above. Its radial is
+   built from the photo's own dominant colour — a dark grey — and it used to
+   bleed through behind the bike as a grey panel. The parts list keeps its
+   wash; only the area behind the bike is covered. */
+.machine-image-area {
+  background-image:
+    /* Broad spread. The first version hugged the bike and left the big
+       HIMALAYAN letters at the edges of the frame unlit. */
+    radial-gradient(
+      ellipse 88% 92% at 50% 52%,
+      rgba(255, 240, 186, 0.17) 0%,
+      rgba(255, 236, 168, 0.09) 52%,
+      transparent 86%
+    ),
+    /* A little more light where the bike itself sits. */
+    radial-gradient(
+      ellipse 44% 46% at 50% 55%,
+      rgba(255, 249, 230, 0.18) 0%,
+      transparent 72%
+    );
+}
+[data-theme="light"] .machine-image-area {
+  background-color: var(--color-ink-950);
+  background-image: none;
+}
+
 /* ── Accent text colour ────────────────────────────────────────────────────
    The "Accent text" token in the dashboard's Theme colours panel drives this
    variable, so these are only the pre-hydration fallbacks — they mirror
@@ -343,21 +428,6 @@
 [data-theme="light"] .dashboard-nav-option[aria-pressed="true"] {
   border-color: #f5b301;
   background-color: rgba(245, 179, 1, 0.14);
-}
-
-/* Pointer dots pulse by default; hovering the bike image pauses them so the
-   dots settle and the photo reads cleanly. */
-.pointer-pulse {
-  animation: pointer-pulse 1.9s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-}
-.machine-image-area:hover .pointer-pulse {
-  animation-play-state: paused;
-  opacity: 0;
-}
-@keyframes pointer-pulse {
-  0% { transform: scale(0.7); opacity: 0.75; }
-  70% { transform: scale(1.9); opacity: 0; }
-  100% { transform: scale(1.9); opacity: 0; }
 }
 
 /* Equal, symmetric elevation: zero horizontal offset so a panel's shadow reads
@@ -442,6 +512,45 @@
 }
 [data-theme="light"] .machine-parts-product {
   color: #211b10 !important;
+}
+
+/* ── Product plate ──────────────────────────────────────────────────────────
+   The surface a product photo sits on, in My Picks, The Gear and the rider kit
+   list. Product shots are photographed and cut out against white, so this has
+   to stay white in both themes.
+
+   It cannot be `bg-white`: the light theme remaps --color-white to near-black
+   ink (so text and fills invert together), which turned every product tile
+   into a black slab on the cream page. This is the literal white those photos
+   were shot against. Missing-photo tiles keep the themed ink plate instead,
+   since there is nothing to sit on white. */
+.product-plate {
+  background-color: #ffffff;
+}
+
+/* The open-box glyph standing in for a product photo that has not been added
+   yet. Saffron on the black card, where it reads as part of the accent
+   language; muted grey on the cream card, where a yellow glyph reads as a
+   warning rather than as a placeholder. It tracks the tokens, so a custom
+   dashboard palette moves it too. */
+.photo-empty-mark {
+  color: var(--color-saffron-300);
+}
+[data-theme="light"] .photo-empty-mark {
+  color: var(--color-zinc-500);
+}
+
+/* Social icons in the footer and on the showreel card.
+   A colour picked in the dashboard is passed in as a custom property rather
+   than an inline colour: an inline style would outrank the hover rule and the
+   mark would keep its own colour on the gold pill. On hover the glyph goes
+   black, whichever colour it was. */
+.social-glyph {
+  color: var(--social-glyph-color, inherit);
+}
+.social-link:hover .social-glyph,
+.social-link:focus-visible .social-glyph {
+  color: #000000;
 }
 
 /* Product callout on The Gear rider map: anchor beside the selected pointer on
@@ -612,9 +721,9 @@
   .animate-blink,
   .animate-radar,
   .animate-route-dash,
-  .ldr-ride,
   .ldr-bar,
-  .pointer-pulse,
+  .ldr-line::after,
+  .ldr-line-wrap::before,
   [class*="ldr-anim-"] {
     animation: none !important;
   }

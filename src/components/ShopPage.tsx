@@ -5,7 +5,7 @@ import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { Item, Reveal, Stagger } from "./ui/motion";
-import Photo from "./ui/Photo";
+import ProductGallery from "./ProductGallery";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
@@ -143,19 +143,12 @@ export default function ShopPage() {
                     return (
                       <Item key={productKey(item)}>
                         <article className="group flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-white/[0.09] bg-white/[0.025] transition-colors hover:border-saffron-300/30 hover:bg-white/[0.04]">
-                          <div className={cn("relative aspect-[4/3] overflow-hidden", localImage ? "bg-white" : "bg-ink-900")}>
-                            {item.image ? (
-                              <Photo
-                                src={item.image}
-                                alt={item.imageAlt?.trim() || title}
-                                className={cn("h-full w-full transition-transform duration-500 group-hover:scale-[1.035]", localImage ? "object-contain" : "object-cover")}
-                                label="Product image unavailable"
-                              />
-                            ) : (
-                              <div className="grid h-full place-items-center bg-white/[0.03] text-zinc-500">
-                                <PackageOpen className="h-7 w-7" aria-hidden="true" />
-                              </div>
-                            )}
+                          <div className={cn("relative aspect-[4/3] overflow-hidden", localImage ? "product-plate" : "bg-ink-900")}>
+                            <ProductGallery
+                              images={[item.image, ...(Array.isArray(item.images) ? item.images : [])]}
+                              alt={item.imageAlt?.trim() || title}
+                              plate={localImage}
+                            />
                             <span className="absolute left-4 top-4 rounded-full border border-white/15 bg-ink-950/70 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
                               {item.category?.trim() || "Riding gear"}
                             </span>
