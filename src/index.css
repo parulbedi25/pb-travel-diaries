@@ -470,6 +470,19 @@
   color: var(--color-zinc-500);
 }
 
+/* Social icons in the footer and on the showreel card.
+   A colour picked in the dashboard is passed in as a custom property rather
+   than an inline colour: an inline style would outrank the hover rule and the
+   mark would keep its own colour on the gold pill. On hover the glyph goes
+   black, whichever colour it was. */
+.social-glyph {
+  color: var(--social-glyph-color, inherit);
+}
+.social-link:hover .social-glyph,
+.social-link:focus-visible .social-glyph {
+  color: #000000;
+}
+
 /* Product callout on The Gear rider map: anchor beside the selected pointer on
    wider screens, then use a contained bottom card on narrow screens. */
 .gear-product-bubble {

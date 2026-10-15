@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { ArrowUp } from "lucide-react";
 import { Logo } from "./Navbar";
 import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
@@ -41,9 +41,12 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                       href={s.href.trim()}
                       {...externalLinkProps(s.href)}
                       aria-label={s.label}
-                      className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
+                      className="social-link grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
                     >
-                      <span className="inline-flex" style={s.color ? { color: s.color } : undefined}>
+                      <span
+                        className="social-glyph inline-flex"
+                        style={s.color ? ({ "--social-glyph-color": s.color } as CSSProperties) : undefined}
+                      >
                         {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{s.label[0]}</span>}
                       </span>
                     </a>
