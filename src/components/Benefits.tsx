@@ -146,7 +146,9 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                             aria-label={social.label}
                             className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
                           >
-                            {Icon ? <Icon className="h-3.5 w-3.5" /> : <span className="text-xs">{social.label[0]}</span>}
+                            <span className="inline-flex" style={social.color ? { color: social.color } : undefined}>
+                              {Icon ? <Icon className="h-3.5 w-3.5" /> : <span className="text-xs">{social.label[0]}</span>}
+                            </span>
                           </a>
                         );
                       })}

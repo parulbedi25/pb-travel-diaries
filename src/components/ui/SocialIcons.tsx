@@ -26,28 +26,6 @@ import { cn } from "../../utils/cn";
 
 type IconProps = { className?: string };
 
-function Base({
-  className,
-  children,
-  stroke = false,
-  viewBox = "0 0 24 24",
-}: IconProps & { children: React.ReactNode; stroke?: boolean; viewBox?: string }) {
-  return (
-    <svg
-      viewBox={viewBox}
-      className={cn("h-4 w-4", className)}
-      fill={stroke ? "none" : "currentColor"}
-      stroke={stroke ? "currentColor" : "none"}
-      strokeWidth={stroke ? 2 : undefined}
-      strokeLinecap={stroke ? "round" : undefined}
-      strokeLinejoin={stroke ? "round" : undefined}
-      aria-hidden="true"
-    >
-      {children}
-    </svg>
-  );
-}
-
 /** Draws one committed brand path on the shared 24x24 grid. */
 function brandMark(path: string) {
   return function BrandMark({ className }: IconProps) {
@@ -70,22 +48,6 @@ export const InstagramIcon = brandMark(pathFor("instagram"));
 export const XIcon = brandMark(pathFor("x"));
 export const FacebookIcon = brandMark(pathFor("facebook"));
 
-/**
- * LinkedIn is not published by simple-icons, so it is built from primitives:
- * a rounded square with the "in" lettering. Everything else here is an
- * official path.
- */
-export function LinkedInIcon({ className }: IconProps) {
-  return (
-    <Base className={className} stroke>
-      <rect x="2" y="2" width="20" height="20" rx="4" ry="4" />
-      <circle cx="7.3" cy="7.3" r="1.3" fill="currentColor" stroke="none" />
-      <rect x="6.6" y="10.2" width="1.4" height="6.4" rx="0.5" fill="currentColor" stroke="none" />
-      <path d="M11.2 16.6V12.2a2.65 2.65 0 0 1 5.3 0V16.6" />
-    </Base>
-  );
-}
-
 export type SocialIconComponent = ComponentType<{ className?: string }>;
 
 export interface SocialIconSpec {
@@ -95,12 +57,14 @@ export interface SocialIconSpec {
   Icon: SocialIconComponent;
 }
 
-/** The order brands appear in the picker: everyday socials, then the rest. */
+/** The order brands appear in the picker: everyday socials, then work, then the rest. */
 const BRAND_ORDER = [
+  // socials and messaging
   "instagram",
   "youtube",
   "x",
   "facebook",
+  "linkedin",
   "whatsapp",
   "telegram",
   "discord",
@@ -113,6 +77,27 @@ const BRAND_ORDER = [
   "mastodon",
   "bluesky",
   "signal",
+  "matrix",
+  "tumblr",
+  "flickr",
+  "vk",
+  "line",
+  "wechat",
+  "qq",
+  // career and work
+  "indeed",
+  "glassdoor",
+  "wellfound",
+  "upwork",
+  "fiverr",
+  "dribbble",
+  "behance",
+  "stackoverflow",
+  "gitlab",
+  "producthunt",
+  "handshake",
+  "xing",
+  // creator and media
   "spotify",
   "soundcloud",
   "vimeo",
@@ -120,20 +105,26 @@ const BRAND_ORDER = [
   "substack",
   "patreon",
   "github",
+  "devdotto",
+  "hashnode",
+  "wordpress",
+  "notion",
+  // travel, money and meet-ups
   "strava",
   "komoot",
   "airbnb",
   "tripadvisor",
+  "paypal",
+  "etsy",
+  "zoom",
+  "meetup",
 ];
 
-const brandSpecs: SocialIconSpec[] = [
-  { key: "linkedin", label: "LinkedIn", Icon: LinkedInIcon },
-  ...BRAND_ORDER.flatMap((key) => {
+const brandSpecs: SocialIconSpec[] = BRAND_ORDER.flatMap((key) => {
     const brand = BRAND_PATHS.find((b) => b.key === key);
     if (!brand) return [];
     return [{ key: brand.key, label: brand.label, Icon: brandMark(brand.path) }];
-  }),
-];
+  });
 
 /** Generic glyphs for anything without an official mark. */
 const genericSpecs: SocialIconSpec[] = [

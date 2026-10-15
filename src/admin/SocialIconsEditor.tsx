@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { FooterSocial } from "../store/siteContent";
 import { SOCIAL_ICONS, resolveSocialIcon, socialIconLabel } from "../components/ui/SocialIcons";
 import Switch from "./Switch";
@@ -39,6 +39,11 @@ export default function SocialIconsEditor({
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [bubble, setBubble] = useState<BubblePos | null>(null);
   const anchorRef = useRef<HTMLElement | null>(null);
+  // The row as it was before it was edited in this session, so Reset can put
+  // back the icon, colour and name. Taken once per row: re-opening the bubble
+  // after a change must not move the goalposts, or "reset" would only ever
+  // undo the last visit.
+  const snapshots = useRef(new Map<string, FooterSocial>());
   // Only a drag that began on the grip reorders the list, so selecting text in
   // the URL field still behaves normally.
   const armed = useRef<string | null>(null);
@@ -72,6 +77,8 @@ export default function SocialIconsEditor({
       return;
     }
     anchorRef.current = el;
+    const opening = socials.find((s) => s.id === id);
+    if (opening && !snapshots.current.has(id)) snapshots.current.set(id, { ...opening });
     setPickerFor(id);
     place();
   };
@@ -114,6 +121,20 @@ export default function SocialIconsEditor({
     onChange(next, "Reordered social icons");
   };
 
+  const resetEntry = () => {
+    if (!pickerFor) return;
+    const social = socials.find((s) => s.id === pickerFor);
+    if (!social) return;
+    const base = snapshots.current.get(social.id);
+    const fallback = SOCIAL_ICONS[0];
+    onPatch(social.id, {
+      icon: base?.icon ?? fallback.key,
+      label: base?.label ?? fallback.label,
+      // Clear any custom colour either way: a reset icon is a plain one.
+      color: undefined,
+    });
+  };
+
   const pickIcon = (social: FooterSocial, key: string) => {
     const spec = SOCIAL_ICONS.find((s) => s.key === key);
     if (!spec) return;
@@ -144,6 +165,8 @@ export default function SocialIconsEditor({
       "Added a social icon"
     );
   };
+
+  const active = socials.find((s) => s.id === pickerFor) ?? null;
 
   return (
     <div>
@@ -243,13 +266,6 @@ export default function SocialIconsEditor({
               </button>
 
               <input
-                value={s.label}
-                onChange={(e) => onPatch(s.id, { label: e.target.value })}
-                aria-label="Icon name"
-                placeholder="Name"
-                className={cn(inputCls, "w-32 shrink-0 py-2")}
-              />
-              <input
                 value={s.href}
                 onChange={(e) => onPatch(s.id, { href: e.target.value })}
                 aria-label={`${s.label || "Social"} profile URL`}
@@ -294,7 +310,7 @@ export default function SocialIconsEditor({
         Add icon
       </button>
 
-      {pickerFor &&
+      {active &&
         bubble &&
         createPortal(
           <div
@@ -309,27 +325,47 @@ export default function SocialIconsEditor({
               style={{ left: bubble.caret - 6 }}
               className="absolute -top-1.5 h-3 w-3 rotate-45 border-l border-t border-white/10 bg-ink-950"
             />
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              Choose an icon
-            </p>
+            <div className="mb-2 flex items-center gap-2">
+              <input
+                value={active.label}
+                onChange={(e) => onPatch(active.id, { label: e.target.value })}
+                aria-label="Icon name"
+                placeholder="Name"
+                className={cn(inputCls, "min-w-0 flex-1 py-1.5 text-xs")}
+              />
+              <input
+                type="color"
+                value={active.color || "#f5b301"}
+                onChange={(e) => onPatch(active.id, { color: e.target.value })}
+                aria-label={`Custom colour for ${active.label || "this icon"}`}
+                title="Custom colour"
+                className="h-7 w-9 shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/[0.05] p-0.5"
+              />
+              <button
+                type="button"
+                onClick={resetEntry}
+                aria-label="Reset icon, colour and name"
+                title="Reset icon, colour and name"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-white/15 text-zinc-400 transition-colors hover:border-saffron-300/50 hover:text-white"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
             <div className="grid max-h-64 grid-cols-6 gap-1.5 overflow-y-auto pr-1">
               {SOCIAL_ICONS.map((spec) => {
                 const PickIcon = spec.Icon;
-                const active = spec.key === iconKeyOf(socials, pickerFor);
+                const isActive = spec.key === active.icon;
                 return (
                   <button
                     key={spec.key}
                     type="button"
                     aria-label={spec.label}
-                    aria-pressed={active}
+                    aria-pressed={isActive}
                     title={spec.label}
-                    onClick={() => {
-                      const social = socials.find((x) => x.id === pickerFor);
-                      if (social) pickIcon(social, spec.key);
-                    }}
+                    onClick={() => pickIcon(active, spec.key)}
                     className={cn(
                       "grid h-9 w-9 place-items-center rounded-lg border transition-colors",
-                      active
+                      isActive
                         ? "border-saffron-400 bg-saffron-400/15 text-saffron-300"
                         : "border-white/10 text-zinc-300 hover:border-white/25 hover:text-white"
                     )}
@@ -346,7 +382,3 @@ export default function SocialIconsEditor({
   );
 }
 
-/** The icon key currently set on the row whose bubble is open. */
-function iconKeyOf(socials: FooterSocial[], id: string): string | undefined {
-  return socials.find((s) => s.id === id)?.icon;
-}

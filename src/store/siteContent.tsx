@@ -121,6 +121,8 @@ export interface FooterSocial {
   /** Key into SOCIAL_ICONS. Optional: links saved before the icon picker fall
    *  back to matching `label` against the registry. */
   icon?: string;
+  /** Optional custom colour for this icon, overriding the theme's. */
+  color?: string;
   /** Shared profile URL used by matching social icons across the site. */
   href: string;
   /** Show or hide this platform's icons site-wide. */

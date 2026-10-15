@@ -43,7 +43,9 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
                       aria-label={s.label}
                       className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
                     >
-                      {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{s.label[0]}</span>}
+                      <span className="inline-flex" style={s.color ? { color: s.color } : undefined}>
+                        {Icon ? <Icon className="h-4 w-4" /> : <span className="text-xs">{s.label[0]}</span>}
+                      </span>
                     </a>
                   );
                 })}
