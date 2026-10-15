@@ -173,6 +173,8 @@ const PANEL_MIN_H = 170;
 const PANEL_GAP = 16;
 /** How far the photo magnifies on a focused pointer. Same as the rider map. */
 const MACHINE_ZOOM = 1.65;
+/** How long a pointer stays focused after the cursor leaves it, in ms. */
+const HOVER_GRACE = 200;
 
 /**
  * Pointer bubble. Positioned in pixels and clamped to the bike image so it is
@@ -210,7 +212,10 @@ function AccessoryBubble({
 
       const px = (xPct / 100) * width;
       const py = (yPct / 100) * height;
-      const gap = 12;
+      // Clears the pointer's padded target, which reaches 28px from its
+      // centre — a bubble that close took the hover away from the pointer it
+      // belongs to.
+      const gap = 36;
       const pad = 10;
 
       // Prefer right of the pointer, flip left when it would overflow, then clamp.
@@ -303,6 +308,18 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   // pointer magnifies the photo on that pointer. The pointers live inside the
   // zoom layer, so they travel with the part they mark and counter-scale to
   // keep their size.
+  // The photo moves underneath the cursor as it magnifies, so a hover that
+  // ends the instant the cursor crosses an edge flickers. Leaving is held for
+  // a moment; entering is immediate, so a pointer is picked up on approach.
+  const leaveTimer = useRef<number | null>(null);
+  const cancelLeave = () => {
+    if (leaveTimer.current !== null) {
+      window.clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+    }
+  };
+  useEffect(() => cancelLeave, []);
+
   const focusedSpot = focusIdx !== null ? spots[focusIdx] : undefined;
   const zoomPoint = focusedSpot
     ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
@@ -485,8 +502,13 @@ export default function MachineExperience({ data }: { data: MachineData }) {
           style={{
             transform: zoomed ? `scale(${MACHINE_ZOOM})` : "scale(1)",
             transformOrigin: zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
-            transition:
-              "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1), transform-origin 180ms ease-out",
+            // Only the scale is animated. The origin is snapped: while it
+            // animates from the centre to the pointer, the pointer itself
+            // slides out from under the cursor, the hover drops, the photo
+            // zooms back out and the pointer returns — a zoom in / zoom out
+            // loop. Snapping the origin means the point under the cursor is
+            // the one that stays put.
+            transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1)",
           }}
         >
       <Photo
@@ -519,15 +541,30 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         return (
           <div
             key={`${h.title}-${i}`}
-            className="absolute z-20"
+            className={cn(
+              // Padded out well past the visible dot, so a pointer is picked
+              // up as the cursor approaches it rather than only once it is
+              // exactly on top of a 32px target.
+              "absolute z-20 p-3",
+              // While the photo is magnified on one pointer the others stop
+              // taking the hover. They are dimmed and shrunk anyway, and
+              // taking over from here would snap the view to a pointer that
+              // has moved somewhere else entirely.
+              dimmed && "pointer-events-none"
+            )}
             style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
             onMouseEnter={() => {
               if (dragRef.current) return;
+              cancelLeave();
               setHoverIdx(i);
             }}
             onMouseLeave={() => {
               if (dragRef.current) return;
-              setHoverIdx((prev) => (prev === i ? null : prev));
+              cancelLeave();
+              leaveTimer.current = window.setTimeout(() => {
+                leaveTimer.current = null;
+                setHoverIdx((prev) => (prev === i ? null : prev));
+              }, HOVER_GRACE);
             }}
           >
             <button
