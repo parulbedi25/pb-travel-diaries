@@ -444,6 +444,32 @@
   color: #211b10 !important;
 }
 
+/* ── Product plate ──────────────────────────────────────────────────────────
+   The surface a product photo sits on, in My Picks, The Gear and the rider kit
+   list. Product shots are photographed and cut out against white, so this has
+   to stay white in both themes.
+
+   It cannot be `bg-white`: the light theme remaps --color-white to near-black
+   ink (so text and fills invert together), which turned every product tile
+   into a black slab on the cream page. This is the literal white those photos
+   were shot against. Missing-photo tiles keep the themed ink plate instead,
+   since there is nothing to sit on white. */
+.product-plate {
+  background-color: #ffffff;
+}
+
+/* The open-box glyph standing in for a product photo that has not been added
+   yet. Saffron on the black card, where it reads as part of the accent
+   language; muted grey on the cream card, where a yellow glyph reads as a
+   warning rather than as a placeholder. It tracks the tokens, so a custom
+   dashboard palette moves it too. */
+.photo-empty-mark {
+  color: var(--color-saffron-300);
+}
+[data-theme="light"] .photo-empty-mark {
+  color: var(--color-zinc-500);
+}
+
 /* Product callout on The Gear rider map: anchor beside the selected pointer on
    wider screens, then use a contained bottom card on narrow screens. */
 .gear-product-bubble {

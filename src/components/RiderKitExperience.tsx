@@ -114,7 +114,7 @@ function GearProductBubble({
     >
       <div className="flex items-start gap-3 p-3">
         {item.image ? (
-          <Photo src={item.image} alt={item.imageAlt || title} aspect="1 / 1" className="h-16 w-16 shrink-0 rounded-xl border border-white/10 bg-white object-contain" label="Product photo" />
+          <Photo src={item.image} alt={item.imageAlt || title} aspect="1 / 1" className="h-16 w-16 shrink-0 rounded-xl border border-white/10 product-plate object-contain" label="Product photo" />
         ) : (
           <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-saffron-300"><ShieldCheck className="h-5 w-5" /></div>
         )}
@@ -601,7 +601,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                                 transition={reduceMotion ? undefined : { duration: 1.7, repeat: Infinity, ease: "easeInOut" }}
                               />
                             )}
-                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white">
+                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 product-plate">
                               {item.image ? (
                                 <Photo src={item.image} alt={item.imageAlt || title} className="h-full w-full object-contain" label="Gear photo" />
                               ) : (

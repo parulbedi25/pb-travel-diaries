@@ -75,6 +75,7 @@ import { cn } from "../utils/cn";
 import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
 import { pointerColors } from "../utils/pointerColors";
 import ImageField from "./ImageField";
+import ImagesField from "./ImagesField";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
 import {
@@ -145,7 +146,7 @@ async function verifyPassword(pw: string): Promise<boolean> {
 export interface Field {
   path: string;
   label: string;
-  kind: "text" | "textarea" | "number" | "image" | "toggle" | "strings" | "items" | "datetime" | "reveal" | "color" | "file";
+  kind: "text" | "textarea" | "number" | "image" | "images" | "toggle" | "strings" | "items" | "datetime" | "reveal" | "color" | "file";
   hint?: string;
   fields?: Field[];
   template?: unknown;
@@ -169,6 +170,7 @@ function localInputToIso(value: string): string {
 }
 const TA = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "textarea", hint });
 const IMG = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "image", hint });
+const IMAGES = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "images", hint });
 const STR = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "strings", hint });
 
 const GEAR_ITEM_FIELDS: Field[] = [
@@ -178,6 +180,11 @@ const GEAR_ITEM_FIELDS: Field[] = [
   T("brand", "Brand"),
   T("model", "Model"),
   IMG("image", "Gear photo"),
+  IMAGES(
+    "images",
+    "More photos",
+    "Optional. Every photo here joins the main one as a slider on the shop page — the first slide is the photo above.",
+  ),
   T("imageAlt", "Photo alt text"),
   TA("description", "Why I wear it / notes"),
   STR("highlights", "Highlights / specs", "One per line"),
@@ -196,6 +203,7 @@ const GEAR_ITEM_TEMPLATE = {
   model: "",
   description: "",
   image: "",
+  images: [],
   imageAlt: "",
   highlights: [],
   fit: "",
@@ -708,6 +716,12 @@ export function FieldRow({
       ) : field.kind === "image" ? (
         <ImageField
           value={(value as string) ?? ""}
+          onChange={(v) => onChange(v)}
+          hint={field.hint}
+        />
+      ) : field.kind === "images" ? (
+        <ImagesField
+          value={(value as string[]) ?? []}
           onChange={(v) => onChange(v)}
           hint={field.hint}
         />

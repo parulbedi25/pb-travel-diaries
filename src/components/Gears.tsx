@@ -140,7 +140,7 @@ export default function Gears({ data }: { data: GearsData }) {
                   return (
                     <Item key={`${title}-${index}`}>
                       <article className="group flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-white/[0.09] bg-white/[0.025] transition-colors duration-300 hover:border-saffron-300/30 hover:bg-white/[0.04]">
-                        <div className={`relative aspect-[4/3] overflow-hidden ${localGearPhoto ? "bg-white" : "bg-ink-900"}`}>
+                        <div className={`relative aspect-[4/3] overflow-hidden ${localGearPhoto ? "product-plate" : "bg-ink-900"}`}>
                           {item.image ? (
                             <Photo
                               src={item.image}
@@ -151,7 +151,7 @@ export default function Gears({ data }: { data: GearsData }) {
                               label="Gear photo unavailable"
                             />
                           ) : (
-                            <div className="grid h-full w-full place-items-center bg-[radial-gradient(ellipse_at_center,_rgba(245,158,11,0.12),_transparent_60%)] text-saffron-300/70">
+                            <div className="grid h-full w-full place-items-center bg-[radial-gradient(ellipse_at_center,_rgba(245,158,11,0.12),_transparent_60%)] photo-empty-mark">
                               <div className="flex flex-col items-center gap-3">
                                 <PackageOpen className="h-8 w-8" aria-hidden="true" />
                                 <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-zinc-500">Gear photo</span>
