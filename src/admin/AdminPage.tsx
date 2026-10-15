@@ -102,7 +102,7 @@ import {
   cascadeNavItem,
   cascadeSection,
 } from "./cascade";
-import { BikeLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
+import { LineLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
 import {
   addAnyMediaFile,
   formatBytes,
@@ -3404,7 +3404,7 @@ function SettingsPanel() {
                       className="max-h-[64px] max-w-[150px] object-contain"
                     />
                   ) : (
-                    <BikeLoaderMark />
+                    <LineLoaderMark />
                   )}
                 </span>
               </div>
@@ -3480,7 +3480,7 @@ function SettingsPanel() {
                         {loaderDraft ? (
                           <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
                         ) : (
-                          <BikeLoaderMark />
+                          <LineLoaderMark className="ldr-line-sm" />
                         )}
                       </span>
                     </span>

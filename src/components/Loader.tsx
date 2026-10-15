@@ -5,40 +5,17 @@ import {
 } from "../store/siteContent";
 import { cn } from "../utils/cn";
 
-/** Animated "riding through the mountains" default loader mark. */
-export function BikeLoaderMark() {
+/**
+ * The built-in loader mark: a single yellow line. A bright-headed segment
+ * sweeps along a faint track with a halo breathing behind it — see .ldr-line
+ * in index.css. `className` takes a size variant so the dashboard's animation
+ * tiles can show it small.
+ */
+export function LineLoaderMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 200 90" className="h-16 w-auto" aria-hidden>
-      <defs>
-        <linearGradient id="ldr-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f5b301" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#f5b301" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      {/* sun */}
-      <circle cx="150" cy="26" r="8" fill="#f5b301" opacity="0.75" />
-
-      {/* mountains */}
-      <path d="M0 78 L34 40 L58 66 L82 34 L112 70 L138 48 L166 76 L200 56 L200 90 L0 90 Z" fill="#2a2c33" />
-      <path d="M0 84 L44 58 L74 80 L104 60 L134 84 L200 72 L200 90 L0 90 Z" fill="#1d1f25" />
-      <rect x="0" y="72" width="200" height="18" fill="url(#ldr-sky)" />
-
-      {/* road */}
-      <line x1="0" y1="82" x2="200" y2="82" stroke="#3a3d45" strokeWidth="1.5" />
-
-      {/* rider — scrolls right to left */}
-      <g className="ldr-ride">
-        <g transform="scale(0.42) translate(150 60)">
-          <circle cx="24" cy="46" r="13" fill="none" stroke="#c3cad6" strokeWidth="3.5" />
-          <circle cx="76" cy="46" r="13" fill="none" stroke="#c3cad6" strokeWidth="3.5" />
-          <path d="M24 46 L42 46 L52 30 L66 30" fill="none" stroke="#c3cad6" strokeWidth="3.5" strokeLinecap="round" />
-          <path d="M42 46 L60 46 L66 30" fill="none" stroke="#c3cad6" strokeWidth="3.5" strokeLinecap="round" />
-          <path d="M58 26 L70 26" stroke="#c3cad6" strokeWidth="3.5" strokeLinecap="round" />
-          <circle cx="57" cy="17" r="6" fill="#f5b301" />
-        </g>
-      </g>
-    </svg>
+    <span className={cn("ldr-line-wrap", className)} aria-hidden>
+      <span className="ldr-line" />
+    </span>
   );
 }
 
@@ -62,12 +39,17 @@ export function LoaderStage({
         {logo ? (
           <img src={logo} alt="" className="h-20 w-auto max-w-[70vw] object-contain" />
         ) : (
-          <BikeLoaderMark />
+          <LineLoaderMark />
         )}
       </span>
-      <div className="h-[3px] w-40 overflow-hidden rounded-full bg-white/10">
-        <div className="ldr-bar h-full rounded-full bg-saffron-400" />
-      </div>
+      {/* The built-in mark is a progress line in its own right, so the bar only
+          sits under an uploaded logo — behind the line it was the same thing
+          twice, one sliding above another. */}
+      {logo && (
+        <div className="h-[3px] w-40 overflow-hidden rounded-full bg-white/10">
+          <div className="ldr-bar h-full rounded-full bg-saffron-400" />
+        </div>
+      )}
       <p className="font-mono text-[11px] tracking-[0.28em] text-zinc-500">PB FROM PB</p>
     </div>
   );

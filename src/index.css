@@ -46,9 +46,15 @@
     from { stroke-dashoffset: 16; }
     to { stroke-dashoffset: 0; }
   }
-  @keyframes ldr-ride {
-    from { transform: translateX(90px); }
-    to { transform: translateX(-90px); }
+  @keyframes ldr-line-sweep {
+    /* Off the left end, across, then held off the right for the last 40% of
+       the loop: a sweep with a beat between passes, not a constant slide. */
+    0% { transform: translateX(-100%); }
+    60%, 100% { transform: translateX(100%); }
+  }
+  @keyframes ldr-line-breathe {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
   @keyframes ldr-bar {
     0% { transform: translateX(-100%); }
@@ -179,11 +185,55 @@
   }
 
   /* ── Loader ── */
-  .ldr-ride {
-    animation: ldr-ride 2.4s linear infinite;
-  }
   .ldr-bar {
     animation: ldr-bar 1.15s ease-in-out infinite;
+  }
+
+  /* ── Built-in loader mark: one yellow line, animated ──
+     The track is faint yellow; the segment that sweeps it has a bright head,
+     and a blurred halo behind the whole line breathes in time with it. */
+  .ldr-line-wrap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: 0.75rem 0;
+  }
+  .ldr-line-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(245, 179, 1, 0.22), transparent 72%);
+    filter: blur(8px);
+    animation: ldr-line-breathe 1.6s ease-in-out infinite;
+  }
+  .ldr-line {
+    position: relative;
+    display: block;
+    width: min(14rem, 62vw);
+    height: 3px;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: rgba(245, 179, 1, 0.16);
+  }
+  .ldr-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      rgba(245, 179, 1, 0) 0%,
+      rgba(245, 179, 1, 0.35) 28%,
+      #ffdf8a 50%,
+      rgba(245, 179, 1, 0.35) 72%,
+      rgba(245, 179, 1, 0) 100%
+    );
+    box-shadow: 0 0 12px rgba(245, 179, 1, 0.55);
+    animation: ldr-line-sweep 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  /* Narrow variant for the dashboard's animation tiles. */
+  .ldr-line-sm .ldr-line {
+    width: 4.5rem;
   }
 
   /* Loader logo/icon motion. Each class drives the whole mark, so an uploaded
@@ -651,8 +701,9 @@
   .animate-blink,
   .animate-radar,
   .animate-route-dash,
-  .ldr-ride,
   .ldr-bar,
+  .ldr-line::after,
+  .ldr-line-wrap::before,
   .pointer-pulse,
   [class*="ldr-anim-"] {
     animation: none !important;
