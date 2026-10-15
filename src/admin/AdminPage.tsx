@@ -4343,7 +4343,7 @@ function FooterPanel() {
             <div className="max-h-[78vh] overflow-y-auto rounded-3xl border border-white/10 bg-ink-950">
               {/* inert: preview links must not navigate away from the dashboard */}
               <div inert>
-                <FooterView settings={f} />
+                <FooterView settings={f} preview />
               </div>
             </div>
           ) : (

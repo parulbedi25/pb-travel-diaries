@@ -1,14 +1,23 @@
-import { useMemo, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import { ArrowUp } from "lucide-react";
 import { Logo } from "./Navbar";
 import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 import { resolveFooter, useSite, type FooterSettings } from "../store/siteContent";
+import { cn } from "../utils/cn";
 
 /**
  * Footer markup driven entirely by settings. Used on the live site and in the
  * dashboard preview, so what you see while editing is what visitors get.
  */
-export function FooterView({ settings }: { settings: FooterSettings }) {
+export function FooterView({
+  settings,
+  preview = false,
+}: {
+  settings: FooterSettings;
+  /** Set inside the dashboard, where a viewport-fixed button would float over
+   *  the dashboard itself rather than over the preview panel. */
+  preview?: boolean;
+}) {
   // Hidden columns and links are dropped; an empty column disappears entirely.
   const columns = settings.columns
     .filter((c) => c.enabled)
@@ -88,18 +97,58 @@ export function FooterView({ settings }: { settings: FooterSettings }) {
             © {year} {settings.copyright}
           </p>
           {settings.credit && <p className="text-xs text-zinc-600">{settings.credit}</p>}
-          {settings.showBackToTop && (
-            <a
-              href="#top"
-              className="group inline-flex items-center gap-2 rounded-full glass px-4 py-2 text-xs font-medium text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:text-white"
-            >
-              Back to top
-              <ArrowUp className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5" />
-            </a>
-          )}
         </div>
       </div>
+
+      {/* Not in the bottom bar any more: the button floats over the page. */}
+      {settings.showBackToTop && !preview && <BackToTop />}
     </footer>
+  );
+}
+
+/**
+ * Floating "back to top" button.
+ *
+ * It floats over the page rather than sitting in the footer's bottom bar, so
+ * it is within reach anywhere in a long scroll, and it keeps out of the way
+ * until the page has actually moved. The saffron ring is the site's accent and
+ * reads on both themes; the plate follows the theme's ink token, so it stays
+ * legible when the tokens invert.
+ */
+function BackToTop() {
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShown(window.scrollY > 420);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // The href works without JavaScript. With it, scroll smoothly instead of
+  // jumping, leave the address bar alone, and honour reduced-motion.
+  const toTop = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+  };
+
+  return (
+    <a
+      href="#top"
+      onClick={toTop}
+      aria-label="Back to top"
+      title="Back to top"
+      className={cn(
+        "fixed bottom-6 right-5 z-[50] grid h-12 w-12 place-items-center rounded-full border-2 border-saffron-400/70 bg-ink-950/90 text-saffron-300 shadow-lg shadow-black/40 backdrop-blur-md transition-all duration-300",
+        "hover:-translate-y-1 hover:border-saffron-400 hover:bg-saffron-400 hover:text-black",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400",
+        shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0",
+      )}
+    >
+      <ArrowUp className="h-5 w-5" aria-hidden="true" />
+    </a>
   );
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GripVertical, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { FooterSocial } from "../store/siteContent";
-import { SOCIAL_ICONS, resolveSocialIcon, socialIconLabel } from "../components/ui/SocialIcons";
+import { SOCIAL_ICONS, resolveSocialIcon } from "../components/ui/SocialIcons";
 import Switch from "./Switch";
 import { cn } from "../utils/cn";
 
@@ -138,15 +138,11 @@ export default function SocialIconsEditor({
   const pickIcon = (social: FooterSocial, key: string) => {
     const spec = SOCIAL_ICONS.find((s) => s.key === key);
     if (!spec) return;
-    // Keep a hand-typed label, but follow the icon while the label is still
-    // the one the previous choice filled in.
-    const previous = socialIconLabel(social.icon);
-    const label =
-      !social.label.trim() || (previous && social.label.trim() === previous)
-        ? spec.label
-        : social.label;
-    onPatch(social.id, { icon: key, label });
-    closePicker();
+    // Choosing an icon fills in its name, so a new row is never left with a
+    // blank or a name that belongs to the previous choice. The bubble stays
+    // open: the name lands in the field above and can be typed over right
+    // away, or another icon picked straight after.
+    onPatch(social.id, { icon: key, label: spec.label });
   };
 
   const add = () => {
