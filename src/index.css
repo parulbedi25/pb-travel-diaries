@@ -395,21 +395,6 @@
   background-color: rgba(245, 179, 1, 0.14);
 }
 
-/* Pointer dots pulse by default; hovering the bike image pauses them so the
-   dots settle and the photo reads cleanly. */
-.pointer-pulse {
-  animation: pointer-pulse 1.9s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-}
-.machine-image-area:hover .pointer-pulse {
-  animation-play-state: paused;
-  opacity: 0;
-}
-@keyframes pointer-pulse {
-  0% { transform: scale(0.7); opacity: 0.75; }
-  70% { transform: scale(1.9); opacity: 0; }
-  100% { transform: scale(1.9); opacity: 0; }
-}
-
 /* Equal, symmetric elevation: zero horizontal offset so a panel's shadow reads
    identically from every side and scales with its resized size. */
 .panel-shadow {
@@ -704,7 +689,6 @@
   .ldr-bar,
   .ldr-line::after,
   .ldr-line-wrap::before,
-  .pointer-pulse,
   [class*="ldr-anim-"] {
     animation: none !important;
   }

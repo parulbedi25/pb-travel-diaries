@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
   Check,
   Cog,
+  Crosshair,
   Download,
   ExternalLink,
   Eye,
@@ -293,6 +294,9 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const [listOpen, setListOpen] = useState<number | null>(null);
   const focusIdx = hoverIdx ?? pinnedIdx;
   const bubbleIdx = hoverIdx ?? pinnedIdx;
+  // The bike's pointers pulse exactly like the rider map's; visitors who ask
+  // for less motion get the still ring instead.
+  const reduceMotion = useReducedMotion();
   const isExpanded = (idx: number) => (focusIdx === null ? listOpen === idx : idx === focusIdx);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -490,6 +494,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         // Same left-to-right wave as the rider map: the bike's pointers
         // ripple across the photo instead of pulsing in unison.
         const wave = waveDelay(x);
+        const pulse = !reduceMotion;
         return (
           <div
             key={`${h.title}-${i}`}
@@ -504,42 +509,41 @@ export default function MachineExperience({ data }: { data: MachineData }) {
               setHoverIdx((prev) => (prev === i ? null : prev));
             }}
           >
-            {isOn && (
-              <span
-                className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl ring-2"
-                style={{ backgroundColor: withAlpha(ring, 0.2), "--tw-ring-color": withAlpha(ring, 0.5) } as React.CSSProperties}
-                aria-hidden
-              />
-            )}
             <button
               type="button"
               data-pointer-index={i}
               onClick={() => setPinnedIdx((prev) => (prev === i ? null : i))}
               aria-pressed={pinnedIdx === i}
               aria-label={`Show ${h.title}`}
-              className="relative grid place-items-center"
+              style={{
+                // The pointer's own colour on the border and the crosshair;
+                // the focused one picks up a glow in its pulse colour.
+                borderColor: withAlpha(dot, 0.9),
+                boxShadow: isOn
+                  ? `0 0 18px ${withAlpha(ring, 0.55)}, 0 6px 16px rgba(0,0,0,0.5)`
+                  : "0 6px 16px rgba(0,0,0,0.5)",
+              }}
+              className={cn(
+                "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:scale-110 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                isOn && "scale-110"
+              )}
             >
-              <span
-                data-pointer-active={isOn ? "true" : undefined}
-                className="pointer-pulse pointer-events-none absolute h-10 w-10 rounded-full"
-                style={{ backgroundColor: withAlpha(ring, 0.6), animationDelay: `${wave}s` }}
-                aria-hidden
-              />
-              <span
-                className={cn(
-                  "relative grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur-md transition-all duration-300",
-                  isOn ? "scale-110 border-white" : "border-white/60 hover:scale-110 hover:border-white"
-                )}
-                style={{
-                  backgroundColor: withAlpha(dot, isOn ? 0.55 : 0.25),
-                  boxShadow: isOn ? `0 8px 24px ${withAlpha(ring, 0.4)}` : undefined,
-                }}
-              >
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: dot, boxShadow: `0 0 8px ${dot}` }}
+              {pulse ? (
+                <motion.span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                  style={{ borderColor: ring }}
+                  animate={{ scale: [0.92, 1.5, 0.92], opacity: [0.38, 0.85, 0.38] }}
+                  transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut", delay: wave }}
                 />
-              </span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-[-3px] rounded-full border-2"
+                  style={{ borderColor: ring, opacity: 0.6 }}
+                />
+              )}
+              <Crosshair className="relative h-3.5 w-3.5" style={{ color: dot }} aria-hidden="true" />
             </button>
           </div>
         );
