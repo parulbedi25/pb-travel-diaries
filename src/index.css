@@ -343,23 +343,24 @@
     transparent 74%
   );
 }
+/* In light mode the wash read as a grey smudge: it is built from the bike
+   photo's own dominant colour, which is a dark grey. The parts list carries
+   its own panel background, border and shadow, so it stays legible with the
+   wash gone. */
 [data-theme="light"] .machine-wash {
-  background-color: rgba(247, 244, 237, 0.78);
-  background-image: radial-gradient(
-    ellipse 82% 92% at 66% 45%,
-    rgb(var(--wr) var(--wg) var(--wb) / 0.3),
-    transparent 74%
-  );
+  background-color: transparent;
+  background-image: none;
 }
 
 /* The bike photo is a cut-out — roughly 70% of it is transparent — so whatever
    the image box paints behind it shows through around the bike.
 
-   Dark: a little warm white light behind the bike. The photo is dark on a dark
-   page, so the bike's own dark areas, the HIMALAYAN decal among them, had
-   nothing to read against. The light is deliberately faint: a halo, not a
-   spotlight. Centred on the bike, which sits at about 50% across and a little
-   below the middle of the frame.
+   Dark: warm yellow light behind the bike. The photo is dark on a dark page,
+   so the bike's own dark areas, the HIMALAYAN decal among them, had nothing to
+   read against. The glow is wide and flat rather than a tight halo: the bike
+   is cut out of a 16:9 frame with the letters sitting above and below its core,
+   so a small centred radial left them unlit. Centred on the bike, which sits at
+   about 50% across and a little below the middle of the frame.
 
    Light: the page colour instead, which covers the wash above. Its radial is
    built from the photo's own dominant colour — a dark grey — and it used to
@@ -367,24 +368,62 @@
    wash; only the area behind the bike is covered. */
 .machine-image-area {
   background-image:
-    /* Broad spread. The first version hugged the bike and left the big
-       HIMALAYAN letters at the edges of the frame unlit. */
+    /* Wide and flat, so the light reads as spilling sideways across the block
+       rather than as a disc sitting in the middle of it. The vertical radius is
+       deliberately short: at 72% it reached past the top and bottom of the
+       frame and the block just looked flooded. */
     radial-gradient(
-      ellipse 88% 92% at 50% 52%,
-      rgba(255, 240, 186, 0.17) 0%,
-      rgba(255, 236, 168, 0.09) 52%,
-      transparent 86%
+      ellipse 115% 36% at 50% 52%,
+      rgba(255, 222, 112, 0.34) 0%,
+      rgba(255, 213, 74, 0.23) 55%,
+      transparent 94%
     ),
     /* A little more light where the bike itself sits. */
     radial-gradient(
-      ellipse 44% 46% at 50% 55%,
-      rgba(255, 249, 230, 0.18) 0%,
-      transparent 72%
+      ellipse 62% 30% at 50% 55%,
+      rgba(255, 244, 198, 0.06) 0%,
+      transparent 78%
     );
 }
 [data-theme="light"] .machine-image-area {
   background-color: var(--color-ink-950);
   background-image: none;
+}
+
+/* With the parts list on, the photo box is narrowed and anything painted on it
+   stops in a straight line at the list's edge — the glow used to end there,
+   which is what made it look like a lit rectangle rather than light. The stage
+   wash spans the full width and is painted behind the photo, pointers and list,
+   so the same oval can carry on underneath the list.
+
+   The centre sits left of the middle because the bike is centred in the photo
+   box, not in the stage: at 304px reserved for the list, the bike sits at
+   roughly a third to two fifths across. Sits after the rules above so it wins
+   for equal specificity; the light-mode overrides outrank it regardless. */
+@container (min-width: 700px) {
+  .machine-image-area {
+    background-image: none;
+  }
+  .machine-wash {
+    background-image:
+      radial-gradient(
+        ellipse 115% 36% at 40% 52%,
+        rgba(255, 222, 112, 0.34) 0%,
+        rgba(255, 213, 74, 0.23) 55%,
+        transparent 94%
+      ),
+      radial-gradient(
+        ellipse 62% 30% at 38% 55%,
+        rgba(255, 244, 198, 0.06) 0%,
+        transparent 78%
+      ),
+      /* The photo's own dominant colour, kept underneath, behind the list. */
+      radial-gradient(
+        ellipse 82% 92% at 66% 45%,
+        rgb(var(--wr) var(--wg) var(--wb) / 0.55),
+        transparent 74%
+      );
+  }
 }
 
 /* ── Accent text colour ────────────────────────────────────────────────────

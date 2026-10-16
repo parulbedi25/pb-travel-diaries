@@ -5,6 +5,7 @@ import type { CountdownData } from "../store/siteContent";
 import { cn } from "../utils/cn";
 import { hasCountdownExpired } from "../utils/countdownTiming";
 import { EASE } from "./ui/motion";
+import ThemeToggle from "./ThemeToggle";
 
 /** Shared ticking countdown used by the maintenance page and the countdown section. */
 export function useCountdown(targetIso: string) {
@@ -43,6 +44,9 @@ export function useCountdownFinished(targetIso: string): boolean {
     : hasCountdownExpired(targetIso);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
     const check = () => {
       const nextFinished = hasCountdownExpired(targetIso);
       setStatus((previous) =>
@@ -50,12 +54,34 @@ export function useCountdownFinished(targetIso: string): boolean {
           ? previous
           : { targetIso, finished: nextFinished }
       );
+      return nextFinished;
     };
-    check();
-    if (!Number.isFinite(Date.parse(targetIso))) return;
-    const id = setInterval(check, 1000);
-    return () => clearInterval(id);
+
+    if (check()) return;
+
+    const deadline = Date.parse(targetIso);
+    if (!Number.isFinite(deadline)) return;
+
+    // Wake up on the deadline itself instead of polling. A once-a-second check
+    // fired up to a second late, and the page kept showing a clock sitting at
+    // zero in the meantime. The 25 ms is so the clock has actually passed the
+    // deadline by the time we look. Long waits are capped at a minute, so the
+    // same timer doubles as a safety net for a drifted or skipped wake-up.
+    const schedule = () => {
+      if (cancelled) return;
+      const wait = Math.min(Math.max(deadline - Date.now(), 0) + 25, 60_000);
+      timer = setTimeout(() => {
+        if (!check()) schedule();
+      }, wait);
+    };
+    schedule();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [targetIso]);
+
   return finished;
 }
 
@@ -289,6 +315,9 @@ export function CountdownPage({ data }: { data: CountdownData }) {
 
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
+      {/* Theme switch for everyone: this page replaces the whole site, so the
+          header's toggle is not on screen to use. */}
+      <ThemeToggle className="fixed right-4 top-4 z-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
         className="pointer-events-none absolute -top-24 left-1/2 h-96 w-[720px] -translate-x-1/2 rounded-full bg-saffron-400/20 blur-[130px]"
@@ -336,6 +365,9 @@ export function CountdownPage({ data }: { data: CountdownData }) {
 export function DonePage({ data }: { data: CountdownData }) {
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
+      {/* Theme switch for everyone: this page replaces the whole site, so the
+          header's toggle is not on screen to use. */}
+      <ThemeToggle className="fixed right-4 top-4 z-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div className="relative w-full max-w-2xl text-center">
         <span className="mx-auto inline-grid h-14 w-14 place-items-center rounded-full border border-emerald-400/30 bg-emerald-400/10">

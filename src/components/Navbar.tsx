@@ -6,9 +6,10 @@ import {
   useSpring,
   useMotionValueEvent,
 } from "framer-motion";
-import { Menu, X, ArrowUpRight, Sun, Moon, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
+import { Menu, X, ArrowUpRight, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
 import { isAdminSession, resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
+import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
 
 export function Logo({ compact = false }: { compact?: boolean }) {
@@ -54,32 +55,6 @@ function HeaderCta({
       {b.label}
       <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
     </a>
-  );
-}
-
-function ThemeToggle() {
-  const { theme, setTheme } = useSite();
-  const light = theme === "light";
-  return (
-    <button
-      onClick={() => setTheme(light ? "dark" : "light")}
-      aria-label={light ? "Switch to dark theme" : "Switch to light theme"}
-      title={light ? "Switch to dark theme" : "Switch to light theme"}
-      className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-full glass text-zinc-300 transition-all duration-300 hover:text-white active:scale-90"
-    >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.span
-          key={theme}
-          initial={{ y: 14, opacity: 0, rotate: -90 }}
-          animate={{ y: 0, opacity: 1, rotate: 0 }}
-          exit={{ y: -14, opacity: 0, rotate: 90 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="grid place-items-center"
-        >
-          {light ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
-        </motion.span>
-      </AnimatePresence>
-    </button>
   );
 }
 

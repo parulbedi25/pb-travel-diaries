@@ -161,17 +161,13 @@ function LandingPage() {
   }, [toastOpen]);
 
   // ── Which sections are visible right now ──
-  // The timer clears the instant it reaches zero. It used to shrink away for a
-  // second first, which read as a small countdown flashing before the revealed
-  // sections appeared.
-  const [countdownGone, setCountdownGone] = useState(finished);
-
-  useEffect(() => {
-    setCountdownGone(finished);
-  }, [finished]);
-
+  // `finished` is read directly rather than being copied into state. A copy
+  // refreshed in an effect always lands one render late, and by that render the
+  // revealed sections have already been added — so the page painted the small
+  // in-page countdown for a frame before dropping it. Deriving it instead puts
+  // the timer leaving and the revealed sections arriving in the same commit.
   const revealIds = new Set(cd.revealSectionIds ?? []);
-  const showCountdown = countdownOn && !countdownGone;
+  const showCountdown = countdownOn && !finished;
   const isRevealed = (s: SectionEntry) =>
     finished && !s.enabled && revealIds.has(s.id) && s.type !== "countdown";
   const others = content.sections.filter(
@@ -186,7 +182,7 @@ function LandingPage() {
 
   // A countdown with no other sections takes over the page: no header, no footer.
   if (countdownOn && others.length === 0) {
-    if (!countdownGone) return <CountdownPage data={cd} />;
+    if (!finished) return <CountdownPage data={cd} />;
     return (
       <motion.div
         initial={{ opacity: 0 }}

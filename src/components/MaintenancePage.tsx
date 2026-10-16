@@ -2,6 +2,7 @@ import { LayoutDashboard, Mail, Wrench } from "lucide-react";
 import type { MaintenanceData } from "../store/siteContent";
 import { isAdminSession, useSite } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
+import ThemeToggle from "./ThemeToggle";
 
 /**
  * Maintenance mode page. Shown instead of the entire site (no header, no footer)
@@ -16,15 +17,21 @@ export default function MaintenancePage({ data }: { data: MaintenanceData }) {
 
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">
-      {admin && (
-        <a
-          href="#/admin"
-          className="admin-escape fixed right-4 top-4 z-50 inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition-all duration-300 hover:scale-[1.03] active:scale-100"
-        >
-          <LayoutDashboard className="h-4 w-4" />
-          Admin dashboard
-        </a>
-      )}
+      {/* Corner controls. The theme switch is for everyone; the way back to
+          the dashboard is only offered to a signed-in admin. Both sit in one
+          row, so they cannot overlap however wide the escape link gets. */}
+      <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+        {admin && (
+          <a
+            href="#/admin"
+            className="admin-escape inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition-all duration-300 hover:scale-[1.03] active:scale-100"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            Admin dashboard
+          </a>
+        )}
+        <ThemeToggle />
+      </div>
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/15 blur-[130px]"
