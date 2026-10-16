@@ -44,6 +44,9 @@ export function useCountdownFinished(targetIso: string): boolean {
     : hasCountdownExpired(targetIso);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
     const check = () => {
       const nextFinished = hasCountdownExpired(targetIso);
       setStatus((previous) =>
@@ -51,12 +54,34 @@ export function useCountdownFinished(targetIso: string): boolean {
           ? previous
           : { targetIso, finished: nextFinished }
       );
+      return nextFinished;
     };
-    check();
-    if (!Number.isFinite(Date.parse(targetIso))) return;
-    const id = setInterval(check, 1000);
-    return () => clearInterval(id);
+
+    if (check()) return;
+
+    const deadline = Date.parse(targetIso);
+    if (!Number.isFinite(deadline)) return;
+
+    // Wake up on the deadline itself instead of polling. A once-a-second check
+    // fired up to a second late, and the page kept showing a clock sitting at
+    // zero in the meantime. The 25 ms is so the clock has actually passed the
+    // deadline by the time we look. Long waits are capped at a minute, so the
+    // same timer doubles as a safety net for a drifted or skipped wake-up.
+    const schedule = () => {
+      if (cancelled) return;
+      const wait = Math.min(Math.max(deadline - Date.now(), 0) + 25, 60_000);
+      timer = setTimeout(() => {
+        if (!check()) schedule();
+      }, wait);
+    };
+    schedule();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [targetIso]);
+
   return finished;
 }
 
