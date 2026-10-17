@@ -6,9 +6,9 @@
  *     (GitHub gist, your server, etc.). It is polled every 60 seconds.
  *     Expected shape:
  *     {
- *       "lat": 32.2265, "lng": 78.0644,
- *       "name": "Kaza", "state": "Spiti Valley, Himachal Pradesh",
- *       "altitude": "12,500 ft", "note": "...",
+ *       "lat": 31.369, "lng": 76.3729,
+ *       "name": "Nangal", "state": "Punjab, India",
+ *       "altitude": "1,150 ft", "note": "...",
  *       "updatedAt": "2026-01-01T10:00:00+05:30"
  *     }
  *  2. Or edit the bundled fallback values below directly.
@@ -21,12 +21,14 @@ export const LIVE_LOCATION = {
   feedUrl: (import.meta.env.VITE_LIVE_FEED_URL as string | undefined) ?? "",
 
   // Bundled fallback — used until/unless the feed above returns data.
-  lat: 32.2265,
-  lng: 78.0644,
-  name: "Kaza",
-  state: "Spiti Valley, Himachal Pradesh",
-  altitude: "12,500 ft",
-  note: "Night halt at Key village — bonfire and a Milky Way shoot at 11 PM.",
+  // Kept in step with the first stop of the live route (Nangal → Chandigarh),
+  // so the tracker reads correctly before a feed takes over.
+  lat: 31.369,
+  lng: 76.3729,
+  name: "Nangal",
+  state: "Punjab, India",
+  altitude: "1,150 ft",
+  note: "Start of the Nangal to Chandigarh run — tank full, first light.",
   // Treated as "last ping received" until your feed takes over.
   updatedAt: new Date().toISOString(),
 };

@@ -842,16 +842,17 @@ const LIVE: LiveData = {
   titleHi: "on the road",
   titleB: " right now.",
   sub: "A live GPS window into the current expedition. Location pings land every hour between 6:00 AM and 9:00 PM IST — straight from Taweel's handlebar mount to this page.",
-  note: "Night halt at Key village — bonfire and a Milky Way shoot at 11 PM.",
-  // The Spiti loop: Manali over the Atal Tunnel and Kunzum Pass to Kaza, then
-  // Key and Kibber. Coordinates are editable in the dashboard.
+  note: "Rolling out of Nangal at first light — the Shivalik foothills all the way down to Chandigarh.",
+  // Nangal down to Chandigarh: Anandpur Sahib, Bharatgarh, Ropar and Mohali on
+  // the way. Nangal is the start, so it also carries the live marker until the
+  // ride moves. Every coordinate is editable in the dashboard.
   stops: [
-    { name: "Manali", note: "Day 1 · fuelled up", status: "done", lat: 32.2396, lng: 77.1887 },
-    { name: "Atal Tunnel", note: "Day 2 · crossed", status: "done", lat: 32.3978, lng: 77.1497 },
-    { name: "Batal", note: "Day 4 · night halt", status: "done", lat: 32.68, lng: 77.6 },
-    { name: "Kaza", note: "Current stop", status: "live", lat: 32.2251, lng: 78.0716 },
-    { name: "Key Monastery", note: "Tomorrow · 42 km", status: "next", lat: 32.2976, lng: 78.0788 },
-    { name: "Kibber", note: "Day 8 · 18 km", status: "next", lat: 32.3357, lng: 78.0839 },
+    { name: "Nangal", note: "Start · tank full, first light roll-out", status: "live", lat: 31.369, lng: 76.3729 },
+    { name: "Anandpur Sahib", note: "First halt · Kesgarh Sahib", status: "next", lat: 31.2394, lng: 76.5017 },
+    { name: "Bharatgarh", note: "Tea stop in the Shivalik foothills", status: "next", lat: 31.096, lng: 76.6154 },
+    { name: "Ropar", note: "Rupnagar · across the Sutlej", status: "next", lat: 30.9667, lng: 76.5236 },
+    { name: "Mohali", note: "Last stretch before the city", status: "next", lat: 30.7046, lng: 76.7179 },
+    { name: "Chandigarh", note: "Destination · Sector 17", status: "next", lat: 30.7333, lng: 76.7794 },
   ],
   routeGeometry: [],
 };

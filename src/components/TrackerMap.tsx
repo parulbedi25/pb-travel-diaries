@@ -1,430 +1,220 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { Check } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowUpRight, Check, Lock, MapPinned } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
-import { splitRouteAtProgress, type LatLng } from "../utils/routing";
+import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
+import { cumulativeKm, formatKm } from "../utils/routeProgress";
+import type { LatLng } from "../utils/routing";
 
 /**
  * The live tracker's map.
  *
- * Real geography sits behind the route as a deliberately soft backdrop — the
- * point is to feel like the actual road, not to compete with the route drawn
- * on top of it. Tiles are blurred back; the route and the stops are not.
+ * The map itself is Google Maps, embedded through the endpoint Google hands out
+ * from Maps → Share → "Embed a map" — free, no API key, no billing. Google
+ * draws the real road and the real A-to-B route, so the geography is always
+ * right and the panel is never blank.
  *
- * The road comes from stored geometry (fetched once in the dashboard), split
- * into the part already ridden and the part still to come. When no geometry has
- * been fetched, straight segments between the stops stand in.
+ * The trade-off: an iframe is a sealed box, so nothing can be drawn on top of
+ * it. The stops therefore live in the strip along the bottom of the panel,
+ * which keeps everything the tracker promised — every stop visible, the first
+ * one green, the last one red, and the road split into what is ridden and what
+ * is still to come.
  *
- * Positions come from Leaflet's projection so the overlay lines up with the
- * map. If Leaflet cannot start — no layout, no tiles — a plain bounding-box fit
- * is used instead, which still places everything correctly, just without a map.
+ * The map ignores the pointer until you ask for it ("Move map"), so scrolling
+ * the page past a full-width map never turns into zooming the map instead.
  */
-
-const TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-const ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
-
-const PADDING = 64;
-
-interface Point {
-  x: number;
-  y: number;
-}
 
 export interface TrackerMapProps {
   stops: LiveStop[];
+  /** Road fetched in the dashboard; used to measure the ride honestly. */
   routeGeometry: LatLng[];
-  live: { lat: number; lng: number };
   liveName: string;
   liveState: string;
   status: LiveStatus;
 }
 
-/** Straight segments between the stops, used until real road is fetched. */
-function fallbackGeometry(stops: LiveStop[]): LatLng[] {
-  return stops.map((s) => [s.lat, s.lng]);
-}
-
-/** Fit `points` into a width x height box, preserving aspect ratio. */
-function boxFit(
-  points: LatLng[],
-  width: number,
-  height: number,
-): ((p: LatLng) => Point) | null {
-  if (!points.length || !width || !height) return null;
-  const lats = points.map((p) => p[0]);
-  const lngs = points.map((p) => p[1]);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const spanLat = maxLat - minLat || 0.0001;
-  const spanLng = maxLng - minLng || 0.0001;
-  const innerW = Math.max(width - PADDING * 2, 1);
-  const innerH = Math.max(height - PADDING * 2, 1);
-  // Equirectangular, scaled to whichever axis binds, so the shape is not skewed.
-  const scale = Math.min(innerW / spanLng, innerH / spanLat);
-  const offsetX = (width - spanLng * scale) / 2;
-  const offsetY = (height - spanLat * scale) / 2;
-  return ([lat, lng]: LatLng) => ({
-    x: (lng - minLng) * scale + offsetX,
-    y: (maxLat - lat) * scale + offsetY,
-  });
-}
-
-function toPath(points: Point[]): string {
-  if (!points.length) return "";
-  return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-}
-
 export default function TrackerMap({
   stops,
   routeGeometry,
-  live,
   liveName,
   liveState,
   status,
 }: TrackerMapProps) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [ready, setReady] = useState(0);
+  const [interactive, setInteractive] = useState(false);
 
-  const geometry = useMemo(
-    () => (routeGeometry.length >= 2 ? routeGeometry : fallbackGeometry(stops)),
-    [routeGeometry, stops],
-  );
+  const embedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
+  const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
+  const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
-  // What has to stay inside the panel: every stop, plus wherever PB is.
-  //
-  // The road is deliberately left out of the fit. It can run a little past the
-  // first and last stop, and fitting to it would push the stops towards the
-  // edges — the ask is that the start and the destination are always in view,
-  // however much of the route has been ridden.
-  const framePoints = useMemo<LatLng[]>(
-    () => [...stops.map((s) => [s.lat, s.lng] as LatLng), [live.lat, live.lng]],
-    [stops, live.lat, live.lng],
-  );
-  const fitKey = useMemo(() => JSON.stringify(framePoints), [framePoints]);
+  const count = stops.length;
 
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    let map: L.Map | null = null;
-    try {
-      map = L.map(host, {
-        zoomControl: false,
-        attributionControl: false,
-        dragging: false,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        boxZoom: false,
-        keyboard: false,
-        touchZoom: false,
-      });
-      L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 20 }).addTo(map);
-      mapRef.current = map;
+  // Where the ride currently is: the stop marked live, else the last one
+  // ridden. Everything before it is covered; everything after is to come.
+  const liveIndex = stops.findIndex((stop) => stop.status === "live");
+  const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
+  const progressIndex = liveIndex >= 0 ? liveIndex : lastDone >= 0 ? lastDone : 0;
+  const progressPct = count > 1 ? (progressIndex / (count - 1)) * 100 : 0;
 
-      const bounds = L.latLngBounds(framePoints.map(([lat, lng]) => L.latLng(lat, lng)));
-      map.fitBounds(bounds, { padding: [PADDING, PADDING] });
-
-      const measure = () => {
-        const next = map!.getSize();
-        setSize({ width: next.x, height: next.y });
-        setReady((value) => value + 1);
-      };
-      map.on("resize", measure);
-      map.on("zoomend moveend", measure);
-      map.whenReady(measure);
-      measure();
-    } catch {
-      // Leaflet needs real layout. Without it we fall through to the box fit.
-      mapRef.current = null;
-    }
-    return () => {
-      try {
-        map?.remove();
-      } catch {
-        // Nothing to clean up if Leaflet never started.
-      }
-      mapRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey]);
-
-  // Track the host's size so the fallback fit (and the SVG viewBox) match.
-  useEffect(() => {
-    const host = hostRef.current?.parentElement;
-    if (!host) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setSize({ width, height });
-      setReady((value) => value + 1);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
-
-  const projected = useMemo(() => {
-    if (!size.width || !size.height) return null;
-    const map = mapRef.current;
-    const fallback = boxFit(framePoints, size.width, size.height);
-    const viaMap = map
-      ? ([lat, lng]: LatLng): Point => {
-          const point = map.latLngToContainerPoint(L.latLng(lat, lng));
-          return { x: point.x, y: point.y };
-        }
-      : null;
-
-    // Leaflet's projection is the one that lines up with the tiles, so it is
-    // the one we want. It needs a laid-out map though: ask it before the
-    // container has a size and it answers with numbers far outside the panel,
-    // which throws the route and every marker off screen. Fall back to a plain
-    // bounding-box fit whenever its answers are not sane.
-    const sane =
-      viaMap !== null &&
-      framePoints.every((point) => {
-        const projectedPoint = viaMap(point);
-        return (
-          Number.isFinite(projectedPoint.x) &&
-          Number.isFinite(projectedPoint.y) &&
-          projectedPoint.x >= -size.width * 0.5 &&
-          projectedPoint.x <= size.width * 1.5 &&
-          projectedPoint.y >= -size.height * 0.5 &&
-          projectedPoint.y <= size.height * 1.5
-        );
-      });
-    const project: (p: LatLng) => Point =
-      sane && viaMap !== null
-        ? viaMap
-        : (fallback ?? (() => ({ x: 0, y: 0 })));
-
-    return {
-      width: size.width,
-      height: size.height,
-      stops: stops.map((stop, index) => ({
-        stop,
-        // First stop is the start, last is the destination. Those two keep
-        // their colours whatever their status, so a route always reads as
-        // "from here to there" even before anything has been ridden.
-        role:
-          index === 0
-            ? ("start" as const)
-            : index === stops.length - 1
-              ? ("end" as const)
-              : stop.status,
-        ...project([stop.lat, stop.lng]),
-      })),
-      live: project([live.lat, live.lng]),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      ...(() => {
-        const { covered, remaining } = splitRouteAtProgress(geometry, stops);
-        return {
-          covered: toPath(covered.map(project)),
-          remaining: toPath(remaining.map(project)),
-        };
-      })(),
-    };
-    // `ready` is the signal that the map moved or the host resized.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, size.width, size.height, geometry, stops, live.lat, live.lng]);
+  // The track runs from the centre of the first dot to the centre of the last,
+  // so it is inset by half a column at each end.
+  const edge = count > 0 ? 50 / count : 0;
 
   return (
     <>
-      {/* The map itself — decorative, blurred, non-interactive. */}
-      <div ref={hostRef} className="tracker-map absolute inset-0" aria-hidden="true" />
-      <div className="tracker-map-veil pointer-events-none absolute inset-0" aria-hidden="true" />
-
-      {projected && (
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          viewBox={`0 0 ${projected.width} ${projected.height}`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {/* Yet to come: dim and dashed, marching in the direction of travel. */}
-          {projected.remaining && (
-            <path
-              d={projected.remaining}
-              fill="none"
-              stroke="var(--color-saffron-400)"
-              strokeOpacity="0.38"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray="9 7"
-              className="animate-route-dash"
-            />
-          )}
-          {/* Already ridden: solid. */}
-          {projected.covered && (
-            <path
-              d={projected.covered}
-              fill="none"
-              stroke="var(--color-saffron-400)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          )}
-        </svg>
-      )}
-
-      {/* Radar rings, centred on wherever PB is rather than a fixed spot. */}
-      {projected && (
-        <>
-          <div
-            className="pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
-            style={{ left: projected.live.x, top: projected.live.y }}
-            aria-hidden="true"
+      {/* The real map — crisp, and pointer-dead until asked for. */}
+      <div className={cn("tracker-google absolute inset-0", interactive && "is-interactive")}>
+        {embedUrl ? (
+          <iframe
+            src={embedUrl}
+            title={`Google Maps: the route from ${stops[0]?.name ?? "the start"} to ${
+              stops[count - 1]?.name ?? "the destination"
+            }`}
+            className="h-full w-full border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
           />
-          <div
-            className="pointer-events-none absolute h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]"
-            style={{ left: projected.live.x, top: projected.live.y }}
-            aria-hidden="true"
-          />
-          <div
-            className="pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]"
-            style={{ left: projected.live.x, top: projected.live.y }}
-            aria-hidden="true"
-          />
-        </>
-      )}
-
-      {projected?.stops.map(({ stop, role, x, y }) => {
-        // The two ends of the journey, whatever their status: green where the
-        // route begins, red where it ends.
-        if (role === "start" || role === "end") {
-          const isStart = role === "start";
-          return (
-            <div
-              key={`${role}-${stop.name}`}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: x, top: y }}
-            >
-              <button type="button" className="group relative grid place-items-center focus:outline-none">
-                <span
-                  className={cn(
-                    "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg",
-                    isStart ? "bg-emerald-500 shadow-emerald-500/50" : "bg-red-500 shadow-red-500/50",
-                  )}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                </span>
-                <span
-                  className={cn(
-                    "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide transition-all duration-300",
-                    isStart
-                      ? "text-emerald-300/80 group-hover:text-emerald-300"
-                      : "text-red-300/80 group-hover:text-red-300",
-                  )}
-                >
-                  {stop.name}
-                </span>
-                <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-ink-950/95 px-2.5 py-1.5 text-[10px] font-semibold text-zinc-300 opacity-0 shadow-xl backdrop-blur-md transition-all duration-300 group-hover:block group-hover:opacity-100 group-focus:block group-focus:opacity-100">
-                  <span className="flex items-center gap-1">
-                    <span
-                      className={cn("h-2 w-2 rounded-full", isStart ? "bg-emerald-400" : "bg-red-400")}
-                      aria-hidden="true"
-                    />
-                    <span className="text-white">
-                      {isStart ? "Start" : "Destination"} · {stop.name}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block text-[9px] font-normal text-zinc-500">{stop.note}</span>
-                </span>
-              </button>
-            </div>
-          );
-        }
-        return stop.status === "live" ? (
-          <span
-            key={stop.name}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: x, top: y }}
-          >
-            <span
-              className="relative grid place-items-center"
-              role="status"
-              aria-label={`PB's location: ${liveName}, ${liveState}`}
-            >
-              {status === "live" && (
-                <>
-                  <span className="absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden="true" />
-                  <span className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden="true" />
-                </>
-              )}
-              <span
-                className={cn(
-                  "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg",
-                  status === "live"
-                    ? "bg-saffron-400 shadow-saffron-400/50"
-                    : status === "stale"
-                      ? "bg-amber-400"
-                      : "bg-zinc-500",
-                )}
-              >
-                <span
-                  className={cn("h-1.5 w-1.5 rounded-full bg-white", status === "live" && "animate-blink")}
-                />
-              </span>
-              <span className="absolute left-7 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-full bg-ink-950/80 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md sm:block">
-                {liveName.toUpperCase()} ·{" "}
-                {status === "live" ? "YOU ARE HERE" : status === "stale" ? "LAST KNOWN" : "PARKED"}
-              </span>
-            </span>
-          </span>
         ) : (
-          <div
-            key={stop.name}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: x, top: y }}
-          >
-            <button type="button" className="group relative grid place-items-center focus:outline-none">
-              <span
-                className={cn(
-                  "grid h-4.5 w-4.5 place-items-center rounded-full border transition-all duration-300 group-hover:scale-110",
-                  stop.status === "done"
-                    ? "border-emerald-300/40 bg-emerald-400/10 group-hover:border-emerald-400 group-hover:bg-emerald-400/20"
-                    : "border-white/15 bg-white/[0.04] group-hover:border-saffron-400/50 group-hover:bg-saffron-400/10",
-                )}
-              >
-                {stop.status === "done" && (
-                  <Check className="h-2.5 w-2.5 text-emerald-400/60 transition-colors duration-300 group-hover:text-emerald-300" />
-                )}
-                {stop.status === "next" && (
-                  <span className="h-1 w-1 rounded-full bg-zinc-500 transition-colors duration-300 group-hover:bg-saffron-300" />
-                )}
-              </span>
-              <span
-                className={cn(
-                  "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide transition-all duration-300",
-                  stop.status === "done"
-                    ? "text-zinc-500/60 group-hover:text-emerald-300"
-                    : "text-zinc-600/50 group-hover:text-saffron-300",
-                )}
-              >
-                {stop.name}
-              </span>
-              <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-ink-950/95 px-2.5 py-1.5 text-[10px] font-semibold text-zinc-300 opacity-0 shadow-xl backdrop-blur-md transition-all duration-300 group-hover:block group-hover:opacity-100 group-focus:block group-focus:opacity-100">
-                <span className="flex items-center gap-1">
-                  {stop.status === "done" && <Check className="h-3 w-3 text-emerald-400" />}
-                  <span className="text-white">{stop.name}</span>
-                </span>
-                <span className="mt-0.5 block text-[9px] font-normal text-zinc-500">{stop.note}</span>
-              </span>
-            </button>
+          <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
+            Add at least one stop in the dashboard and this panel becomes a live Google Map of the
+            route.
           </div>
-        );
-      })}
+        )}
+      </div>
 
-      <p
-        className="pointer-events-none absolute bottom-2 right-3 text-[9px] text-zinc-500"
-        aria-hidden="true"
-      >
-        Map data © OpenStreetMap contributors © CARTO
-      </p>
+      {/* A soft edge top and bottom so the overlay plates stay readable over
+          the map without hiding it. */}
+      <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+
+      {count > 0 && (
+        <div className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5">
+          <div className="rounded-2xl border border-white/10 bg-ink-950/85 px-3 py-2.5 shadow-xl shadow-black/40 backdrop-blur-xl sm:px-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                Route · {count} stop{count === 1 ? "" : "s"} ·{" "}
+                {formatKm(totals[totals.length - 1] ?? 0)}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setInteractive((value) => !value)}
+                  className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
+                  aria-pressed={interactive}
+                >
+                  {interactive ? (
+                    <Lock className="h-3 w-3" aria-hidden="true" />
+                  ) : (
+                    <MapPinned className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  {interactive ? "Lock map" : "Move map"}
+                </button>
+                <a
+                  href={linkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
+                >
+                  Google Maps
+                  <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+
+            <div className="relative">
+              {/* Track: solid behind PB, dashed still to come. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 h-3"
+                style={{ marginLeft: `${edge}%`, marginRight: `${edge}%` }}
+                aria-hidden="true"
+              >
+                <div className="absolute inset-x-0 top-[5px] h-0.5 rounded-full bg-white/10" />
+                <div
+                  className="absolute left-0 top-[5px] h-0.5 rounded-full bg-saffron-400"
+                  style={{ width: `${progressPct}%` }}
+                />
+                <div
+                  className="absolute top-[5px] h-0.5 border-t-2 border-dashed border-saffron-400/40"
+                  style={{ left: `${progressPct}%`, right: 0 }}
+                />
+              </div>
+
+              <ol
+                className="relative grid"
+                style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+                aria-label="Stops on this ride"
+              >
+                {stops.map((stop, index) => {
+                  const isStart = index === 0;
+                  const isEnd = index === count - 1;
+                  const isLive = stop.status === "live";
+                  const isDone = stop.status === "done";
+                  return (
+                    <li key={`${stop.name}-${index}`} className="flex min-w-0 flex-col items-center">
+                      <span
+                        className="relative grid h-3 w-3 place-items-center"
+                        role={isLive ? "status" : undefined}
+                        aria-label={
+                          isLive ? `PB's location: ${liveName}, ${liveState}` : undefined
+                        }
+                      >
+                        {isLive && (
+                          <span
+                            className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-radar"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span
+                          title={`${isStart ? "Start" : isEnd ? "Destination" : "Stop"} · ${
+                            stop.name
+                          }${stop.note ? ` — ${stop.note}` : ""}`}
+                          className={cn(
+                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-ink-950",
+                            isStart
+                              ? "bg-emerald-500"
+                              : isEnd
+                                ? "bg-red-500"
+                                : isLive
+                                  ? "bg-saffron-400"
+                                  : isDone
+                                    ? "bg-emerald-400/70"
+                                    : "bg-zinc-600",
+                          )}
+                        >
+                          {isDone && !isStart && !isEnd && (
+                            <Check className="h-2 w-2 text-ink-950" aria-hidden="true" />
+                          )}
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "mt-1.5 max-w-full truncate text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:text-[10px]",
+                          isStart
+                            ? "text-emerald-300"
+                            : isEnd
+                              ? "text-red-300"
+                              : isLive
+                                ? "text-saffron-300"
+                                : isDone
+                                  ? "text-zinc-400"
+                                  : "text-zinc-500",
+                        )}
+                      >
+                        {stop.name}
+                      </span>
+                      <span className="text-[9px] leading-tight text-zinc-600">
+                        {isLive && status === "live" && index > 0
+                          ? "here now"
+                          : formatKm(totals[index] ?? 0)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

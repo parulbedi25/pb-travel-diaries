@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -8,32 +6,34 @@ import {
   MapPinned,
   Plus,
   Route as RouteIcon,
+  Search,
   Trash2,
 } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
+import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
+import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 /**
  * Editor for the live tracker's route.
  *
- * Stops are placed by clicking the map, the way pointers are placed on the
- * rider image — drag a marker to move it. The order they were added in is the
- * order of the journey: the first is the start, the last is the destination,
- * and the tracker draws them green and red respectively.
+ * Two surfaces, because a Google map cannot be drawn on:
  *
- * The road itself comes from the routing service, fetched here in the
- * dashboard and stored with the content, so visitors render stored coordinates
- * and never depend on a third party being reachable. Failing to fetch is not
- * fatal: the tracker falls back to straight segments between the stops.
+ *  1. "Route on Google Maps" — a real Google map of the route, rendered through
+ *     the keyless embed endpoint. It is the honest geography, and it updates as
+ *     you edit. You cannot click it for coordinates (it is a sealed iframe).
+ *  2. "Place the stops" — the placement surface. A local grid with numbered,
+ *     draggable pins: click to drop a stop, drag to move it. It draws only
+ *     lines and pins, so it never depends on a tile server and can never come
+ *     up blank.
+ *
+ * The order of the list is the order of the journey: the first stop is the
+ * start, the last is the destination, and the tracker draws them green and red.
  */
 
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
 const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500";
-
-const TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-const ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 const STATUSES: LiveStop["status"][] = ["done", "live", "next"];
 
@@ -52,14 +52,88 @@ const roleOf = (index: number, total: number): Role =>
 
 const round = (n: number) => Math.round(n * 1e4) / 1e4;
 
-/** A numbered pin: green at the start, red at the destination, gold between. */
-function stopIcon(index: number, role: Role): L.DivIcon {
-  return L.divIcon({
-    className: "route-stop-marker",
-    html: `<span class="route-stop-dot route-stop-dot--${role}">${index + 1}</span>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-  });
+/* ------------------------------------------------------------------ *
+ * Placement grid: geography in, percentages out.
+ * ------------------------------------------------------------------ */
+
+/** The grid box is 3 wide by 2 tall; keeping that in step with the CSS. */
+const BOX_ASPECT = 2 / 3;
+/** Degrees. A single stop still needs a frame around it. */
+const MIN_SPAN = 0.05;
+/** Fraction of the box left as breathing room around the stops. */
+const FIT = 0.86;
+
+interface Projector {
+  toXY: (point: { lat: number; lng: number }) => { x: number; y: number };
+  toLatLng: (x: number, y: number) => { lat: number; lng: number };
+}
+
+/**
+ * Fit the stops into the box without distorting them, the way a map would.
+ * Both directions share the same numbers, so a pin dropped by clicking lands
+ * exactly where the cursor was.
+ */
+function makeProjector(stops: LiveStop[]): Projector {
+  const lats = stops.length ? stops.map((s) => s.lat) : [31];
+  const lngs = stops.length ? stops.map((s) => s.lng) : [76.5];
+  let minLat = Math.min(...lats);
+  let maxLat = Math.max(...lats);
+  let minLng = Math.min(...lngs);
+  let maxLng = Math.max(...lngs);
+
+  if (maxLat - minLat < MIN_SPAN) {
+    const mid = (minLat + maxLat) / 2;
+    minLat = mid - MIN_SPAN / 2;
+    maxLat = mid + MIN_SPAN / 2;
+  }
+  if (maxLng - minLng < MIN_SPAN) {
+    const mid = (minLng + maxLng) / 2;
+    minLng = mid - MIN_SPAN / 2;
+    maxLng = mid + MIN_SPAN / 2;
+  }
+
+  const midLat = (minLat + maxLat) / 2;
+  // Longitude shrinks towards the poles; keep the shape honest.
+  const cos = Math.max(Math.cos((midLat * Math.PI) / 180), 0.01);
+  const spanX = Math.max((maxLng - minLng) * cos, 1e-6);
+  const spanY = Math.max(maxLat - minLat, 1e-6);
+  const scale = Math.min(1 / spanX, BOX_ASPECT / spanY) * FIT;
+  const offsetX = (1 - spanX * scale) / 2;
+  const offsetY = (BOX_ASPECT - spanY * scale) / 2;
+
+  return {
+    toXY: ({ lat, lng }) => ({
+      x: ((lng - minLng) * scale + offsetX) * 100,
+      y: (((maxLat - lat) * scale + offsetY) / BOX_ASPECT) * 100,
+    }),
+    toLatLng: (x, y) => ({
+      lat: maxLat - ((y / 100) * BOX_ASPECT - offsetY) / scale,
+      // Undo the cosine correction as well as the scale, or every point
+      // dropped on the grid would land short of the cursor.
+      lng: (x / 100 - offsetX) / (scale * cos) + minLng,
+    }),
+  };
+}
+
+/**
+ * Look a place up by name. Nominatim (OpenStreetMap) needs no key; it is only
+ * ever called when you press Find, and failing is not fatal — the coordinates
+ * can always be typed in by hand.
+ */
+async function geocode(
+  query: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
+    query,
+  )}`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const json = (await response.json()) as { lat?: string; lon?: string }[];
+  const first = Array.isArray(json) ? json[0] : undefined;
+  if (!first) return null;
+  const lat = Number(first.lat);
+  const lng = Number(first.lon);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat: round(lat), lng: round(lng) } : null;
 }
 
 export default function RouteStopsEditor({
@@ -73,225 +147,342 @@ export default function RouteStopsEditor({
   onChange: (stops: LiveStop[]) => void;
   onGeometryChange: (geometry: LatLng[]) => void;
 }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.LayerGroup | null>(null);
-  const stopsRef = useRef(stops);
-  const draggingRef = useRef(false);
-  const fittedRef = useRef<string | null>(null);
-  const [mapFailed, setMapFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [looking, setLooking] = useState(false);
+  const [lookError, setLookError] = useState("");
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState("");
 
+  const projector = useMemo(() => makeProjector(stops), [stops]);
+  const placed = useMemo(() => stops.map((stop) => projector.toXY(stop)), [stops, projector]);
+  const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
+
+  const liveEmbedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
+  const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
+
+  // Dragging changes coordinates many times a second; only reload the map once
+  // the pin has settled.
+  const [previewUrl, setPreviewUrl] = useState(liveEmbedUrl);
   useEffect(() => {
-    stopsRef.current = stops;
-  }, [stops]);
+    const timer = window.setTimeout(() => setPreviewUrl(liveEmbedUrl), 600);
+    return () => window.clearTimeout(timer);
+  }, [liveEmbedUrl]);
 
   const patch = useCallback(
-    (index: number, part: Partial<LiveStop>) =>
-      onChange(stopsRef.current.map((stop, i) => (i === index ? { ...stop, ...part } : stop))),
-    [onChange],
+    (index: number, part: Partial<LiveStop>) => {
+      onChange(stops.map((stop, i) => (i === index ? { ...stop, ...part } : stop)));
+    },
+    [onChange, stops],
   );
 
   const addStop = useCallback(
     (lat: number, lng: number) => {
-      const current = stopsRef.current;
-      onChange([
-        ...current,
-        { name: `Stop ${current.length + 1}`, note: "", status: "next", lat: round(lat), lng: round(lng) },
-      ]);
+      const next: LiveStop = {
+        name: `Stop ${stops.length + 1}`,
+        note: "",
+        status: "next",
+        lat: round(lat),
+        lng: round(lng),
+      };
+      onChange([...stops, next]);
     },
-    [onChange],
+    [onChange, stops],
   );
 
-  // The map is built once; markers are redrawn whenever the stops change.
-  useEffect(() => {
-    const host = hostRef.current;
+  const move = useCallback(
+    (from: number, to: number) => {
+      if (to < 0 || to >= stops.length) return;
+      const reordered = [...stops];
+      const [item] = reordered.splice(from, 1);
+      reordered.splice(to, 0, item);
+      onChange(reordered);
+    },
+    [onChange, stops],
+  );
+
+  const handleGridClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const host = gridRef.current;
     if (!host) return;
-    let map: L.Map | null = null;
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    const point = projector.toLatLng(
+      Math.min(100, Math.max(0, x)),
+      Math.min(100, Math.max(0, y)),
+    );
+    addStop(point.lat, point.lng);
+  };
+
+  const handlePinMove = (index: number, event: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragIndex !== index) return;
+    const host = gridRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    const point = projector.toLatLng(
+      Math.min(100, Math.max(0, x)),
+      Math.min(100, Math.max(0, y)),
+    );
+    patch(index, { lat: round(point.lat), lng: round(point.lng) });
+  };
+
+  const handleFind = async () => {
+    const name = query.trim();
+    if (!name) return;
+    setLooking(true);
+    setLookError("");
     try {
-      map = L.map(host, {
-        zoomControl: true,
-        attributionControl: false,
-        scrollWheelZoom: false,
-      }).setView([31.6, 77.4], 6);
-      L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 19 }).addTo(map);
-      mapRef.current = map;
-      layerRef.current = L.layerGroup().addTo(map);
-      map.on("click", (event) => {
-        const { lat, lng } = (event as L.LeafletMouseEvent).latlng;
-        addStop(lat, lng);
-      });
-    } catch {
-      mapRef.current = null;
-      layerRef.current = null;
-      setMapFailed(true);
-    }
-    return () => {
-      try {
-        map?.remove();
-      } catch {
-        // Nothing to tear down if Leaflet never started.
+      const found = await geocode(name);
+      if (!found) {
+        setLookError(`Could not find “${name}”. Add it by clicking the grid or typing coordinates.`);
+        return;
       }
-      mapRef.current = null;
-      layerRef.current = null;
-      fittedRef.current = null;
-    };
-  }, [addStop]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!map || !layer) return;
-    // Rebuilding mid-drag would yank the marker out from under the cursor.
-    if (draggingRef.current) return;
-
-    layer.clearLayers();
-    stops.forEach((stop, index) => {
-      const role = roleOf(index, stops.length);
-      const marker = L.marker([stop.lat, stop.lng], {
-        icon: stopIcon(index, role),
-        draggable: true,
-        keyboard: false,
-        title: `${index + 1}. ${stop.name}`,
-      });
-      marker.on("dragstart", () => {
-        draggingRef.current = true;
-      });
-      marker.on("dragend", () => {
-        const position = marker.getLatLng();
-        draggingRef.current = false;
-        patch(index, { lat: round(position.lat), lng: round(position.lng) });
-      });
-      marker.addTo(layer);
-    });
-
-    // Only re-fit when the coordinates actually change, so typing a name or
-    // changing a status does not throw away where the editor was looking.
-    const key = JSON.stringify(stops.map((s) => [s.lat, s.lng]));
-    if (fittedRef.current === key) return;
-    fittedRef.current = key;
-    if (stops.length > 1) {
-      map.fitBounds(L.latLngBounds(stops.map((s) => [s.lat, s.lng])), {
-        padding: [44, 44],
-        maxZoom: 13,
-      });
-    } else if (stops.length === 1) {
-      map.setView([stops[0].lat, stops[0].lng], Math.max(map.getZoom(), 9));
+      onChange([
+        ...stops,
+        { name, note: "", status: "next", lat: found.lat, lng: found.lng },
+      ]);
+      setQuery("");
+    } catch {
+      setLookError("The place lookup could not be reached. Click the grid or type coordinates.");
+    } finally {
+      setLooking(false);
     }
-  }, [stops, patch]);
-
-  const move = (index: number, delta: number) => {
-    const next = index + delta;
-    if (next < 0 || next >= stops.length) return;
-    const reordered = [...stops];
-    [reordered[index], reordered[next]] = [reordered[next], reordered[index]];
-    onChange(reordered);
   };
 
-  const addAtCentre = () => {
-    const map = mapRef.current;
-    const centre = map ? map.getCenter() : { lat: 31.6, lng: 77.4 };
-    addStop(centre.lat, centre.lng);
-  };
-
-  const fetchRoute = async () => {
-    setBusy(true);
-    setMessage(null);
+  const handleFetchRoad = async () => {
+    if (stops.length < 2) return;
+    setFetching(true);
+    setFetchError("");
     const result = await fetchRoadGeometry(stops);
-    setBusy(false);
-    setMessage({ ok: result.ok, text: result.message });
-    if (result.ok) onGeometryChange(result.geometry);
+    setFetching(false);
+    if (result.ok) {
+      onGeometryChange(result.geometry);
+    } else {
+      setFetchError(result.message);
+    }
   };
 
   return (
-    <div className="grid gap-3">
-      {/* ── Place the stops ── */}
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+    <div className="flex flex-col gap-3">
+      {/* ── The real map ── */}
+      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ink-950/50">
         <div className="flex items-center justify-between gap-2 px-4 py-3">
           <p className="flex items-center gap-2 text-xs font-bold text-white">
-            <MapPinned className="h-4 w-4 text-saffron-300" />
-            Place the stops
+            <MapPinned className="h-4 w-4 text-saffron-300" aria-hidden="true" />
+            Route on Google Maps
           </p>
-          <span className="text-[10px] text-zinc-500">{stops.length} stop{stops.length === 1 ? "" : "s"}</span>
-        </div>
-        {mapFailed ? (
-          <p className="px-4 pb-4 text-[11px] leading-relaxed text-amber-300">
-            The map could not start here. You can still add and edit stops by their coordinates below.
-          </p>
-        ) : (
-          <>
-            <div ref={hostRef} className="route-stop-map h-64 w-full" />
-            <p className="px-4 pb-3 pt-2 text-[11px] leading-relaxed text-zinc-400">
-              Click the map to drop a stop. Drag a marker to move it. The first stop is the start
-              (green), the last is the destination (red).
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* ── Road route ── */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <p className="flex items-center gap-2 text-xs font-bold text-white">
-          <RouteIcon className="h-4 w-4 text-saffron-300" />
-          Road route
-        </p>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
-          {routeGeometry.length
-            ? `${routeGeometry.length} points of real road stored. Refetch after moving a stop so the line follows the road again.`
-            : "No road geometry yet — the tracker draws straight lines between the stops. Fetch the road to follow the actual route."}
-        </p>
-        <button
-          type="button"
-          onClick={fetchRoute}
-          disabled={busy || stops.length < 2}
-          className="mt-3 inline-flex items-center gap-2 rounded-full bg-saffron-400 px-4 py-2 text-xs font-bold text-on-gold transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPinned className="h-3.5 w-3.5" />}
-          {routeGeometry.length ? "Refetch road route" : "Fetch road route"}
-        </button>
-        {message && (
-          <p
-            className={`mt-2.5 text-[11px] font-semibold ${message.ok ? "text-emerald-300" : "text-red-400"}`}
-            role="status"
+          <a
+            href={linkUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
           >
-            {message.text}
-          </p>
-        )}
+            Open
+            <RouteIcon className="h-3 w-3" aria-hidden="true" />
+          </a>
+        </div>
+        <div className="relative h-[240px] w-full border-t border-white/[0.08] bg-ink-900">
+          {stops.length ? (
+            <iframe
+              src={previewUrl}
+              title="Google Maps preview of the route"
+              className="h-full w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          ) : (
+            <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
+              Add a stop and the route appears here.
+            </div>
+          )}
+        </div>
+        <p className="border-t border-white/[0.08] px-4 py-2.5 text-[11px] leading-relaxed text-zinc-500">
+          Google draws the road and the A/B markers. The exact pins below are yours — the first is
+          the green start, the last is the red destination.
+        </p>
       </div>
 
-      {/* ── Edit each stop ── */}
-      {stops.map((stop, index) => {
-        const role = roleOf(index, stops.length);
-        return (
-          <div key={`${stop.name}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+      {/* ── Place the stops ── */}
+      <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
+        <p className="flex items-center gap-2 text-xs font-bold text-white">
+          <MapPinned className="h-4 w-4 text-saffron-300" aria-hidden="true" />
+          Place the stops
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          Click the grid to drop a stop, or drag a pin to move it. This surface is drawn locally, so
+          it works even with no map tiles.
+        </p>
+
+        <div
+          ref={gridRef}
+          onClick={handleGridClick}
+          className="route-grid relative mt-3 aspect-[3/2] w-full cursor-crosshair overflow-hidden rounded-xl border border-white/10"
+        >
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            viewBox="0 0 300 200"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            {[20, 40, 60, 80].map((step) => (
+              <g key={step}>
+                <line x1={step * 3} y1="0" x2={step * 3} y2="200" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                <line x1="0" y1={step * 2} x2="300" y2={step * 2} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+              </g>
+            ))}
+            {placed.length > 1 && (
+              <polyline
+                points={placed.map((p) => `${(p.x * 3).toFixed(1)},${(p.y * 2).toFixed(1)}`).join(" ")}
+                fill="none"
+                stroke="var(--color-saffron-400)"
+                strokeOpacity="0.55"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeDasharray="6 5"
+              />
+            )}
+          </svg>
+
+          {stops.map((stop, index) => {
+            const role = roleOf(index, stops.length);
+            const point = placed[index];
+            return (
+              <button
+                key={`${stop.name}-${index}`}
+                type="button"
+                title={`${ROLE_COPY[role]} · ${stop.name}`}
+                aria-label={`${ROLE_COPY[role]} · ${stop.name}. Drag to move.`}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDragIndex(index);
+                }}
+                onPointerMove={(event) => handlePinMove(index, event)}
+                onPointerUp={() => setDragIndex(null)}
+                onPointerCancel={() => setDragIndex(null)}
+                onClick={(event) => event.stopPropagation()}
+                className="absolute -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none active:cursor-grabbing"
+                style={{ left: `${point.x}%`, top: `${point.y}%` }}
+              >
                 <span
-                  className={`grid h-4 w-4 place-items-center rounded-full text-[9px] text-ink-950 ${
-                    role === "start" ? "bg-emerald-500" : role === "end" ? "bg-red-500" : "bg-saffron-400"
+                  className={`grid h-6 w-6 place-items-center rounded-full border-2 border-white text-[11px] font-bold shadow-lg ${
+                    role === "start"
+                      ? "bg-emerald-500 text-white"
+                      : role === "end"
+                        ? "bg-red-500 text-white"
+                        : "bg-[#f5b301] text-ink-950"
                   }`}
                 >
                   {index + 1}
                 </span>
-                {ROLE_COPY[role]} · {STATUS_COPY[stop.status] ?? stop.status}
-              </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleFind();
+              }
+            }}
+            placeholder="Add a stop by name — Anandpur Sahib"
+            aria-label="Add a stop by name"
+            className={inputCls}
+          />
+          <button
+            type="button"
+            onClick={() => void handleFind()}
+            disabled={looking || !query.trim()}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
+          >
+            {looking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            Find
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const last = stops[stops.length - 1];
+              addStop(last ? last.lat + 0.05 : 31, last ? last.lng + 0.05 : 76.5);
+            }}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add stop
+          </button>
+        </div>
+        {lookError && <p className="mt-2 text-[11px] text-amber-200">{lookError}</p>}
+      </div>
+
+      {/* ── Road ── */}
+      <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
+        <p className="flex items-center gap-2 text-xs font-bold text-white">
+          <RouteIcon className="h-4 w-4 text-saffron-300" aria-hidden="true" />
+          Road route
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          {routeGeometry.length
+            ? `${routeGeometry.length} points of real road stored. Refetch after moving a stop so distances follow the road again.`
+            : "No road geometry yet — distances are measured straight between stops. Fetch the road to measure the actual route."}
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleFetchRoad()}
+            disabled={fetching || stops.length < 2}
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
+          >
+            {fetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RouteIcon className="h-3.5 w-3.5" />}
+            {routeGeometry.length ? "Refetch road route" : "Fetch road route"}
+          </button>
+          {stops.length < 2 && (
+            <span className="text-[11px] text-zinc-500">Needs at least two stops.</span>
+          )}
+        </div>
+        {fetchError && <p className="mt-2 text-[11px] text-amber-200">{fetchError}</p>}
+      </div>
+
+      {/* ── Each stop ── */}
+      {stops.map((stop, index) => {
+        const role = roleOf(index, stops.length);
+        return (
+          <div key={`${stop.name}-${index}`} className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs font-bold text-white">
+                <span
+                  className={`grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-white ${
+                    role === "start" ? "bg-emerald-500" : role === "end" ? "bg-red-500" : "bg-[#f5b301] text-ink-950"
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                {ROLE_COPY[role]} · {STATUS_COPY[stop.status]}
+                <span className="font-normal text-zinc-500">{formatKm(totals[index] ?? 0)}</span>
+              </p>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => move(index, -1)}
+                  onClick={() => move(index, index - 1)}
                   disabled={index === 0}
                   aria-label={`Move ${stop.name} earlier`}
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                  className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white disabled:opacity-30"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => move(index, 1)}
+                  onClick={() => move(index, index + 1)}
                   disabled={index === stops.length - 1}
                   aria-label={`Move ${stop.name} later`}
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                  className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white disabled:opacity-30"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
                 </button>
@@ -299,7 +490,7 @@ export default function RouteStopsEditor({
                   type="button"
                   onClick={() => onChange(stops.filter((_, i) => i !== index))}
                   aria-label={`Remove ${stop.name}`}
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+                  className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition-colors hover:border-red-400/40 hover:text-red-300"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -313,9 +504,9 @@ export default function RouteStopsEditor({
                 </label>
                 <input
                   id={`stop-name-${index}`}
-                  className={inputCls}
                   value={stop.name}
-                  onChange={(e) => patch(index, { name: e.target.value })}
+                  onChange={(event) => patch(index, { name: event.target.value })}
+                  className={inputCls}
                 />
               </div>
               <div>
@@ -324,13 +515,13 @@ export default function RouteStopsEditor({
                 </label>
                 <select
                   id={`stop-status-${index}`}
-                  className={inputCls}
                   value={stop.status}
-                  onChange={(e) => patch(index, { status: e.target.value as LiveStop["status"] })}
+                  onChange={(event) => patch(index, { status: event.target.value as LiveStop["status"] })}
+                  className={inputCls}
                 >
-                  {STATUSES.map((status) => (
-                    <option key={status} value={status} className="bg-ink-950">
-                      {STATUS_COPY[status]}
+                  {STATUSES.map((value) => (
+                    <option key={value} value={value} className="bg-ink-900">
+                      {STATUS_COPY[value]}
                     </option>
                   ))}
                 </select>
@@ -343,9 +534,9 @@ export default function RouteStopsEditor({
                   id={`stop-lat-${index}`}
                   type="number"
                   step="0.0001"
-                  className={inputCls}
                   value={stop.lat}
-                  onChange={(e) => patch(index, { lat: Number(e.target.value) })}
+                  onChange={(event) => patch(index, { lat: Number(event.target.value) })}
+                  className={inputCls}
                 />
               </div>
               <div>
@@ -356,9 +547,9 @@ export default function RouteStopsEditor({
                   id={`stop-lng-${index}`}
                   type="number"
                   step="0.0001"
-                  className={inputCls}
                   value={stop.lng}
-                  onChange={(e) => patch(index, { lng: Number(e.target.value) })}
+                  onChange={(event) => patch(index, { lng: Number(event.target.value) })}
+                  className={inputCls}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -367,25 +558,15 @@ export default function RouteStopsEditor({
                 </label>
                 <input
                   id={`stop-note-${index}`}
-                  className={inputCls}
                   value={stop.note}
-                  onChange={(e) => patch(index, { note: e.target.value })}
+                  onChange={(event) => patch(index, { note: event.target.value })}
+                  className={inputCls}
                 />
               </div>
             </div>
           </div>
         );
       })}
-
-      <button
-        type="button"
-        onClick={addAtCentre}
-        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 py-3 text-xs font-semibold text-zinc-400 transition-colors hover:border-saffron-400/50 hover:text-white"
-      >
-        <Plus className="h-3.5 w-3.5" /> Add stop
-      </button>
-
-      <p className="text-[9px] text-zinc-500">Map data © OpenStreetMap contributors © CARTO</p>
     </div>
   );
 }

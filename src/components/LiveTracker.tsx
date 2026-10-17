@@ -16,12 +16,7 @@ import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
 import { useLiveLocation } from "../hooks/useLiveLocation";
 import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
-
-const NEXT_UPS = [
-  { place: "Key Monastery", meta: "Tomorrow · 7:00 AM rollout", tag: "Sunrise shoot" },
-  { place: "Chicham Bridge", meta: "Day 7 · Asia's highest bridge", tag: "Drone day" },
-  { place: "Kibber Wildlife", meta: "Day 8 · snow-leopard trail", tag: "Full film" },
-];
+import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 function ageLabel(sec: number): string {
   if (sec < 90) return `${sec}s ago`;
@@ -34,6 +29,23 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   const lat = location.lat.toFixed(4);
   const lng = location.lng.toFixed(4);
   const note = data.note.trim() ? data.note : location.note;
+
+  // Everything the card says about the route is read from the stops, so it
+  // stays true when the route is edited in the dashboard.
+  const stops = data.stops;
+  const totals = useMemo(
+    () => cumulativeKm(stops, data.routeGeometry),
+    [stops, data.routeGeometry],
+  );
+  const totalKm = totals[totals.length - 1] ?? 0;
+  const liveIndex = stops.findIndex((stop) => stop.status === "live");
+  const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
+  const progressIndex = liveIndex >= 0 ? liveIndex : lastDone >= 0 ? lastDone : 0;
+  const coveredKm = totals[progressIndex] ?? 0;
+  const progressPct = stops.length > 1 ? (progressIndex / (stops.length - 1)) * 100 : 0;
+  const currentStop = stops[progressIndex];
+  const nextStop = stops[progressIndex + 1];
+  const upcoming = stops.slice(progressIndex + 1, progressIndex + 4);
   const { content } = useSite();
   const instagramHref = useMemo(() => {
     const instagram = resolveFooter(content.footer).socials.find((s) => s.label === "Instagram");
@@ -71,7 +83,6 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <TrackerMap
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}
-                live={{ lat: location.lat, lng: location.lng }}
                 liveName={location.name}
                 liveState={location.state}
                 status={status}
@@ -187,7 +198,8 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                       {location.name}
                     </h3>
                     <p className="mt-1 text-sm text-zinc-500">
-                      {location.state} · Day 6 of 12 · Spiti Circuit
+                      {location.state} · {stops[0]?.name ?? "the start"} →{" "}
+                      {stops[stops.length - 1]?.name ?? "the destination"}
                     </p>
                   </div>
                   <span className="rounded-full bg-white/[0.06] px-3.5 py-1.5 font-mono text-[11px] text-zinc-300">
@@ -200,7 +212,11 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     { icon: Mountain, v: location.altitude, l: "Altitude" },
                     { icon: Thermometer, v: "-3°C", l: "Feels like" },
                     { icon: Fuel, v: "68%", l: "Fuel · 210 km range" },
-                    { icon: Flag, v: "Day 6/12", l: "Expedition" },
+                    {
+                      icon: Flag,
+                      v: `${progressIndex + 1}/${stops.length || 1}`,
+                      l: "Stop",
+                    },
                   ].map((s) => (
                     <div key={s.l} className="rounded-2xl bg-white/[0.04] p-3.5">
                       <s.icon className="h-4 w-4 text-saffron-300" />
@@ -213,19 +229,26 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 <div className="mt-6 rounded-2xl bg-white/[0.03] p-4">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-zinc-300">
-                      Today · {location.name} → Key Monastery
+                      {nextStop
+                        ? `Today · ${currentStop?.name ?? location.name} → ${nextStop.name}`
+                        : `Final stretch · ${stops[stops.length - 1]?.name ?? "the destination"}`}
                     </span>
-                    <span className="font-mono text-saffron-300">29/42 km</span>
+                    <span className="font-mono text-saffron-300">
+                      {formatKm(coveredKm)} / {formatKm(totalKm)}
+                    </span>
                   </div>
                   <div
                     className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]"
                     role="progressbar"
-                    aria-valuenow={68}
+                    aria-valuenow={Math.round(progressPct)}
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-label="Today's ride progress"
                   >
-                    <div className="h-full w-[68%] rounded-full bg-saffron-400" />
+                    <div
+                      className="h-full rounded-full bg-saffron-400 transition-all duration-700"
+                      style={{ width: `${progressPct}%` }}
+                    />
                   </div>
                   <p className="mt-2 text-[11px] text-zinc-500">{note}</p>
                 </div>
@@ -256,23 +279,32 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   Coming up next
                 </p>
                 <ul className="mt-4 flex flex-col">
-                  {NEXT_UPS.map((n, i) => (
-                    <li key={n.place} className="relative flex gap-4 pb-5 last:pb-0">
-                      {i < NEXT_UPS.length - 1 && (
+                  {upcoming.map((stop, i) => (
+                    <li key={stop.name} className="relative flex gap-4 pb-5 last:pb-0">
+                      {i < upcoming.length - 1 && (
                         <span className="absolute left-[7px] top-5 h-full w-px bg-white/10" aria-hidden />
                       )}
                       <span className="mt-1 h-[15px] w-[15px] shrink-0 rounded-full border-2 border-saffron-400/70 bg-ink-950" aria-hidden />
                       <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-white">{n.place}</p>
-                          <p className="text-xs text-zinc-500">{n.meta}</p>
+                          <p className="text-sm font-semibold text-white">{stop.name}</p>
+                          <p className="text-xs text-zinc-500">
+                            {stop.note || `${formatKm(totals[progressIndex + 1 + i] ?? 0)} from the start`}
+                          </p>
                         </div>
                         <span className="rounded-full bg-saffron-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
-                          {n.tag}
+                          {formatKm((totals[progressIndex + 1 + i] ?? 0) - coveredKm)}
                         </span>
                       </div>
                     </li>
                   ))}
+                  {!upcoming.length && (
+                    <li className="text-sm text-zinc-500">
+                      {stops.length
+                        ? `That is the last stop — the ride ends at ${stops[stops.length - 1].name}.`
+                        : "Add stops in the dashboard and they show up here."}
+                    </li>
+                  )}
                 </ul>
               </div>
             </Item>

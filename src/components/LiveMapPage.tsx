@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useMemo } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -8,9 +8,8 @@ import {
   Mountain,
   Satellite,
 } from "lucide-react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { useLiveLocation, type LiveStatus } from "../hooks/useLiveLocation";
+import { placeEmbedUrl, placeLinkUrl } from "../utils/mapEmbed";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
 
@@ -91,90 +90,12 @@ export default function LiveMapPage() {
     windowCloseMs,
   } = useLiveLocation();
 
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const embedUrl = useMemo(
+    () => placeEmbedUrl(location.lat, location.lng, 13),
+    [location.lat, location.lng],
+  );
 
-  // Initialise Leaflet map
-  useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
-
-    // CartoDB Dark Matter tile layer matches our premium design
-    const darkMatterUrl =
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-    const attribution =
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
-
-    const leafletMap = L.map(mapContainerRef.current, {
-      center: [location.lat, location.lng],
-      zoom: 12,
-      zoomControl: false,
-      attributionControl: false,
-    });
-
-    L.tileLayer(darkMatterUrl, {
-      attribution,
-      maxZoom: 20,
-    }).addTo(leafletMap);
-
-    // Zoom buttons positioned on bottom-right to keep interface clean
-    L.control
-      .zoom({
-        position: "bottomright",
-      })
-      .addTo(leafletMap);
-
-    mapRef.current = leafletMap;
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-    // location is used as initial centre on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Update marker position and map centre on location pings
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const latLng: L.LatLngExpression = [location.lat, location.lng];
-
-    // Re-centre the view
-    map.panTo(latLng);
-
-    // Create or update our beautiful custom pulsing HTML marker
-    if (markerRef.current) {
-      markerRef.current.setLatLng(latLng);
-    } else {
-      const color = STATUS_META[status];
-      const ringHtml =
-        status === "live"
-          ? `<span class="absolute h-10 w-10 rounded-full bg-emerald-400/40 animate-radar"></span>
-             <span class="absolute h-10 w-10 rounded-full bg-emerald-400/40 animate-radar" style="animation-delay:1.2s"></span>`
-          : `<span class="absolute h-8 w-8 rounded-full ${color.border.replace("border", "bg")}"></span>`;
-
-      const icon = L.divIcon({
-        className: "custom-leaflet-marker",
-        html: `
-          <div class="relative flex items-center justify-center" style="width: 40px; height: 40px;">
-            ${ringHtml}
-            <span class="relative grid h-5 w-5 place-items-center rounded-full border-2 border-white ${color.dot} shadow-lg">
-              <span class="h-1.5 w-1.5 rounded-full bg-white ${status === "live" ? "animate-blink" : ""}"></span>
-            </span>
-          </div>`,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      });
-
-      markerRef.current = L.marker(latLng, { icon }).addTo(map);
-    }
-  }, [location.lat, location.lng, status]);
-
-  const extUrl = `https://www.google.com/maps?q=${location.lat},${location.lng}`;
+  const extUrl = placeLinkUrl(location.lat, location.lng);
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-950">
@@ -208,13 +129,15 @@ export default function LiveMapPage() {
         </div>
       </header>
 
-      {/* ---------- Free Leaflet Map ---------- */}
+      {/* ---------- Google Maps ---------- */}
       <div className="relative min-h-[520px] flex-1">
-        <div
-          ref={mapContainerRef}
-          className="absolute inset-0 z-0 h-full w-full"
-          role="application"
-          aria-label="Free OpenStreetMap showing Parul's current riding location"
+        <iframe
+          src={embedUrl}
+          title={`Google Maps showing ${location.name}, ${location.state}`}
+          className="absolute inset-0 z-0 h-full w-full border-0"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
         />
 
         {/* ---------- Info Card ---------- */}
@@ -261,7 +184,7 @@ export default function LiveMapPage() {
               </li>
               <li className="flex items-center gap-2.5">
                 <Satellite className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-                No paid keys needed · OpenStreetMap active
+                No paid keys needed · Google Maps
               </li>
             </ul>
 

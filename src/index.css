@@ -690,71 +690,38 @@
   border-color: rgba(245, 179, 1, 0.95);
 }
 
-/* ── Live tracker — the map behind the route ────────────────────────────────
-   The tracker's map is scenery, not the subject: real geography, pushed back so
-   the route drawn over it carries the story. Only the tile pane is blurred —
-   blurring the whole map would take the route and the stops with it. */
-.tracker-map .leaflet-container {
-  background: transparent;
+/* ── Live tracker — the Google map behind the route ────────────────────────
+   The map is a real Google map, so it is left crisp and readable rather than
+   blurred back as scenery. It only takes the pointer when you ask it to
+   ("Move map"), so scrolling the page past a full-width map never zooms the
+   map instead. */
+.tracker-google {
+  pointer-events: none;
+  /* Matches the map's own paper while the iframe loads. */
+  background-color: #e8eaed;
 }
-.tracker-map .leaflet-tile-pane {
-  filter: blur(7px) saturate(0.72);
-  opacity: 0.55;
+.tracker-google.is-interactive {
+  pointer-events: auto;
 }
-/* Sinks the tiles into the panel's own lighting so they read as texture under
-   the route rather than as a map pasted on top of it. */
-.tracker-map-veil {
-  background: radial-gradient(
-    ellipse 92% 82% at 50% 45%,
-    rgba(7, 7, 7, 0.18) 0%,
-    rgba(7, 7, 7, 0.74) 76%
-  );
+/* A soft edge top and bottom so the overlay plates stay readable over the map
+   without hiding it. */
+.tracker-google-veil {
+  background: linear-gradient(to bottom, rgba(7, 7, 7, 0.55) 0%, rgba(7, 7, 7, 0) 22%),
+    linear-gradient(to top, rgba(7, 7, 7, 0.62) 0%, rgba(7, 7, 7, 0) 30%);
 }
-[data-theme="light"] .tracker-map .leaflet-tile-pane {
-  /* The CARTO tiles are dark; inverted they read as a pale map on cream. */
-  filter: blur(7px) grayscale(1) invert(0.92) contrast(0.9);
-  opacity: 0.5;
-}
-[data-theme="light"] .tracker-map-veil {
-  background: radial-gradient(
-    ellipse 92% 82% at 50% 45%,
-    rgba(247, 244, 237, 0.34) 0%,
-    rgba(247, 244, 237, 0.82) 76%
-  );
+[data-theme="light"] .tracker-google-veil {
+  background: linear-gradient(to bottom, rgba(247, 244, 237, 0.5) 0%, rgba(247, 244, 237, 0) 22%),
+    linear-gradient(to top, rgba(247, 244, 237, 0.55) 0%, rgba(247, 244, 237, 0) 30%);
 }
 
-/* ── Dashboard route map — numbered stop pins ───────────────────────────────
-   Green at the start, red at the destination, gold in between. Kept as solid
-   colours in both themes: these are pins sitting on a map, not text on the
-   page, so they should not move with the theme tokens. */
-.route-stop-map {
-  background-color: #0d0d0d;
-}
-.route-stop-marker {
-  background: transparent;
-  border: 0;
-}
-.route-stop-dot {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.92);
-  color: #171513;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-.route-stop-dot--start {
-  background-color: #10b981;
-}
-.route-stop-dot--end {
-  background-color: #ef4444;
-}
-.route-stop-dot--mid {
-  background-color: #f5b301;
+/* ── Dashboard route editor — the local placement grid ─────────────────────
+   Drawn from CSS alone: no tile server, so it can never come up blank the way
+   a blank map does when tiles are blocked. */
+.route-grid {
+  background-color: #101010;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 
 /* Admin escape hatch on the maintenance page — the same pale plate with a gold
