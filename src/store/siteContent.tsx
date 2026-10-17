@@ -1345,6 +1345,30 @@ function stampMaintenanceWindow(
   return { ...next, sections };
 }
 
+/**
+ * `commit` stamps the outage bookkeeping (startedAt / endedAt) as it publishes,
+ * so a draft rebuilt alongside it does not carry the same values. The two then
+ * differ by a single field, the dashboard stays dirty, and saving asks for a
+ * second click that changes nothing.
+ */
+function adoptMaintenanceStamp(draft: SiteContent, published: SiteContent): SiteContent {
+  const from = published.sections.find((s) => s.type === "maintenance");
+  const index = draft.sections.findIndex((s) => s.type === "maintenance");
+  if (!from || index < 0) return draft;
+  const section = draft.sections[index];
+  const data = { ...section.data };
+  const stamped = { ...from.data };
+  if (data.startedAt === stamped.startedAt && data.endedAt === stamped.endedAt) {
+    return draft;
+  }
+  const sections = [...draft.sections];
+  sections[index] = {
+    ...section,
+    data: { ...data, startedAt: stamped.startedAt, endedAt: stamped.endedAt },
+  };
+  return { ...draft, sections };
+}
+
 function loadContent(): SiteContent {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1945,7 +1969,10 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     setSaveError(null);
   }, []);
 
-  const commit = useCallback((nextContent: SiteContent, description: string): boolean => {
+  const commit = useCallback((
+    nextContent: SiteContent,
+    description: string,
+  ): SiteContent | null => {
     let next: SiteContent;
     let nextRevisions: Revision[];
     try {
@@ -1992,27 +2019,32 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       setSaveError("Could not save to this browser. Storage may be full or blocked. Your draft is intact; try a smaller logo or export a backup from Settings.");
-      return false;
+      return null;
     }
 
     setContent(next);
     setRevisions(nextRevisions);
     setSaveError(null);
-    return true;
+    return next;
   }, [content, revisions]);
 
   const saveDraft = useCallback((description = "Manual save") => {
     if (!hasChanges) return true;
-    if (!commit(draft, description)) return false;
-    setDraft(structuredClone(withSettingsDefaults(draft)));
+    const publishedContent = commit(draft, description);
+    if (!publishedContent) return false;
+    // Sync from what was published rather than from the draft: commit stamps
+    // the maintenance outage window as it saves, so rebuilding from the draft
+    // leaves one field different and the dashboard asks for a second save.
+    setDraft(structuredClone(publishedContent));
     setEditedActions([]);
     return true;
   }, [commit, draft, hasChanges]);
 
   const saveBranding = useCallback((description = "Updated logo & branding") => {
     if (!hasBrandChanges && !hasChanges) return true;
-    if (!commit(draft, description)) return false;
-    setDraft(structuredClone(withSettingsDefaults(draft)));
+    const publishedContent = commit(draft, description);
+    if (!publishedContent) return false;
+    setDraft(structuredClone(publishedContent));
     setEditedActions([]);
     return true;
   }, [commit, draft, hasBrandChanges, hasChanges]);
@@ -2031,8 +2063,9 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
   const restoreRevision = useCallback((rev: Revision) => {
     const cloned = structuredClone(withSettingsDefaults(rev.content));
-    if (!commit(cloned, `Restored: ${rev.description}`)) return;
-    setDraft(cloned);
+    const publishedContent = commit(cloned, `Restored: ${rev.description}`);
+    if (!publishedContent) return;
+    setDraft(structuredClone(publishedContent));
     setEditedActions([]);
   }, [commit]);
 
@@ -2049,8 +2082,9 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
   const resetContent = useCallback(() => {
     const defaults = structuredClone(withSettingsDefaults(DEFAULT_CONTENT));
-    if (!commit(defaults, "Reset website to original defaults")) return;
-    setDraft(defaults);
+    const publishedContent = commit(defaults, "Reset website to original defaults");
+    if (!publishedContent) return;
+    setDraft(structuredClone(publishedContent));
     setEditedActions([]);
   }, [commit]);
 
@@ -2149,9 +2183,12 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     (id: string, label: string, enabled: boolean) => {
       const applyVisibility = (c: SiteContent) => cascadeSection(c, id, enabled);
       const nextContent = applyVisibility(content);
-      if (!commit(nextContent, `${enabled ? "Enabled" : "Disabled"} section: ${label}`)) return;
-      // Keep pending dashboard edits intact while syncing the same visibility action.
-      setDraft((prev) => applyVisibility(prev));
+      const publishedContent = commit(nextContent, `${enabled ? "Enabled" : "Disabled"} section: ${label}`);
+      if (!publishedContent) return;
+      // Keep pending dashboard edits intact while syncing the same visibility
+      // action, then take the published outage stamp — toggling maintenance is
+      // exactly the case where commit adds a field of its own.
+      setDraft((prev) => adoptMaintenanceStamp(applyVisibility(prev), publishedContent));
       logAction(`${enabled ? "Enabled" : "Disabled"}: ${label}`);
     },
     [commit, content, logAction]
@@ -2238,8 +2275,9 @@ export function SiteProvider({ children }: { children: ReactNode }) {
             : s;
         }),
       };
-      if (!commit(next, "Countdown finished — disabled and reset checkmarks")) return false;
-      setDraft(structuredClone(withSettingsDefaults(next)));
+      const publishedContent = commit(next, "Countdown finished — disabled and reset checkmarks");
+      if (!publishedContent) return false;
+      setDraft(structuredClone(publishedContent));
       setEditedActions([]);
       return true;
     },
@@ -2258,8 +2296,9 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       if (hasChanges) return;
       const next = applyMaintenanceSchedule(content);
       if (next === content) return;
-      if (!commit(next, "Scheduled maintenance switched on")) return;
-      setDraft(structuredClone(withSettingsDefaults(next)));
+      const publishedContent = commit(next, "Scheduled maintenance switched on");
+      if (!publishedContent) return;
+      setDraft(structuredClone(publishedContent));
     };
     check();
     const id = setInterval(check, 15_000);
