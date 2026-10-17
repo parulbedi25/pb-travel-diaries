@@ -1,0 +1,144 @@
+/**
+ * Road geometry for the live tracker.
+ *
+ * The tracker used to draw a hand-drawn bezier that only vaguely resembled the
+ * journey. To follow the actual road we ask a routing service — but we do that
+ * **in the dashboard, when the route is saved**, and store the result in the
+ * site content. Visitors then render stored coordinates and never depend on a
+ * third party being up, rate-limited or reachable.
+ *
+ * The service is OSRM's public demo server, which needs no key. It is a demo
+ * endpoint, so the fetch is expected to fail sometimes; the caller keeps the
+ * previous geometry when it does, and the tracker falls back to straight
+ * segments between the stops if there is none.
+ */
+
+export type LatLng = [number, number];
+
+export interface RouteFetchResult {
+  ok: boolean;
+  /** [lat, lng] pairs following the road. Empty when the fetch failed. */
+  geometry: LatLng[];
+  message: string;
+}
+
+const OSRM_BASE = "https://router.project-osrm.org/route/v1/driving";
+
+interface RoutePoint {
+  lat: number;
+  lng: number;
+}
+
+const usable = (points: readonly RoutePoint[]): RoutePoint[] =>
+  points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+/**
+ * Ask the routing service for the road path through `points`.
+ *
+ * Coordinates arrive as [lat, lng] and OSRM wants lon,lat — the conversion
+ * happens here and again on the way back out, so callers only ever see
+ * [lat, lng].
+ */
+export async function fetchRoadGeometry(
+  points: readonly RoutePoint[],
+  { timeoutMs = 15_000 }: { timeoutMs?: number } = {},
+): Promise<RouteFetchResult> {
+  const stops = usable(points);
+  if (stops.length < 2) {
+    return { ok: false, geometry: [], message: "Add at least two stops with coordinates." };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const path = stops.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
+    const response = await fetch(
+      `${OSRM_BASE}/${path}?overview=full&geometries=geojson`,
+      { signal: controller.signal },
+    );
+    if (!response.ok) {
+      return { ok: false, geometry: [], message: `Routing service returned ${response.status}.` };
+    }
+    const data = (await response.json()) as {
+      code?: string;
+      routes?: { geometry?: { coordinates?: [number, number][] } }[];
+    };
+    if (data.code !== "Ok" || !data.routes?.length) {
+      return { ok: false, geometry: [], message: "No road route between these stops." };
+    }
+    const geometry = (data.routes[0].geometry?.coordinates ?? []).map(
+      ([lon, lat]) => [lat, lon] as LatLng,
+    );
+    if (geometry.length < 2) {
+      return { ok: false, geometry: [], message: "The routing service returned an empty path." };
+    }
+    return { ok: true, geometry, message: `Road route loaded — ${geometry.length} points.` };
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === "AbortError";
+    return {
+      ok: false,
+      geometry: [],
+      message: aborted ? "The routing service did not respond in time." : "Could not reach the routing service.",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Squared distance in degrees — plenty for picking the nearest route vertex. */
+function distanceSquared(a: LatLng, b: LatLng): number {
+  const dLat = a[0] - b[0];
+  const dLng = a[1] - b[1];
+  return dLat * dLat + dLng * dLng;
+}
+
+/** Index of the vertex in `geometry` closest to `point`, or -1 when empty. */
+export function nearestVertexIndex(geometry: readonly LatLng[], point: RoutePoint): number {
+  let best = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < geometry.length; i += 1) {
+    const distance = distanceSquared(geometry[i], [point.lat, point.lng]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
+  }
+  return best;
+}
+
+export interface SplitRoute {
+  covered: LatLng[];
+  remaining: LatLng[];
+}
+
+/**
+ * Split the road into the part already ridden and the part still to come.
+ *
+ * The dividing point is PB's current stop — the one marked `live`, or the last
+ * one marked `done` when nothing is live. We find the nearest vertex on the
+ * stored road rather than assuming the stops are spread evenly along it.
+ */
+export function splitRouteAtProgress(
+  geometry: readonly LatLng[],
+  stops: readonly { lat: number; lng: number; status?: string }[],
+): SplitRoute {
+  if (geometry.length < 2) return { covered: [], remaining: [] };
+
+  const liveIndex = stops.findIndex((s) => s.status === "live");
+  const doneIndices = stops.reduce<number[]>(
+    (acc, s, i) => (s.status === "done" ? [...acc, i] : acc),
+    [],
+  );
+  const markerIndex =
+    liveIndex >= 0 ? liveIndex : doneIndices.length ? doneIndices[doneIndices.length - 1] : -1;
+  if (markerIndex < 0) return { covered: [], remaining: [...geometry] };
+
+  const splitAt = nearestVertexIndex(geometry, stops[markerIndex]);
+  if (splitAt <= 0) return { covered: [], remaining: [...geometry] };
+  if (splitAt >= geometry.length - 1) return { covered: [...geometry], remaining: [] };
+
+  return {
+    covered: geometry.slice(0, splitAt + 1),
+    remaining: geometry.slice(splitAt),
+  };
+}

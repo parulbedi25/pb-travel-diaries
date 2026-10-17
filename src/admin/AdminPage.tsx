@@ -59,6 +59,7 @@ import {
   type FooterLink,
   type FooterSettings,
   type FooterSocial,
+  type LiveStop,
   type RiderKitPointer,
   type SectionEntry,
   type SectionType,
@@ -74,10 +75,12 @@ import { useCountdown, useCountdownFinished } from "../components/CountdownSecti
 import { cn } from "../utils/cn";
 import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
 import { pointerColors } from "../utils/pointerColors";
+import type { LatLng } from "../utils/routing";
 import ImageField from "./ImageField";
 import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
 import SocialIconsEditor from "./SocialIconsEditor";
+import RouteStopsEditor from "./RouteStopsEditor";
 import Switch from "./Switch";
 import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
@@ -266,6 +269,13 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("titleB", "Title — after highlight"),
     TA("sub", "Subtitle"),
     TA("note", "Today's ride note", "Overrides the live feed note when set"),
+    {
+      path: "stops",
+      label: "Route stops",
+      kind: "items",
+      hint: "Real coordinates, in journey order. Mark one stop as \"Here now\" to set where PB is; the road is drawn through them.",
+      fields: [],
+    },
   ],
   features: [
     T("eyebrow", "Eyebrow label"),
@@ -2655,6 +2665,17 @@ function SectionsPanel() {
                       }
                       updatedAt={String(getAt(selected.data, "odometer.updatedAt") ?? "")}
                       onChange={setMachineOdometer}
+                    />
+                  );
+                }
+                if (selected.type === "live" && f.path === "stops") {
+                  return (
+                    <RouteStopsEditor
+                      key="stops"
+                      stops={(getAt(selected.data, "stops") as LiveStop[]) ?? []}
+                      routeGeometry={(getAt(selected.data, "routeGeometry") as LatLng[]) ?? []}
+                      onChange={(value) => setSectionData(selected.id, "stops", value)}
+                      onGeometryChange={(value) => setSectionData(selected.id, "routeGeometry", value)}
                     />
                   );
                 }

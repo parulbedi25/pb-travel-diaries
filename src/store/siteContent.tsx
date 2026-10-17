@@ -442,6 +442,17 @@ export interface SocialProofData {
   press: string[];
   stats: { value: number; suffix: string; label: string; sub: string }[];
 }
+/** One stop on the expedition, pinned by real coordinates rather than by
+    percentage, so the route can be drawn on an actual map. */
+export interface LiveStop {
+  name: string;
+  note: string;
+  /** done = already ridden, live = where PB is now, next = still to come. */
+  status: "done" | "live" | "next";
+  lat: number;
+  lng: number;
+}
+
 export interface LiveData {
   eyebrow: string;
   titleA: string;
@@ -449,6 +460,14 @@ export interface LiveData {
   titleB: string;
   sub: string;
   note: string;
+  /** The expedition's stops, in order, with real coordinates. */
+  stops: LiveStop[];
+  /**
+   * Road geometry as [lat, lng] pairs following the actual road, fetched from
+   * the routing service in the dashboard and stored here. Empty means the
+   * tracker falls back to straight segments between the stops.
+   */
+  routeGeometry: [number, number][];
 }
 export interface FeatureItem {
   icon: string;
@@ -824,6 +843,17 @@ const LIVE: LiveData = {
   titleB: " right now.",
   sub: "A live GPS window into the current expedition. Location pings land every hour between 6:00 AM and 9:00 PM IST — straight from Taweel's handlebar mount to this page.",
   note: "Night halt at Key village — bonfire and a Milky Way shoot at 11 PM.",
+  // The Spiti loop: Manali over the Atal Tunnel and Kunzum Pass to Kaza, then
+  // Key and Kibber. Coordinates are editable in the dashboard.
+  stops: [
+    { name: "Manali", note: "Day 1 · fuelled up", status: "done", lat: 32.2396, lng: 77.1887 },
+    { name: "Atal Tunnel", note: "Day 2 · crossed", status: "done", lat: 32.3978, lng: 77.1497 },
+    { name: "Batal", note: "Day 4 · night halt", status: "done", lat: 32.68, lng: 77.6 },
+    { name: "Kaza", note: "Current stop", status: "live", lat: 32.2251, lng: 78.0716 },
+    { name: "Key Monastery", note: "Tomorrow · 42 km", status: "next", lat: 32.2976, lng: 78.0788 },
+    { name: "Kibber", note: "Day 8 · 18 km", status: "next", lat: 32.3357, lng: 78.0839 },
+  ],
+  routeGeometry: [],
 };
 
 const FEATURES: FeaturesData = {
