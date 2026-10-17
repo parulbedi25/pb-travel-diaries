@@ -723,6 +723,40 @@
   );
 }
 
+/* ── Dashboard route map — numbered stop pins ───────────────────────────────
+   Green at the start, red at the destination, gold in between. Kept as solid
+   colours in both themes: these are pins sitting on a map, not text on the
+   page, so they should not move with the theme tokens. */
+.route-stop-map {
+  background-color: #0d0d0d;
+}
+.route-stop-marker {
+  background: transparent;
+  border: 0;
+}
+.route-stop-dot {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  color: #171513;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.route-stop-dot--start {
+  background-color: #10b981;
+}
+.route-stop-dot--end {
+  background-color: #ef4444;
+}
+.route-stop-dot--mid {
+  background-color: #f5b301;
+}
+
 /* Admin escape hatch on the maintenance page — the same pale plate with a gold
    rule, so it reads as an admin control on the black and cream page alike. */
 .admin-escape {

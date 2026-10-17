@@ -98,12 +98,17 @@ export default function TrackerMap({
     [routeGeometry, stops],
   );
 
-  // Everything we want on the map: the road plus PB's current position.
-  const allPoints = useMemo<LatLng[]>(
-    () => [...geometry, [live.lat, live.lng]],
-    [geometry, live.lat, live.lng],
+  // What has to stay inside the panel: every stop, plus wherever PB is.
+  //
+  // The road is deliberately left out of the fit. It can run a little past the
+  // first and last stop, and fitting to it would push the stops towards the
+  // edges — the ask is that the start and the destination are always in view,
+  // however much of the route has been ridden.
+  const framePoints = useMemo<LatLng[]>(
+    () => [...stops.map((s) => [s.lat, s.lng] as LatLng), [live.lat, live.lng]],
+    [stops, live.lat, live.lng],
   );
-  const fitKey = useMemo(() => JSON.stringify(allPoints), [allPoints]);
+  const fitKey = useMemo(() => JSON.stringify(framePoints), [framePoints]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -123,7 +128,7 @@ export default function TrackerMap({
       L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 20 }).addTo(map);
       mapRef.current = map;
 
-      const bounds = L.latLngBounds(allPoints.map(([lat, lng]) => L.latLng(lat, lng)));
+      const bounds = L.latLngBounds(framePoints.map(([lat, lng]) => L.latLng(lat, lng)));
       map.fitBounds(bounds, { padding: [PADDING, PADDING] });
 
       const measure = () => {
@@ -166,7 +171,7 @@ export default function TrackerMap({
   const projected = useMemo(() => {
     if (!size.width || !size.height) return null;
     const map = mapRef.current;
-    const fallback = boxFit(allPoints, size.width, size.height);
+    const fallback = boxFit(framePoints, size.width, size.height);
     const viaMap = map
       ? ([lat, lng]: LatLng): Point => {
           const point = map.latLngToContainerPoint(L.latLng(lat, lng));
@@ -181,7 +186,7 @@ export default function TrackerMap({
     // bounding-box fit whenever its answers are not sane.
     const sane =
       viaMap !== null &&
-      allPoints.every((point) => {
+      framePoints.every((point) => {
         const projectedPoint = viaMap(point);
         return (
           Number.isFinite(projectedPoint.x) &&
@@ -200,7 +205,19 @@ export default function TrackerMap({
     return {
       width: size.width,
       height: size.height,
-      stops: stops.map((stop) => ({ stop, ...project([stop.lat, stop.lng]) })),
+      stops: stops.map((stop, index) => ({
+        stop,
+        // First stop is the start, last is the destination. Those two keep
+        // their colours whatever their status, so a route always reads as
+        // "from here to there" even before anything has been ridden.
+        role:
+          index === 0
+            ? ("start" as const)
+            : index === stops.length - 1
+              ? ("end" as const)
+              : stop.status,
+        ...project([stop.lat, stop.lng]),
+      })),
       live: project([live.lat, live.lng]),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       ...(() => {
@@ -275,8 +292,53 @@ export default function TrackerMap({
         </>
       )}
 
-      {projected?.stops.map(({ stop, x, y }) =>
-        stop.status === "live" ? (
+      {projected?.stops.map(({ stop, role, x, y }) => {
+        // The two ends of the journey, whatever their status: green where the
+        // route begins, red where it ends.
+        if (role === "start" || role === "end") {
+          const isStart = role === "start";
+          return (
+            <div
+              key={`${role}-${stop.name}`}
+              className="absolute -translate-x-1/2 -translate-y-1/2"
+              style={{ left: x, top: y }}
+            >
+              <button type="button" className="group relative grid place-items-center focus:outline-none">
+                <span
+                  className={cn(
+                    "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg",
+                    isStart ? "bg-emerald-500 shadow-emerald-500/50" : "bg-red-500 shadow-red-500/50",
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                </span>
+                <span
+                  className={cn(
+                    "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide transition-all duration-300",
+                    isStart
+                      ? "text-emerald-300/80 group-hover:text-emerald-300"
+                      : "text-red-300/80 group-hover:text-red-300",
+                  )}
+                >
+                  {stop.name}
+                </span>
+                <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-ink-950/95 px-2.5 py-1.5 text-[10px] font-semibold text-zinc-300 opacity-0 shadow-xl backdrop-blur-md transition-all duration-300 group-hover:block group-hover:opacity-100 group-focus:block group-focus:opacity-100">
+                  <span className="flex items-center gap-1">
+                    <span
+                      className={cn("h-2 w-2 rounded-full", isStart ? "bg-emerald-400" : "bg-red-400")}
+                      aria-hidden="true"
+                    />
+                    <span className="text-white">
+                      {isStart ? "Start" : "Destination"} · {stop.name}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block text-[9px] font-normal text-zinc-500">{stop.note}</span>
+                </span>
+              </button>
+            </div>
+          );
+        }
+        return stop.status === "live" ? (
           <span
             key={stop.name}
             className="absolute -translate-x-1/2 -translate-y-1/2"
@@ -354,8 +416,8 @@ export default function TrackerMap({
               </span>
             </button>
           </div>
-        ),
-      )}
+        );
+      })}
 
       <p
         className="pointer-events-none absolute bottom-2 right-3 text-[9px] text-zinc-500"
