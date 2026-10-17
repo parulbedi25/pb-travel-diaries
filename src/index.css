@@ -690,6 +690,39 @@
   border-color: rgba(245, 179, 1, 0.95);
 }
 
+/* ── Live tracker — the map behind the route ────────────────────────────────
+   The tracker's map is scenery, not the subject: real geography, pushed back so
+   the route drawn over it carries the story. Only the tile pane is blurred —
+   blurring the whole map would take the route and the stops with it. */
+.tracker-map .leaflet-container {
+  background: transparent;
+}
+.tracker-map .leaflet-tile-pane {
+  filter: blur(7px) saturate(0.72);
+  opacity: 0.55;
+}
+/* Sinks the tiles into the panel's own lighting so they read as texture under
+   the route rather than as a map pasted on top of it. */
+.tracker-map-veil {
+  background: radial-gradient(
+    ellipse 92% 82% at 50% 45%,
+    rgba(7, 7, 7, 0.18) 0%,
+    rgba(7, 7, 7, 0.74) 76%
+  );
+}
+[data-theme="light"] .tracker-map .leaflet-tile-pane {
+  /* The CARTO tiles are dark; inverted they read as a pale map on cream. */
+  filter: blur(7px) grayscale(1) invert(0.92) contrast(0.9);
+  opacity: 0.5;
+}
+[data-theme="light"] .tracker-map-veil {
+  background: radial-gradient(
+    ellipse 92% 82% at 50% 45%,
+    rgba(247, 244, 237, 0.34) 0%,
+    rgba(247, 244, 237, 0.82) 76%
+  );
+}
+
 /* Admin escape hatch on the maintenance page — the same pale plate with a gold
    rule, so it reads as an admin control on the black and cream page alike. */
 .admin-escape {

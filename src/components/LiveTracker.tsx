@@ -8,23 +8,14 @@ import {
   Navigation,
   BellPlus,
   Flag,
-  Check,
   ArrowUpRight,
 } from "lucide-react";
 import { resolveFooter, useSite, type LiveData } from "../store/siteContent";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
 import { useLiveLocation } from "../hooks/useLiveLocation";
+import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
-
-const STOPS = [
-  { name: "Manali", note: "Day 1 · fuelled up", status: "done", x: "9%", y: "82%" },
-  { name: "Atal Tunnel", note: "Day 2 · crossed", status: "done", x: "29%", y: "69%" },
-  { name: "Batal", note: "Day 4 · night halt", status: "done", x: "46%", y: "57%" },
-  { name: "Kaza", note: "Current stop", status: "live", x: "63%", y: "44%" },
-  { name: "Key Monastery", note: "Tomorrow · 42 km", status: "next", x: "79%", y: "29%" },
-  { name: "Kibber", note: "Day 8 · 18 km", status: "next", x: "90%", y: "15%" },
-];
 
 const NEXT_UPS = [
   { place: "Key Monastery", meta: "Tomorrow · 7:00 AM rollout", tag: "Sunrise shoot" },
@@ -77,110 +68,14 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
               <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/15 blur-[100px]" aria-hidden />
               <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/15 blur-[100px]" aria-hidden />
-              <div className="absolute left-[58%] top-[38%] h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]" aria-hidden />
-              <div className="absolute left-[58%] top-[38%] h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]" aria-hidden />
-              <div className="absolute left-[58%] top-[38%] h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]" aria-hidden />
-
-              <svg
-                viewBox="0 0 400 300"
-                preserveAspectRatio="none"
-                className="absolute inset-0 h-full w-full"
-                aria-hidden
-              >
-                <path
-                  d="M 36 246 C 100 232, 118 208, 158 190 S 226 168, 256 132 S 316 96, 362 46"
-                  fill="none"
-                  stroke="var(--color-saffron-400)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeDasharray="9 7"
-                  className="animate-route-dash"
-                />
-              </svg>
-
-              {STOPS.map((s) => (
-                <div
-                  key={s.name}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: s.x, top: s.y }}
-                >
-                  {s.status === "live" ? (
-                    <span
-                      className="relative grid place-items-center"
-                      role="status"
-                      aria-label={`PB's location: ${location.name}, ${location.state}`}
-                    >
-                      {status === "live" && (
-                        <>
-                          <span className="absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden />
-                          <span className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden />
-                        </>
-                      )}
-                      <span
-                        className={cn(
-                          "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg",
-                          status === "live"
-                            ? "bg-saffron-400 shadow-saffron-400/50"
-                            : status === "stale"
-                              ? "bg-amber-400"
-                              : "bg-zinc-500"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "h-1.5 w-1.5 rounded-full bg-white",
-                            status === "live" && "animate-blink"
-                          )}
-                        />
-                      </span>
-                      <span className="absolute left-7 top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-full bg-ink-950/80 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md sm:block">
-                        {location.name.toUpperCase()} ·{" "}
-                        {status === "live" ? "YOU ARE HERE" : status === "stale" ? "LAST KNOWN" : "PARKED"}
-                      </span>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="group relative grid place-items-center focus:outline-none"
-                    >
-                      <span
-                        className={cn(
-                          "grid h-4.5 w-4.5 place-items-center rounded-full border transition-all duration-300 group-hover:scale-110",
-                          s.status === "done"
-                            ? "border-emerald-300/40 bg-emerald-400/10 group-hover:border-emerald-400 group-hover:bg-emerald-400/20"
-                            : "border-white/15 bg-white/[0.04] group-hover:border-saffron-400/50 group-hover:bg-saffron-400/10"
-                        )}
-                      >
-                        {s.status === "done" && (
-                          <Check className="h-2.5 w-2.5 text-emerald-400/60 transition-colors duration-300 group-hover:text-emerald-300" />
-                        )}
-                        {s.status === "next" && (
-                          <span className="h-1 w-1 rounded-full bg-zinc-500 transition-colors duration-300 group-hover:bg-saffron-300" />
-                        )}
-                      </span>
-                      {/* Name below dot — faded by default, full on hover/focus */}
-                      <span
-                        className={cn(
-                          "absolute top-6 whitespace-nowrap text-[10px] font-bold tracking-wide transition-all duration-300 uppercase",
-                          s.status === "done"
-                            ? "text-zinc-500/60 group-hover:text-emerald-300"
-                            : "text-zinc-600/50 group-hover:text-saffron-300"
-                        )}
-                      >
-                        {s.name}
-                      </span>
-                      {/* Full tooltip above dot on hover */}
-                      <span className="pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink-950/95 border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-zinc-300 opacity-0 backdrop-blur-md transition-all duration-300 group-hover:block group-hover:opacity-100 group-focus:block group-focus:opacity-100 shadow-xl">
-                        <span className="flex items-center gap-1">
-                          {s.status === "done" && <Check className="h-3 w-3 text-emerald-400" />}
-                          <span className="text-white">{s.name}</span>
-                        </span>
-                        <span className="mt-0.5 block text-[9px] text-zinc-500 font-normal">{s.note}</span>
-                      </span>
-                    </button>
-                  )}
-                </div>
-              ))}
+              <TrackerMap
+                stops={data.stops}
+                routeGeometry={data.routeGeometry}
+                live={{ lat: location.lat, lng: location.lng }}
+                liveName={location.name}
+                liveState={location.state}
+                status={status}
+              />
 
               <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5 sm:p-6">
                 <a
