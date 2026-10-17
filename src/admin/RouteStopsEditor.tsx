@@ -8,10 +8,13 @@ import {
   Route as RouteIcon,
   Search,
   Trash2,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
-import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
+import { routeEmbedUrl, routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
+import { fitView, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 /**
@@ -56,65 +59,6 @@ const round = (n: number) => Math.round(n * 1e4) / 1e4;
  * Placement grid: geography in, percentages out.
  * ------------------------------------------------------------------ */
 
-/** The grid box is 3 wide by 2 tall; keeping that in step with the CSS. */
-const BOX_ASPECT = 2 / 3;
-/** Degrees. A single stop still needs a frame around it. */
-const MIN_SPAN = 0.05;
-/** Fraction of the box left as breathing room around the stops. */
-const FIT = 0.86;
-
-interface Projector {
-  toXY: (point: { lat: number; lng: number }) => { x: number; y: number };
-  toLatLng: (x: number, y: number) => { lat: number; lng: number };
-}
-
-/**
- * Fit the stops into the box without distorting them, the way a map would.
- * Both directions share the same numbers, so a pin dropped by clicking lands
- * exactly where the cursor was.
- */
-function makeProjector(stops: LiveStop[]): Projector {
-  const lats = stops.length ? stops.map((s) => s.lat) : [31];
-  const lngs = stops.length ? stops.map((s) => s.lng) : [76.5];
-  let minLat = Math.min(...lats);
-  let maxLat = Math.max(...lats);
-  let minLng = Math.min(...lngs);
-  let maxLng = Math.max(...lngs);
-
-  if (maxLat - minLat < MIN_SPAN) {
-    const mid = (minLat + maxLat) / 2;
-    minLat = mid - MIN_SPAN / 2;
-    maxLat = mid + MIN_SPAN / 2;
-  }
-  if (maxLng - minLng < MIN_SPAN) {
-    const mid = (minLng + maxLng) / 2;
-    minLng = mid - MIN_SPAN / 2;
-    maxLng = mid + MIN_SPAN / 2;
-  }
-
-  const midLat = (minLat + maxLat) / 2;
-  // Longitude shrinks towards the poles; keep the shape honest.
-  const cos = Math.max(Math.cos((midLat * Math.PI) / 180), 0.01);
-  const spanX = Math.max((maxLng - minLng) * cos, 1e-6);
-  const spanY = Math.max(maxLat - minLat, 1e-6);
-  const scale = Math.min(1 / spanX, BOX_ASPECT / spanY) * FIT;
-  const offsetX = (1 - spanX * scale) / 2;
-  const offsetY = (BOX_ASPECT - spanY * scale) / 2;
-
-  return {
-    toXY: ({ lat, lng }) => ({
-      x: ((lng - minLng) * scale + offsetX) * 100,
-      y: (((maxLat - lat) * scale + offsetY) / BOX_ASPECT) * 100,
-    }),
-    toLatLng: (x, y) => ({
-      lat: maxLat - ((y / 100) * BOX_ASPECT - offsetY) / scale,
-      // Undo the cosine correction as well as the scale, or every point
-      // dropped on the grid would land short of the cursor.
-      lng: (x / 100 - offsetX) / (scale * cos) + minLng,
-    }),
-  };
-}
-
 /**
  * Look a place up by name. Nominatim (OpenStreetMap) needs no key; it is only
  * ever called when you press Find, and failing is not fatal — the coordinates
@@ -154,9 +98,53 @@ export default function RouteStopsEditor({
   const [lookError, setLookError] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [zoomStep, setZoomStep] = useState(0);
 
-  const projector = useMemo(() => makeProjector(stops), [stops]);
+  // The projection has to match the map underneath pixel for pixel, so the
+  // box is measured rather than assumed.
+  useEffect(() => {
+    const host = gridRef.current;
+    if (!host) return;
+    const measure = (width?: number, height?: number) => {
+      const w = width ?? host.clientWidth;
+      const h = height ?? host.clientHeight;
+      if (w > 0 && h > 0) setSize({ width: w, height: h });
+    };
+    measure();
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries?.[0]?.contentRect;
+      if (rect?.width && rect?.height) measure(rect.width, rect.height);
+      else measure();
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  const fit = useMemo(
+    () => fitView(stops, size.width, size.height),
+    [stops, size.width, size.height],
+  );
+  const zoom = Math.max(3, Math.min(18, fit.zoom + zoomStep));
+  const view = { lat: fit.lat, lng: fit.lng, zoom };
+  const projector = useMemo(
+    () => makeMercatorProjector(view, size.width, size.height),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [view.lat, view.lng, zoom, size.width, size.height],
+  );
   const placed = useMemo(() => stops.map((stop) => projector.toXY(stop)), [stops, projector]);
+
+  // The map underneath is a plain centred view: no route, no markers, no white
+  // panel — and, crucially, a projection we can work out ourselves.
+  const backdropUrl = useMemo(
+    () => viewEmbedUrl(view.lat, view.lng, zoom),
+    [view.lat, view.lng, zoom],
+  );
+  const [backdropSrc, setBackdropSrc] = useState(backdropUrl);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBackdropSrc(backdropUrl), 500);
+    return () => window.clearTimeout(timer);
+  }, [backdropUrl]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
   const liveEmbedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
@@ -286,7 +274,7 @@ export default function RouteStopsEditor({
             <RouteIcon className="h-3 w-3" aria-hidden="true" />
           </a>
         </div>
-        <div className="relative h-[240px] w-full border-t border-white/[0.08] bg-ink-900">
+        <div className="map-frame map-paper relative h-[240px] w-full border-t border-white/[0.08] bg-ink-900">
           {stops.length ? (
             <iframe
               src={previewUrl}
@@ -315,8 +303,8 @@ export default function RouteStopsEditor({
           Place the stops
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-          Click the grid to drop a stop, or drag a pin to move it. This surface is drawn locally, so
-          it works even with no map tiles.
+          Click the map to drop a stop, or drag a pin to move it. The map underneath is a plain
+          Google view pinned to the same projection as the pins, so what you click is what you get.
         </p>
 
         <div
@@ -324,18 +312,23 @@ export default function RouteStopsEditor({
           onClick={handleGridClick}
           className="route-grid relative mt-3 aspect-[3/2] w-full cursor-crosshair overflow-hidden rounded-xl border border-white/10"
         >
+          {/* The map underneath. Pointer-dead, so clicks land on our overlay. */}
+          <div className="map-frame pointer-events-none absolute inset-0">
+            <iframe
+              src={backdropSrc}
+              title="Google Maps — place the stops on it"
+              className="h-full w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
             viewBox="0 0 300 200"
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {[20, 40, 60, 80].map((step) => (
-              <g key={step}>
-                <line x1={step * 3} y1="0" x2={step * 3} y2="200" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                <line x1="0" y1={step * 2} x2="300" y2={step * 2} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-              </g>
-            ))}
             {placed.length > 1 && (
               <polyline
                 points={placed.map((p) => `${(p.x * 3).toFixed(1)},${(p.y * 2).toFixed(1)}`).join(" ")}
@@ -348,6 +341,31 @@ export default function RouteStopsEditor({
               />
             )}
           </svg>
+
+          <div className="absolute right-2 top-2 z-10 flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setZoomStep((step) => Math.min(step + 1, 8));
+              }}
+              aria-label="Zoom the map in"
+              className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-ink-950/80 text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setZoomStep((step) => Math.max(step - 1, -4));
+              }}
+              aria-label="Zoom the map out"
+              className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-ink-950/80 text-zinc-300 backdrop-blur-md transition-colors hover:border-white/25 hover:text-white"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           {stops.map((stop, index) => {
             const role = roleOf(index, stops.length);

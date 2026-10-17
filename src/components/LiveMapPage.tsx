@@ -131,14 +131,16 @@ export default function LiveMapPage() {
 
       {/* ---------- Google Maps ---------- */}
       <div className="relative min-h-[520px] flex-1">
-        <iframe
-          src={embedUrl}
-          title={`Google Maps showing ${location.name}, ${location.state}`}
-          className="absolute inset-0 z-0 h-full w-full border-0"
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          allowFullScreen
-        />
+        <div className="map-frame map-paper absolute inset-0 z-0">
+          <iframe
+            src={embedUrl}
+            title={`Google Maps showing ${location.name}, ${location.state}`}
+            className="h-full w-full border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
+        </div>
 
         {/* ---------- Info Card ---------- */}
         <div className="absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">

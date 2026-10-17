@@ -42,7 +42,18 @@ export function routeEmbedUrl(stops: LiveStop[]): string {
   if (stops.length === 1) return placeEmbedUrl(stops[0].lat, stops[0].lng, 13);
   const [first, ...rest] = stops;
   const chain = rest.map(coord).join("+to:");
-  return `${EMBED_BASE}?saddr=${coord(first)}&daddr=${chain}&dirflg=d&hl=en&output=embed`;
+  // iwloc=near keeps Google from opening an info balloon over the route.
+  return `${EMBED_BASE}?saddr=${coord(first)}&daddr=${chain}&dirflg=d&hl=en&iwloc=near&output=embed`;
+}
+
+/**
+ * A plain centred map: no marker, no route, no white panel.
+ *
+ * This is the one we can align things to, because we pick the centre and the
+ * zoom ourselves — see utils/mercator.ts.
+ */
+export function viewEmbedUrl(lat: number, lng: number, zoom: number): string {
+  return `${EMBED_BASE}?ll=${lat.toFixed(5)},${lng.toFixed(5)}&z=${Math.round(zoom)}&t=m&hl=en&output=embed`;
 }
 
 /** A single place, centred and pinned. */

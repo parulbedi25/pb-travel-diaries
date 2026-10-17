@@ -697,11 +697,33 @@
    map instead. */
 .tracker-google {
   pointer-events: none;
-  /* Matches the map's own paper while the iframe loads. */
-  background-color: #e8eaed;
 }
 .tracker-google.is-interactive {
   pointer-events: auto;
+}
+
+/* ── Google maps, themed ───────────────────────────────────────────────────
+   A real Google dark map needs the Maps JavaScript API, which needs a key.
+   So the theme is applied as a filter instead: inverting the lightness and
+   rotating the hue back gives a dark map with roughly the right colours
+   (water stays blue, parks stay green) in the dark theme, and leaves Google's
+   own palette alone in the light theme. It also dulls the white panels Google
+   puts over its embedded maps, which is the "white block" that used to sit
+   behind the tracker's live badge. */
+.map-frame iframe {
+  filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(1.06) saturate(0.9);
+  transition: filter 400ms ease;
+}
+[data-theme="light"] .map-frame iframe {
+  filter: saturate(0.95) contrast(1.02);
+}
+/* What shows while the map is still loading, matched to the theme so a bright
+   rectangle never flashes behind the tracker's overlays. */
+.map-paper {
+  background-color: #0e1116;
+}
+[data-theme="light"] .map-paper {
+  background-color: #e8eaed;
 }
 /* A soft edge top and bottom so the overlay plates stay readable over the map
    without hiding it. */

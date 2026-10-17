@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowUpRight, Check, Lock, MapPinned } from "lucide-react";
+import { ArrowUpRight, Check, Lock, MapPinned, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
@@ -32,6 +32,8 @@ export interface TrackerMapProps {
   liveName: string;
   liveState: string;
   status: LiveStatus;
+  /** "Ping 2m ago" / "Window closed · 6 AM IST" — shown on the strip. */
+  pingLabel: string;
 }
 
 export default function TrackerMap({
@@ -40,6 +42,7 @@ export default function TrackerMap({
   liveName,
   liveState,
   status,
+  pingLabel,
 }: TrackerMapProps) {
   const [interactive, setInteractive] = useState(false);
 
@@ -63,7 +66,7 @@ export default function TrackerMap({
   return (
     <>
       {/* The real map — crisp, and pointer-dead until asked for. */}
-      <div className={cn("tracker-google absolute inset-0", interactive && "is-interactive")}>
+      <div className={cn("tracker-google map-frame map-paper absolute inset-0", interactive && "is-interactive")}>
         {embedUrl ? (
           <iframe
             src={embedUrl}
@@ -118,6 +121,16 @@ export default function TrackerMap({
                   Google Maps
                   <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                 </a>
+                <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+                  <Satellite
+                    className={cn(
+                      "h-3 w-3",
+                      status === "live" ? "text-emerald-300" : "text-amber-300"
+                    )}
+                    aria-hidden="true"
+                  />
+                  {pingLabel}
+                </span>
               </div>
             </div>
 

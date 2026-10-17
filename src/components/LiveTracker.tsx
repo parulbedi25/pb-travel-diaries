@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  Satellite,
   MapPin,
   Mountain,
   Thermometer,
@@ -46,6 +45,13 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   const currentStop = stops[progressIndex];
   const nextStop = stops[progressIndex + 1];
   const upcoming = stops.slice(progressIndex + 1, progressIndex + 4);
+  // Shown on the tracker's stop strip rather than floating over the map.
+  const pingLabel =
+    status === "live"
+      ? `Ping ${ageLabel(ageSec)}`
+      : status === "stale"
+        ? `Last ping ${ageLabel(ageSec)}`
+        : "Window closed · 6 AM IST";
   const { content } = useSite();
   const instagramHref = useMemo(() => {
     const instagram = resolveFooter(content.footer).socials.find((s) => s.label === "Instagram");
@@ -86,6 +92,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 liveName={location.name}
                 liveState={location.state}
                 status={status}
+                pingLabel={pingLabel}
               />
 
               <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5 sm:p-6">
@@ -129,19 +136,6 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   </span>
                   <ArrowUpRight className="live-plate-arrow h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
-                <div className="hidden items-center gap-2 rounded-full bg-ink-950/70 px-3.5 py-2 text-[11px] font-medium text-zinc-300 backdrop-blur-md sm:flex">
-                  <Satellite
-                    className={cn(
-                      "h-3.5 w-3.5",
-                      status === "live" ? "text-emerald-300" : "text-amber-300"
-                    )}
-                  />
-                  {status === "live"
-                    ? `Ping ${ageLabel(ageSec)}`
-                    : status === "stale"
-                      ? `Last ping ${ageLabel(ageSec)}`
-                      : "Window closed · 6 AM IST"}
-                </div>
               </div>
 
               <div className="absolute right-5 top-24 grid h-11 w-11 place-items-center rounded-full glass" aria-hidden>
