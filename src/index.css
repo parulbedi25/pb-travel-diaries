@@ -278,6 +278,31 @@
   --color-zinc-400: #5a5245;
   --color-zinc-500: #776d5d;
   --color-zinc-600: #938877;
+
+  /* Fixed palette shades used for text. The tokens above are semantic and
+     follow the theme; these are literal Tailwind colours and do not, so
+     text-amber-300 stays #fcd34d on the cream page at 1.3:1 — legible in dark
+     mode, invisible in light. Remap the light end of each family onto a shade
+     that clears 4.5:1 against the page and against the tinted chips these
+     colours sit on (worst measured case 5.2:1).
+
+     Remapped as variables rather than per-utility overrides so it reaches the
+     state and opacity variants too, which compile from the same variable —
+     hover:text-red-400, group-hover:text-emerald-300, text-emerald-400/60.
+     The trade-off: fills and borders built from these shades take on the
+     deeper tint as well. */
+  --color-amber-100: #92400e;
+  --color-amber-200: #92400e;
+  --color-amber-300: #92400e;
+  --color-amber-400: #92400e;
+  --color-emerald-100: #065f46;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #065f46;
+  --color-emerald-400: #065f46;
+  --color-red-200: #b91c1c;
+  --color-red-300: #b91c1c;
+  --color-red-400: #b91c1c;
+  --color-sky-400: #0369a1;
   /* The accent family is deliberately not redeclared here: light mode uses the
      same gold as dark, and the dashboard palette sets these variables at
      runtime. Only --gold-ink differs between modes, further down. */
@@ -451,6 +476,22 @@
 [data-theme="light"] .text-saffron-300,
 [data-theme="light"] .text-saffron-400 {
   color: var(--gold-ink);
+}
+/* Dimmed variants of the shades above. Even on the corrected colour they stay
+   washed out at 60-80% (2.9-4.5:1), so in light mode they are pinned to full
+   strength — the de-emphasis they carried on dark is not affordable here. */
+[data-theme="light"] .text-amber-200\/80 {
+  color: #92400e;
+}
+[data-theme="light"] .text-emerald-200\/80,
+[data-theme="light"] .text-emerald-400\/60 {
+  color: #065f46;
+}
+/* This badge sits on top of a media thumbnail, so it keeps its dark chip in
+   both themes — which means its label cannot follow the theme down to the dark
+   gold without becoming dark-on-dark (1.8:1). Keep it light. */
+[data-theme="light"] .media-in-use {
+  color: #fcd34d;
 }
 /* .text-gradient needs no light-mode override: it is already solid yellow
    via --gold-ink, which resolves to the readable deep gold on pale surfaces. */

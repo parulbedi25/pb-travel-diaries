@@ -3918,7 +3918,7 @@ function MediaPanel() {
                   )}
                   {inUse > 0 && (
                     <span
-                      className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-bold text-saffron-300 backdrop-blur-md"
+                      className="media-in-use absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-bold text-saffron-300 backdrop-blur-md"
                       title={`Used in ${inUse} place${inUse === 1 ? "" : "s"} on the site`}
                     >
                       IN USE
