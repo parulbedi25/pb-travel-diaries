@@ -52,8 +52,22 @@ export function routeEmbedUrl(stops: LiveStop[]): string {
  * This is the one we can align things to, because we pick the centre and the
  * zoom ourselves — see utils/mercator.ts.
  */
-export function viewEmbedUrl(lat: number, lng: number, zoom: number): string {
-  return `${EMBED_BASE}?ll=${lat.toFixed(5)},${lng.toFixed(5)}&z=${Math.round(zoom)}&t=m&hl=en&output=embed`;
+/**
+ * A plain centred view of the map, no route and no marker.
+ *
+ * `type` is Google's map type: "m" is the road map and "k" is satellite. The
+ * distinction that matters here is labels — satellite tiles carry no place
+ * names, while the road map and hybrid ("h") do. There is no parameter to
+ * switch labels off on the keyless embed (that needs the Maps JavaScript API
+ * and a key), so satellite is the only way to get a genuinely nameless map.
+ */
+export function viewEmbedUrl(
+  lat: number,
+  lng: number,
+  zoom: number,
+  type: "m" | "k" = "m",
+): string {
+  return `${EMBED_BASE}?ll=${lat.toFixed(5)},${lng.toFixed(5)}&z=${Math.round(zoom)}&t=${type}&hl=en&output=embed`;
 }
 
 /** A single place, centred and pinned. */

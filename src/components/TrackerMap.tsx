@@ -203,7 +203,9 @@ export default function TrackerMap({
   // panel, which is not the middle of the band.
   const mapCentre = projector.toLatLng(50, 50);
   const embedUrl = useMemo(
-    () => viewEmbedUrl(mapCentre.lat, mapCentre.lng, view.zoom),
+    // Satellite, not the road map: its tiles carry no place names, so the only
+    // names on the map are the checkpoints we draw ourselves.
+    () => viewEmbedUrl(mapCentre.lat, mapCentre.lng, view.zoom, "k"),
     [mapCentre.lat, mapCentre.lng, view.zoom],
   );
   // Re-centring reloads the map, so wait for the view to settle.
