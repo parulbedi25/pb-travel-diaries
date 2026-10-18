@@ -187,7 +187,12 @@ export default function TrackerMap({
   // Fit into the band only, then slide the drawing down into it. The map still
   // fills the whole panel behind the badge and the strip.
   const bandHeight = Math.max(height - insets.top - insets.bottom, 140);
-  const view = useMemo(() => fitView(frame, width, bandHeight, 0.86), [frame, width, bandHeight]);
+  // The pad leaves room for the pin and the name hanging under it, so filling
+  // the rest right up to the edges is safe.
+  const view = useMemo(
+    () => fitView(frame, width, bandHeight, { padX: 30, padY: 38 }),
+    [frame, width, bandHeight],
+  );
   const offsetY = (insets.top - insets.bottom) / 2;
   const projector = useMemo(
     () => makeMercatorProjector(view, width, height, offsetY),
@@ -363,7 +368,7 @@ export default function TrackerMap({
                 role={isLive ? "status" : undefined}
                 aria-label={isLive ? `PB's location: ${liveLabel}` : undefined}
                 className={cn(
-                  "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/30",
+                  "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
                   isStart
                     ? "h-5 w-5 bg-emerald-500 shadow-emerald-500/50"
                     : isEnd
@@ -372,7 +377,7 @@ export default function TrackerMap({
                         ? "h-5 w-5 bg-saffron-400 shadow-saffron-400/50"
                         : stop.status === "done"
                           ? "h-4 w-4 bg-emerald-400/80"
-                          : "h-4 w-4 bg-zinc-700",
+                          : "h-4 w-4 bg-saffron-400",
                 )}
               >
                 {stop.status === "done" && !isStart && !isEnd ? (
@@ -390,7 +395,7 @@ export default function TrackerMap({
                     : isEnd
                       ? "text-red-300"
                       : isLive
-                        ? "text-saffron-300"
+                        ? "text-amber-300"
                         : "text-zinc-300/70",
                 )}
               >
@@ -502,7 +507,7 @@ export default function TrackerMap({
                             : isEnd
                               ? "text-red-300"
                               : isLive
-                                ? "text-saffron-300"
+                                ? "text-amber-300"
                                 : isDone
                                   ? "text-zinc-400"
                                   : "text-zinc-500",
