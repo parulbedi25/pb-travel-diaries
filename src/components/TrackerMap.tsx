@@ -391,9 +391,9 @@ export default function TrackerMap({
                 className={cn(
                   "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
                   isStart
-                    ? "text-emerald-300"
+                    ? "text-start-label"
                     : isEnd
-                      ? "text-red-300"
+                      ? "text-end-label"
                       : isLive
                         ? "text-amber-300"
                         : "text-zinc-300/70",
@@ -503,9 +503,9 @@ export default function TrackerMap({
                         className={cn(
                           "mt-1.5 max-w-full truncate text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:text-[10px]",
                           isStart
-                            ? "text-emerald-300"
+                            ? "text-start-label"
                             : isEnd
-                              ? "text-red-300"
+                              ? "text-end-label"
                               : isLive
                                 ? "text-amber-300"
                                 : isDone
