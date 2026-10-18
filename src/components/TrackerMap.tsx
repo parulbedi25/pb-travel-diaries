@@ -3,7 +3,8 @@ import { ArrowUpRight, Check, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
-import { routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
+import { routeLinkUrl } from "../utils/mapEmbed";
+import TileBasemap, { TileAttribution } from "./TileBasemap";
 import { fitView, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
@@ -202,16 +203,20 @@ export default function TrackerMap({
   // The map is centred on whatever our overlay puts at the middle of the
   // panel, which is not the middle of the band.
   const mapCentre = projector.toLatLng(50, 50);
-  const embedUrl = useMemo(
-    () => viewEmbedUrl(mapCentre.lat, mapCentre.lng, view.zoom),
-    [mapCentre.lat, mapCentre.lng, view.zoom],
-  );
-  // Re-centring reloads the map, so wait for the view to settle.
-  const [src, setSrc] = useState(embedUrl);
+  // Re-centring fetches a fresh set of tiles, so wait for the view to settle
+  // rather than pulling new ones on every step of a resize.
+  const [mapView, setMapView] = useState(() => ({
+    lat: mapCentre.lat,
+    lng: mapCentre.lng,
+    zoom: view.zoom,
+  }));
   useEffect(() => {
-    const timer = window.setTimeout(() => setSrc(embedUrl), 500);
+    const timer = window.setTimeout(
+      () => setMapView({ lat: mapCentre.lat, lng: mapCentre.lng, zoom: view.zoom }),
+      500,
+    );
     return () => window.clearTimeout(timer);
-  }, [embedUrl]);
+  }, [mapCentre.lat, mapCentre.lng, view.zoom]);
 
   const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
@@ -260,18 +265,12 @@ export default function TrackerMap({
 
   return (
     <div ref={hostRef} className="absolute inset-0">
-      {/* The map: plain, aligned, and pointer-dead so the overlay stays true. */}
-      <div className="tracker-google map-frame map-paper absolute inset-0">
+      {/* The map: tiles with no place names on them, pointer-dead so the
+          overlay stays true. Google's embed cannot do this — it paints its own
+          names into the image and nothing turns them off. */}
+      <div className="tracker-google map-frame map-paper absolute inset-0 overflow-hidden">
         {count > 0 ? (
-          <iframe
-            src={src}
-            title={`Google Maps: ${stops[0]?.name ?? "the start"} to ${
-              stops[count - 1]?.name ?? "the destination"
-            }`}
-            className="h-full w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
+          <TileBasemap view={mapView} width={width} height={height} className="absolute inset-0" />
         ) : (
           <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
             Add at least one stop in the dashboard and this panel becomes a live map of the route.
@@ -281,6 +280,9 @@ export default function TrackerMap({
 
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
       <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+
+      {/* Above the veil, so the top gradient does not dim it. */}
+      <TileAttribution className="pointer-events-auto absolute right-3 top-3 text-[9px] text-zinc-500" />
 
       {/* PB's route: covered solid, still to come dashed and marching on. */}
       <svg

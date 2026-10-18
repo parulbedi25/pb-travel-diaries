@@ -743,42 +743,23 @@
 [data-theme="light"] .map-paper {
   background-color: #e8eaed;
 }
-/* ── The tracker's map is blurred and washed with the brand gold ───────────
-   Google offers no way to switch its place names off on the keyless embed —
-   not on the road map, and not on satellite either, which was tried first.
-   What is left is to make them unreadable rather than absent: the contrast of
-   the whole map is crushed, which pulls thin dark text towards the background
-   it sits on while leaving the broader shapes — water, parks, roads — legible,
-   and the gold wash on top takes the rest of the edge off. Labels are faded,
-   not removed: see the note in the commit and the tracker's own comments. */
-.tracker-google iframe {
-  /* A blur samples transparent pixels from beyond the edge, which would fade
-     the map into the panel colour round the border. Drawing it 16px oversized
-     on each side and letting the panel clip it avoids that: the frame keeps
-     the same centre and the same zoom, so the overlay's projection still
-     lines up with the map exactly. */
-  width: calc(100% + 32px);
-  height: calc(100% + 32px);
-  margin: -16px;
-  filter: blur(1px) invert(0.92) hue-rotate(180deg) contrast(0.55) brightness(1.05) saturate(0.9);
-}
-[data-theme="light"] .tracker-google iframe {
-  filter: blur(1px) contrast(0.55) brightness(1.12) saturate(0.95);
-}
+/* ── The tracker's basemap ─────────────────────────────────────────────────
+   Tiles, not an embed. Every attempt to get rid of Google's place names from
+   inside the embed failed: there is no parameter for it, satellite still
+   paints them on, and blurring or crushing the contrast only faded them while
+   taking the map with them. The tiles are CARTO's "_nolabels" styles, which
+   have no names in them to begin with, so nothing needs hiding — no blur, no
+   wash, no filter. The map is drawn as it comes. */
 
 /* A soft edge top and bottom so the overlay plates stay readable over the map
-   without hiding it, over the flat brand wash. The route and the pins are
-   drawn above this layer, so they keep their full colour. */
+   without hiding it. The route and the pins are drawn above this layer, so
+   they keep their full colour. */
 .tracker-google-veil {
-  --map-wash: color-mix(in srgb, var(--color-saffron-400) 28%, transparent);
-  background: linear-gradient(var(--map-wash), var(--map-wash)),
-    linear-gradient(to bottom, rgba(7, 7, 7, 0.55) 0%, rgba(7, 7, 7, 0) 22%),
+  background: linear-gradient(to bottom, rgba(7, 7, 7, 0.55) 0%, rgba(7, 7, 7, 0) 22%),
     linear-gradient(to top, rgba(7, 7, 7, 0.62) 0%, rgba(7, 7, 7, 0) 30%);
 }
 [data-theme="light"] .tracker-google-veil {
-  --map-wash: color-mix(in srgb, var(--color-saffron-400) 24%, transparent);
-  background: linear-gradient(var(--map-wash), var(--map-wash)),
-    linear-gradient(to bottom, rgba(247, 244, 237, 0.5) 0%, rgba(247, 244, 237, 0) 22%),
+  background: linear-gradient(to bottom, rgba(247, 244, 237, 0.5) 0%, rgba(247, 244, 237, 0) 22%),
     linear-gradient(to top, rgba(247, 244, 237, 0.55) 0%, rgba(247, 244, 237, 0) 30%);
 }
 
