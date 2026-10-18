@@ -67,13 +67,21 @@ export default function TileBasemap({
  * When it is on screen the credit says so, because a labelled map appearing
  * where a nameless one belongs should never pass as a silent success.
  */
+/** Where to send the credit for each provider that might be drawing. */
+const PROVIDER_LINKS: Record<string, string> = {
+  OpenFreeMap: "https://openfreemap.org",
+  VersaTiles: "https://versatiles.org",
+};
+
 export function MapAttribution({
   className,
-  source = "vector",
+  source,
 }: {
   className?: string;
-  source?: "vector" | "raster";
+  /** Who is drawing the map, or "raster" for the labelled fallback. */
+  source?: string;
 }) {
+  const provider = source && source !== "raster" ? source : undefined;
   return (
     <p className={className}>
       ©{" "}
@@ -86,17 +94,17 @@ export function MapAttribution({
         OpenStreetMap
       </a>{" "}
       contributors
-      {source === "vector" && (
+      {provider && (
         <>
           {" "}
           ·{" "}
           <a
-            href="https://openfreemap.org"
+            href={PROVIDER_LINKS[provider] ?? "https://www.openstreetmap.org/copyright"}
             target="_blank"
             rel="noreferrer"
             className="underline decoration-dotted underline-offset-2 hover:no-underline"
           >
-            OpenFreeMap
+            {provider}
           </a>
         </>
       )}
