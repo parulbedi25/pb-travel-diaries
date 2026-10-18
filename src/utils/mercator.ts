@@ -46,14 +46,22 @@ function unproject(x: number, y: number, world: number): { lat: number; lng: num
 /**
  * The centre and zoom that fit `stops` into a width × height box.
  *
- * `fit` is the fraction of the box the stops are allowed to fill; the rest is
- * breathing room, so pins near the edge are not half off the map.
+ * `padX` and `padY` reserve that many pixels on each side for the markers
+ * themselves — a pin is ~24px across and its name hangs below it, so fitting
+ * the raw points to the edge would clip them. `fit` is the fraction of what
+ * remains that the stops may fill.
+ *
+ * Zoom has to be a whole number (that is all Google's `z` accepts), which
+ * means the fitted stops land somewhere between half and all of the available
+ * box. Keeping `fit` at 1 and reserving the margin in pixels instead is what
+ * stops it settling at the bottom of that range and leaving the box half
+ * empty.
  */
 export function fitView(
   stops: readonly { lat: number; lng: number }[],
   width: number,
   height: number,
-  fit = 0.78,
+  { fit = 1, padX = 26, padY = 26 }: { fit?: number; padX?: number; padY?: number } = {},
 ): MapView {
   const w = Math.max(width || 600, 1);
   const h = Math.max(height || 400, 1);
@@ -81,11 +89,9 @@ export function fitView(
   const bottomRight = project(minLat, maxLng, TILE);
   const spanX = Math.max(Math.abs(bottomRight.x - topLeft.x), 1e-6);
   const spanY = Math.max(Math.abs(bottomRight.y - topLeft.y), 1e-6);
-  const zoom = clamp(
-    Math.floor(Math.log2(Math.min((w * fit) / spanX, (h * fit) / spanY))),
-    3,
-    17,
-  );
+  const innerW = Math.max((w - padX * 2) * fit, 1);
+  const innerH = Math.max((h - padY * 2) * fit, 1);
+  const zoom = clamp(Math.floor(Math.log2(Math.min(innerW / spanX, innerH / spanY))), 3, 17);
   const centre = unproject((topLeft.x + bottomRight.x) / 2, (topLeft.y + bottomRight.y) / 2, TILE);
   return { lat: centre.lat, lng: centre.lng, zoom };
 }
@@ -99,11 +105,17 @@ export interface Projector {
 /**
  * Turn a known view into the same mapping the iframe is showing, so a pin
  * dropped under the cursor lands on the spot it was dropped on.
+ *
+ * `offsetY` slides the whole projected picture down by that many pixels
+ * without moving the map, which is how the tracker keeps its route inside the
+ * band between the badge across the top and the strip along the bottom. The
+ * map itself still fills the panel; only the drawing on top of it moves.
  */
 export function makeMercatorProjector(
   view: MapView,
   width: number,
   height: number,
+  offsetY = 0,
 ): Projector {
   const world = TILE * 2 ** view.zoom;
   const w = Math.max(width || 600, 1);
@@ -115,10 +127,14 @@ export function makeMercatorProjector(
       const p = project(lat, lng, world);
       return {
         x: ((w / 2 + (p.x - centre.x)) / w) * 100,
-        y: ((h / 2 + (p.y - centre.y)) / h) * 100,
+        y: ((h / 2 + offsetY + (p.y - centre.y)) / h) * 100,
       };
     },
     toLatLng: (x, y) =>
-      unproject(centre.x + (x / 100) * w - w / 2, centre.y + (y / 100) * h - h / 2, world),
+      unproject(
+        centre.x + (x / 100) * w - w / 2,
+        centre.y + (y / 100) * h - h / 2 - offsetY,
+        world,
+      ),
   };
 }

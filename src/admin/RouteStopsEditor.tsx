@@ -122,7 +122,7 @@ export default function RouteStopsEditor({
   }, []);
 
   const fit = useMemo(
-    () => fitView(stops, size.width, size.height),
+    () => fitView(stops, size.width, size.height, { padX: 28, padY: 28 }),
     [stops, size.width, size.height],
   );
   const zoom = Math.max(3, Math.min(18, fit.zoom + zoomStep));

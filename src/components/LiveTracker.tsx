@@ -89,6 +89,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <TrackerMap
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}
+                live={{ lat: location.lat, lng: location.lng }}
                 liveName={location.name}
                 liveState={location.state}
                 status={status}

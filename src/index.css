@@ -698,9 +698,6 @@
 .tracker-google {
   pointer-events: none;
 }
-.tracker-google.is-interactive {
-  pointer-events: auto;
-}
 
 /* ── Google maps, themed ───────────────────────────────────────────────────
    A real Google dark map needs the Maps JavaScript API, which needs a key.
