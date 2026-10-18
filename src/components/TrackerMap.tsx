@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Check, Satellite } from "lucide-react";
+import { Check, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
-import { routeLinkUrl } from "../utils/mapEmbed";
 import VectorBasemap from "./VectorBasemap";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
@@ -12,17 +11,12 @@ import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/r
 /**
  * The live tracker's map.
  *
- * The map underneath is a plain Google view — no route, no markers, no white
- * panel — asked for at a centre and zoom we choose ourselves. That is what
- * makes it possible to draw on top of it: we know exactly how the map is
- * projected (see utils/mercator.ts), so the checkpoints and the line sit on
- * the streets they belong to.
+ * The map underneath is OpenStreetMap, drawn from tiles at a centre and zoom
+ * we choose ourselves. That is what makes it possible to draw on top of it: we
+ * know exactly how the map is projected (see utils/mercator.ts), so the
+ * checkpoints and the line sit on the streets they belong to.
  *
- * Google's own directions embed draws a blue route we cannot restyle, cannot
- * align anything to, and cannot remove the side panel from — hence this
- * approach instead.
- *
- * The line is PB's, not Google's: solid yellow over what is ridden, dashed
+ * The line is ours, not the map's: solid yellow over what is ridden, dashed
  * yellow marching towards the destination over what is still to come. It
  * follows the real road — the one stored in the dashboard if that has been
  * fetched, otherwise the one asked for here — and only falls back to straight
@@ -220,7 +214,6 @@ export default function TrackerMap({
     return () => window.clearTimeout(timer);
   }, [mapCentre.lat, mapCentre.lng, view.zoom]);
 
-  const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
   const toPx = useCallback(
@@ -267,10 +260,9 @@ export default function TrackerMap({
 
   return (
     <div ref={hostRef} className="absolute inset-0">
-      {/* The map: tiles with no place names on them, pointer-dead so the
-          overlay stays true. Google's embed cannot do this — it paints its own
-          names into the image and nothing turns them off. */}
-      <div className="tracker-google map-frame map-paper absolute inset-0 overflow-hidden">
+      {/* The map: OpenStreetMap with no place names on it, pointer-dead so
+          the overlay stays true. */}
+      <div className="tracker-map map-paper absolute inset-0 overflow-hidden">
         {count > 0 ? (
           <VectorBasemap
             view={mapView}
@@ -287,7 +279,7 @@ export default function TrackerMap({
       </div>
 
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
-      <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className="tracker-map-veil pointer-events-none absolute inset-0" aria-hidden="true" />
 
 
       {/* PB's route: covered solid, still to come dashed and marching on. */}
@@ -423,15 +415,6 @@ export default function TrackerMap({
                 {formatKm(totals[totals.length - 1] ?? 0)}
               </p>
               <div className="flex items-center gap-1">
-                <a
-                  href={linkUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
-                >
-                  Google Maps
-                  <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-                </a>
                 <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
                   <Satellite
                     className={cn(

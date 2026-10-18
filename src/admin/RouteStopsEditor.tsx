@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
-import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
@@ -21,15 +20,10 @@ import { cumulativeKm, formatKm } from "../utils/routeProgress";
 /**
  * Editor for the live tracker's route.
  *
- * Two surfaces, because a Google map cannot be drawn on:
- *
- *  1. "Route on Google Maps" — a real Google map of the route, rendered through
- *     the keyless embed endpoint. It is the honest geography, and it updates as
- *     you edit. You cannot click it for coordinates (it is a sealed iframe).
- *  2. "Place the stops" — the placement surface. A local grid with numbered,
- *     draggable pins: click to drop a stop, drag to move it. It draws only
- *     lines and pins, so it never depends on a tile server and can never come
- *     up blank.
+ * One surface, and it is the one you can work on: a map of OpenStreetMap with
+ * no place names on it, with numbered draggable pins on top — click to drop a
+ * stop, drag to move it. The map is pinned to the same projection as the pins,
+ * so what you click is what you get.
  *
  * The order of the list is the order of the journey: the first stop is the
  * start, the last is the destination, and the tracker draws them green and red.
@@ -145,17 +139,6 @@ export default function RouteStopsEditor({
   }, [view.lat, view.lng, zoom]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
-  const liveEmbedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
-  const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
-
-  // Dragging changes coordinates many times a second; only reload the map once
-  // the pin has settled.
-  const [previewUrl, setPreviewUrl] = useState(liveEmbedUrl);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setPreviewUrl(liveEmbedUrl), 600);
-    return () => window.clearTimeout(timer);
-  }, [liveEmbedUrl]);
-
   const patch = useCallback(
     (index: number, part: Partial<LiveStop>) => {
       onChange(stops.map((stop, i) => (i === index ? { ...stop, ...part } : stop)));
@@ -255,45 +238,6 @@ export default function RouteStopsEditor({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* ── The real map ── */}
-      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ink-950/50">
-        <div className="flex items-center justify-between gap-2 px-4 py-3">
-          <p className="flex items-center gap-2 text-xs font-bold text-white">
-            <MapPinned className="h-4 w-4 text-saffron-300" aria-hidden="true" />
-            Route on Google Maps
-          </p>
-          <a
-            href={linkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
-          >
-            Open
-            <RouteIcon className="h-3 w-3" aria-hidden="true" />
-          </a>
-        </div>
-        <div className="map-frame map-paper relative h-[240px] w-full border-t border-white/[0.08] bg-ink-900">
-          {stops.length ? (
-            <iframe
-              src={previewUrl}
-              title="Google Maps preview of the route"
-              className="h-full w-full border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
-            />
-          ) : (
-            <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
-              Add a stop and the route appears here.
-            </div>
-          )}
-        </div>
-        <p className="border-t border-white/[0.08] px-4 py-2.5 text-[11px] leading-relaxed text-zinc-500">
-          Google draws the road and the A/B markers. The exact pins below are yours — the first is
-          the green start, the last is the red destination.
-        </p>
-      </div>
-
       {/* ── Place the stops ── */}
       <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
         <p className="flex items-center gap-2 text-xs font-bold text-white">
