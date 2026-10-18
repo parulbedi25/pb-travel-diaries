@@ -4,7 +4,7 @@ import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
 import { routeLinkUrl } from "../utils/mapEmbed";
-import TileBasemap, { TileAttribution } from "./TileBasemap";
+import VectorBasemap from "./VectorBasemap";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
@@ -272,7 +272,13 @@ export default function TrackerMap({
           names into the image and nothing turns them off. */}
       <div className="tracker-google map-frame map-paper absolute inset-0 overflow-hidden">
         {count > 0 ? (
-          <TileBasemap view={mapView} width={width} height={height} className="absolute inset-0" />
+          <VectorBasemap
+            view={mapView}
+            width={width}
+            height={height}
+            className="absolute inset-0"
+            attributionClassName="pointer-events-auto absolute right-3 top-3 text-[9px] text-zinc-500"
+          />
         ) : (
           <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
             Add at least one stop in the dashboard and this panel becomes a live map of the route.
@@ -283,8 +289,6 @@ export default function TrackerMap({
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
       <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
 
-      {/* Above the veil, so the top gradient does not dim it. */}
-      <TileAttribution className="pointer-events-auto absolute right-3 top-3 text-[9px] text-zinc-500" />
 
       {/* PB's route: covered solid, still to come dashed and marching on. */}
       <svg

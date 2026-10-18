@@ -15,7 +15,7 @@ import type { LiveStop } from "../store/siteContent";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
 import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
-import TileBasemap, { TileAttribution } from "../components/TileBasemap";
+import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 /**
@@ -312,13 +312,13 @@ export default function RouteStopsEditor({
           className="route-grid relative mt-3 aspect-[3/2] w-full cursor-crosshair overflow-hidden rounded-xl border border-white/10"
         >
           {/* The map underneath. Pointer-dead, so clicks land on our overlay. */}
-          <TileBasemap
+          <VectorBasemap
             view={backdropView}
             width={size.width}
             height={size.height}
             className="pointer-events-none absolute inset-0 overflow-hidden"
+            attributionClassName="pointer-events-none absolute bottom-1 right-1.5 text-[8px] text-zinc-500"
           />
-          <TileAttribution className="pointer-events-none absolute bottom-1 right-1.5 text-[8px] text-zinc-500" />
 
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
