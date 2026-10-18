@@ -18,6 +18,17 @@
   --color-saffron-400: #f5b301;
   --color-saffron-500: #d99700;
 
+  /* ── Ridden (already visited) ──
+     Deliberately NOT remapped in the light theme. emerald-400 is overwritten
+     there with a deep green so that *text* in that shade clears 4.5:1 on the
+     cream page — but a filled marker is not text, and on the light map it has
+     to read as the same green it is in the dark theme, next to a start pin
+     (emerald-500) that is not remapped either. The tick is fixed for the same
+     reason flipped the other way: ink-950 turns cream in the light theme and
+     would disappear on a mint dot. */
+  --color-ridden: #34d399;
+  --color-ridden-tick: #052e21;
+
   --animate-marquee: marquee 46s linear infinite;
   --animate-pulse-soft: pulse-soft 5.5s ease-in-out infinite;
   --animate-blink: blink 1.5s ease-in-out infinite;

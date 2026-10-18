@@ -376,12 +376,12 @@ export default function TrackerMap({
                       : isLive
                         ? "h-5 w-5 bg-saffron-400 shadow-saffron-400/50"
                         : stop.status === "done"
-                          ? "h-4 w-4 bg-emerald-400/80"
+                          ? "h-4 w-4 bg-ridden"
                           : "h-4 w-4 bg-saffron-400",
                 )}
               >
                 {stop.status === "done" && !isStart && !isEnd ? (
-                  <Check className="h-2.5 w-2.5 text-ink-950" aria-hidden="true" />
+                  <Check className="h-2.5 w-2.5 text-ridden-tick" aria-hidden="true" />
                 ) : (
                   !isLive && <span className="h-1.5 w-1.5 rounded-full bg-white" />
                 )}
@@ -482,7 +482,7 @@ export default function TrackerMap({
                             stop.name
                           }${stop.note ? ` — ${stop.note}` : ""}`}
                           className={cn(
-                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-ink-950",
+                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-black/40",
                             isStart
                               ? "bg-emerald-500"
                               : isEnd
@@ -490,12 +490,12 @@ export default function TrackerMap({
                                 : isLive
                                   ? "bg-saffron-400"
                                   : isDone
-                                    ? "bg-emerald-400/70"
-                                    : "bg-zinc-600",
+                                    ? "bg-ridden"
+                                    : "bg-saffron-400",
                           )}
                         >
                           {isDone && !isStart && !isEnd && (
-                            <Check className="h-2 w-2 text-ink-950" aria-hidden="true" />
+                            <Check className="h-2 w-2 text-ridden-tick" aria-hidden="true" />
                           )}
                         </span>
                       </span>
