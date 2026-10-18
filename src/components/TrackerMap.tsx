@@ -1,34 +1,37 @@
-import { useMemo, useState } from "react";
-import { ArrowUpRight, Check, Lock, MapPinned, Satellite } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpRight, Check, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
-import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
+import { routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
+import { fitView, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-import type { LatLng } from "../utils/routing";
+import { splitRouteAtProgress, type LatLng } from "../utils/routing";
 
 /**
  * The live tracker's map.
  *
- * The map itself is Google Maps, embedded through the endpoint Google hands out
- * from Maps → Share → "Embed a map" — free, no API key, no billing. Google
- * draws the real road and the real A-to-B route, so the geography is always
- * right and the panel is never blank.
+ * The map underneath is a plain Google view — no route, no markers, no white
+ * panel — asked for at a centre and zoom we choose ourselves. That is what
+ * makes it possible to draw on top of it: we know exactly how the map is
+ * projected (see utils/mercator.ts), so the checkpoints and the line sit on
+ * the streets they belong to.
  *
- * The trade-off: an iframe is a sealed box, so nothing can be drawn on top of
- * it. The stops therefore live in the strip along the bottom of the panel,
- * which keeps everything the tracker promised — every stop visible, the first
- * one green, the last one red, and the road split into what is ridden and what
- * is still to come.
+ * Google's own directions embed draws a blue route we cannot restyle, cannot
+ * align anything to, and cannot remove the side panel from — hence this
+ * approach instead.
  *
- * The map ignores the pointer until you ask for it ("Move map"), so scrolling
- * the page past a full-width map never turns into zooming the map instead.
+ * The line is PB's, not Google's: solid yellow over what is ridden, dashed
+ * yellow marching towards the destination over what is still to come. It
+ * follows the stored road when the dashboard has fetched one, and straight
+ * segments between the checkpoints until then.
  */
 
 export interface TrackerMapProps {
   stops: LiveStop[];
-  /** Road fetched in the dashboard; used to measure the ride honestly. */
+  /** Road fetched in the dashboard; drawn instead of straight segments. */
   routeGeometry: LatLng[];
+  live: { lat: number; lng: number };
   liveName: string;
   liveState: string;
   status: LiveStatus;
@@ -39,79 +42,271 @@ export interface TrackerMapProps {
 export default function TrackerMap({
   stops,
   routeGeometry,
+  live,
   liveName,
   liveState,
   status,
   pingLabel,
 }: TrackerMapProps) {
-  const [interactive, setInteractive] = useState(false);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
-  const embedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
+  // The overlay has to match the map pixel for pixel, so the panel is measured
+  // rather than assumed.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const measure = (w?: number, h?: number) => {
+      const width = w ?? host.clientWidth;
+      const height = h ?? host.clientHeight;
+      if (width > 0 && height > 0) setSize({ width, height });
+    };
+    measure();
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries?.[0]?.contentRect;
+      if (rect?.width && rect?.height) measure(rect.width, rect.height);
+      else measure();
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  const width = size.width || 600;
+  const height = size.height || 400;
+
+  const geometry = useMemo(
+    () => (routeGeometry.length >= 2 ? routeGeometry : stops.map((s) => [s.lat, s.lng] as LatLng)),
+    [routeGeometry, stops],
+  );
+
+  // What has to stay in view: every checkpoint, plus wherever PB is. The road
+  // is deliberately left out of the fit — it can run past the first and last
+  // stop, and fitting to it would push the checkpoints towards the edges.
+  const frame = useMemo(
+    () => [...stops.map((s) => ({ lat: s.lat, lng: s.lng })), { lat: live.lat, lng: live.lng }],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stops, live.lat, live.lng],
+  );
+
+  const view = useMemo(() => fitView(frame, width, height, 0.8), [frame, width, height]);
+  const projector = useMemo(
+    () => makeMercatorProjector(view, width, height),
+    [view, width, height],
+  );
+
+  const embedUrl = useMemo(
+    () => viewEmbedUrl(view.lat, view.lng, view.zoom),
+    [view.lat, view.lng, view.zoom],
+  );
+  // Re-centring reloads the map, so wait for the view to settle.
+  const [src, setSrc] = useState(embedUrl);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSrc(embedUrl), 500);
+    return () => window.clearTimeout(timer);
+  }, [embedUrl]);
+
   const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
-  const count = stops.length;
+  const toPx = useCallback(
+    (point: LatLng) => {
+      const projected = projector.toXY({ lat: point[0], lng: point[1] });
+      return { x: (projected.x / 100) * width, y: (projected.y / 100) * height };
+    },
+    [projector, width, height],
+  );
+  const toPct = useCallback(
+    (point: { lat: number; lng: number }) => projector.toXY(point),
+    [projector],
+  );
 
-  // Where the ride currently is: the stop marked live, else the last one
-  // ridden. Everything before it is covered; everything after is to come.
+  const { covered, remaining } = useMemo(
+    () => splitRouteAtProgress(geometry, stops),
+    [geometry, stops],
+  );
+  const toPath = (points: LatLng[]) =>
+    points.length
+      ? points
+          .map((point, index) => {
+            const p = toPx(point);
+            return `${index === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+          })
+          .join(" ")
+      : "";
+  const coveredPath = toPath(covered);
+  const remainingPath = toPath(remaining);
+
+  const count = stops.length;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
   const progressIndex = liveIndex >= 0 ? liveIndex : lastDone >= 0 ? lastDone : 0;
   const progressPct = count > 1 ? (progressIndex / (count - 1)) * 100 : 0;
-
-  // The track runs from the centre of the first dot to the centre of the last,
-  // so it is inset by half a column at each end.
   const edge = count > 0 ? 50 / count : 0;
 
+  // A checkpoint marked "here now" in the dashboard is where PB is, so the
+  // radar, the pin and the label all sit on it and agree with each other. The
+  // GPS feed is only the fallback for when no checkpoint is marked live.
+  const liveHere = liveIndex >= 0 ? stops[liveIndex] : live;
+  const liveLabel = liveIndex >= 0 ? stops[liveIndex].name : `${liveName}, ${liveState}`;
+  const livePoint = toPct(liveHere);
+
   return (
-    <>
-      {/* The real map — crisp, and pointer-dead until asked for. */}
-      <div className={cn("tracker-google map-frame map-paper absolute inset-0", interactive && "is-interactive")}>
-        {embedUrl ? (
+    <div ref={hostRef} className="absolute inset-0">
+      {/* The map: plain, aligned, and pointer-dead so the overlay stays true. */}
+      <div className="tracker-google map-frame map-paper absolute inset-0">
+        {count > 0 ? (
           <iframe
-            src={embedUrl}
-            title={`Google Maps: the route from ${stops[0]?.name ?? "the start"} to ${
+            src={src}
+            title={`Google Maps: ${stops[0]?.name ?? "the start"} to ${
               stops[count - 1]?.name ?? "the destination"
             }`}
             className="h-full w-full border-0"
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
-            allowFullScreen
           />
         ) : (
           <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
-            Add at least one stop in the dashboard and this panel becomes a live Google Map of the
-            route.
+            Add at least one stop in the dashboard and this panel becomes a live map of the route.
           </div>
         )}
       </div>
 
-      {/* A soft edge top and bottom so the overlay plates stay readable over
-          the map without hiding it. */}
+      {/* A soft edge top and bottom so the overlay plates stay readable. */}
       <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+
+      {/* PB's route: covered solid, still to come dashed and marching on. */}
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${width} ${height}`}
+        aria-hidden="true"
+      >
+        {/* A dark casing under both halves, so the yellow reads on a light map. */}
+        {remainingPath && (
+          <path
+            d={remainingPath}
+            fill="none"
+            stroke="rgba(9,9,9,0.5)"
+            strokeWidth={6}
+            strokeLinecap="round"
+            strokeDasharray="9 7"
+          />
+        )}
+        {coveredPath && (
+          <path d={coveredPath} fill="none" stroke="rgba(9,9,9,0.5)" strokeWidth={6} strokeLinecap="round" />
+        )}
+        {remainingPath && (
+          <path
+            d={remainingPath}
+            fill="none"
+            stroke="#f5b301"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeDasharray="9 7"
+            className="animate-route-dash"
+          />
+        )}
+        {coveredPath && (
+          <path d={coveredPath} fill="none" stroke="#f5b301" strokeWidth={3.5} strokeLinecap="round" />
+        )}
+      </svg>
+
+      {/* Radar rings on wherever PB actually is. */}
+      {liveIndex >= 0 && (
+        <>
+          <div
+            className="pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
+            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]"
+            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]"
+            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
+            aria-hidden="true"
+          />
+        </>
+      )}
+
+      {/* The checkpoints. */}
+      {stops.map((stop, index) => {
+        const point = toPct(stop);
+        const isStart = index === 0;
+        const isEnd = index === count - 1;
+        const isLive = stop.status === "live";
+        return (
+          <div
+            key={`${stop.name}-${index}`}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${point.x}%`, top: `${point.y}%` }}
+          >
+            <button
+              type="button"
+              className="group relative grid place-items-center focus:outline-none"
+              title={`${isStart ? "Start" : isEnd ? "Destination" : "Checkpoint"} · ${stop.name}${
+                stop.note ? ` — ${stop.note}` : ""
+              }`}
+            >
+              {isLive && status === "live" && (
+                <>
+                  <span className="absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden="true" />
+                  <span className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden="true" />
+                </>
+              )}
+              <span
+                role={isLive ? "status" : undefined}
+                aria-label={isLive ? `PB's location: ${liveLabel}` : undefined}
+                className={cn(
+                  "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/30",
+                  isStart
+                    ? "h-5 w-5 bg-emerald-500 shadow-emerald-500/50"
+                    : isEnd
+                      ? "h-5 w-5 bg-red-500 shadow-red-500/50"
+                      : isLive
+                        ? "h-5 w-5 bg-saffron-400 shadow-saffron-400/50"
+                        : stop.status === "done"
+                          ? "h-4 w-4 bg-emerald-400/80"
+                          : "h-4 w-4 bg-zinc-700",
+                )}
+              >
+                {stop.status === "done" && !isStart && !isEnd ? (
+                  <Check className="h-2.5 w-2.5 text-ink-950" aria-hidden="true" />
+                ) : (
+                  !isLive && <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                )}
+                {isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
+              </span>
+              <span
+                className={cn(
+                  "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
+                  isStart
+                    ? "text-emerald-300"
+                    : isEnd
+                      ? "text-red-300"
+                      : isLive
+                        ? "text-saffron-300"
+                        : "text-zinc-300/70",
+                )}
+              >
+                {stop.name}
+              </span>
+            </button>
+          </div>
+        );
+      })}
 
       {count > 0 && (
         <div className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5">
           <div className="rounded-2xl border border-white/10 bg-ink-950/85 px-3 py-2.5 shadow-xl shadow-black/40 backdrop-blur-xl sm:px-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">
                 Route · {count} stop{count === 1 ? "" : "s"} ·{" "}
                 {formatKm(totals[totals.length - 1] ?? 0)}
               </p>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setInteractive((value) => !value)}
-                  className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
-                  aria-pressed={interactive}
-                >
-                  {interactive ? (
-                    <Lock className="h-3 w-3" aria-hidden="true" />
-                  ) : (
-                    <MapPinned className="h-3 w-3" aria-hidden="true" />
-                  )}
-                  {interactive ? "Lock map" : "Move map"}
-                </button>
                 <a
                   href={linkUrl}
                   target="_blank"
@@ -125,7 +320,7 @@ export default function TrackerMap({
                   <Satellite
                     className={cn(
                       "h-3 w-3",
-                      status === "live" ? "text-emerald-300" : "text-amber-300"
+                      status === "live" ? "text-emerald-300" : "text-amber-300",
                     )}
                     aria-hidden="true"
                   />
@@ -135,7 +330,6 @@ export default function TrackerMap({
             </div>
 
             <div className="relative">
-              {/* Track: solid behind PB, dashed still to come. */}
               <div
                 className="pointer-events-none absolute inset-x-0 top-0 h-3"
                 style={{ marginLeft: `${edge}%`, marginRight: `${edge}%` }}
@@ -167,9 +361,7 @@ export default function TrackerMap({
                       <span
                         className="relative grid h-3 w-3 place-items-center"
                         role={isLive ? "status" : undefined}
-                        aria-label={
-                          isLive ? `PB's location: ${liveName}, ${liveState}` : undefined
-                        }
+                        aria-label={isLive ? `PB's location: ${liveLabel}` : undefined}
                       >
                         {isLive && (
                           <span
@@ -228,6 +420,6 @@ export default function TrackerMap({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
