@@ -482,7 +482,7 @@ export default function TrackerMap({
                             stop.name
                           }${stop.note ? ` — ${stop.note}` : ""}`}
                           className={cn(
-                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-ink-950",
+                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-black/40",
                             isStart
                               ? "bg-emerald-500"
                               : isEnd
@@ -491,7 +491,7 @@ export default function TrackerMap({
                                   ? "bg-saffron-400"
                                   : isDone
                                     ? "bg-ridden"
-                                    : "bg-zinc-600",
+                                    : "bg-saffron-400",
                           )}
                         >
                           {isDone && !isStart && !isEnd && (
