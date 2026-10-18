@@ -110,11 +110,27 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
   return tiles;
 }
 
-/** CARTO's keyless basemap styles — the "_nolabels" ones carry no place names. */
+/** CARTO's "_nolabels" styles — the same tiles with the label layer left out. */
 export const TILE_STYLES: Record<"dark" | "light", string> = {
   dark: "dark_nolabels",
   light: "light_nolabels",
 };
+
+/**
+ * CARTO's raster tiles have required a key since 25 September 2026.
+ *
+ * The awkward part: an unkeyed request does not fail. It answers 200 with an
+ * "API KEY REQUIRED" image in place of the map, so nothing that watches for
+ * load errors will ever notice — the map just quietly stops being a map. The
+ * provider therefore has to be chosen up front, from whether a key is present,
+ * rather than switched on failure.
+ *
+ * Keys are free, need no CARTO account, and arrive by email from
+ * carto.com/basemaps/apikey. Put one in .env as VITE_CARTO_KEY and the
+ * nameless basemap comes straight back; until then the tracker uses
+ * OpenStreetMap's own tiles, which do carry place names.
+ */
+export const cartoKey = ((import.meta.env.VITE_CARTO_KEY as string | undefined) ?? "").trim();
 
 const SUBDOMAINS = ["a", "b", "c", "d"];
 
@@ -123,11 +139,22 @@ export function tileUrl(
   tileZoom: number,
   tile: PlacedTile,
   retina: boolean,
+  key: string = cartoKey,
 ): string {
   const sub = SUBDOMAINS[(tile.wrapped + tile.ty) % SUBDOMAINS.length];
-  return `https://${sub}.basemaps.cartocdn.com/${style}/${tileZoom}/${tile.wrapped}/${
+  const base = `https://${sub}.basemaps.cartocdn.com/${style}/${tileZoom}/${tile.wrapped}/${
     tile.ty
   }${retina ? "@2x" : ""}.png`;
+  return key ? `${base}?key=${encodeURIComponent(key)}` : base;
+}
+
+/**
+ * OpenStreetMap's own tiles. Keyless, so they are the fallback when there is
+ * no CARTO key — but they are labelled, so with these the map shows place
+ * names again. There is no double-density variant, hence no `retina`.
+ */
+export function osmTileUrl(tileZoom: number, tile: PlacedTile): string {
+  return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
 }
 
 export { TILE as TILE_SIZE };
