@@ -5,7 +5,7 @@ import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
 import { routeLinkUrl } from "../utils/mapEmbed";
 import TileBasemap, { TileAttribution } from "./TileBasemap";
-import { fitView, makeMercatorProjector } from "../utils/mercator";
+import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
 
@@ -188,10 +188,12 @@ export default function TrackerMap({
   // Fit into the band only, then slide the drawing down into it. The map still
   // fills the whole panel behind the badge and the strip.
   const bandHeight = Math.max(height - insets.top - insets.bottom, 140);
-  // The pad leaves room for the pin and the name hanging under it, so filling
-  // the rest right up to the edges is safe.
+  // The exact zoom, not a whole level: these tiles are ours, so the route can
+  // be made to fill the band edge to edge rather than landing on whatever
+  // fraction of it a rounded-down zoom happens to give. The pad is just enough
+  // for the pin and the name plate hanging under it.
   const view = useMemo(
-    () => fitView(frame, width, bandHeight, { padX: 30, padY: 38 }),
+    () => fitViewExact(frame, width, bandHeight, { padX: 24, padY: 28 }),
     [frame, width, bandHeight],
   );
   const offsetY = (insets.top - insets.bottom) / 2;
@@ -391,14 +393,14 @@ export default function TrackerMap({
               </span>
               <span
                 className={cn(
-                  "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
+                  "map-label absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
                   isStart
                     ? "text-start-label"
                     : isEnd
                       ? "text-end-label"
                       : isLive
-                        ? "text-amber-300"
-                        : "text-zinc-300/70",
+                        ? "text-live-label"
+                        : "text-map-label",
                 )}
               >
                 {stop.name}
@@ -505,9 +507,9 @@ export default function TrackerMap({
                         className={cn(
                           "mt-1.5 max-w-full truncate text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:text-[10px]",
                           isStart
-                            ? "text-start-label"
+                            ? "text-emerald-300"
                             : isEnd
-                              ? "text-end-label"
+                              ? "text-red-300"
                               : isLive
                                 ? "text-amber-300"
                                 : isDone

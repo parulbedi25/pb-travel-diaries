@@ -39,6 +39,13 @@
   --color-start-label: oklch(84.5% .143 164.978);
   --color-end-label: oklch(80.8% .114 19.571);
 
+  /* The other two colours a checkpoint name can be over the map: live, and
+     every other stop. Same treatment as the pair above — held at their dark
+     theme values so a name reads the same in both themes, which only works
+     because .map-label puts a plate behind them. */
+  --color-live-label: oklch(87.9% 0.169 91.605);
+  --color-map-label: oklch(92% 0.004 286.32);
+
   --animate-marquee: marquee 46s linear infinite;
   --animate-pulse-soft: pulse-soft 5.5s ease-in-out infinite;
   --animate-blink: blink 1.5s ease-in-out infinite;
@@ -743,6 +750,21 @@
 [data-theme="light"] .map-paper {
   background-color: #e8eaed;
 }
+/* ── Checkpoint names drawn over the map ────────────────────────────────────
+   A name over a map has an impossible job: the basemap is light in the light
+   theme and dark in the dark one, so any colour picked to read on one of them
+   disappears on the other — and a drop shadow strong enough to help on the dark
+   map is what made the text look smudged and blurry on the light one.
+
+   So the name carries its own background instead. The plate is the same in both
+   themes, which means the colours above can be too, and a name is legible over
+   water, park, road or built-up area alike. */
+.map-label {
+  border-radius: 5px;
+  padding: 1px 5px;
+  background-color: rgb(7 7 7 / 0.72);
+}
+
 /* ── The tracker's basemap ─────────────────────────────────────────────────
    Tiles, not an embed. Every attempt to get rid of Google's place names from
    inside the embed failed: there is no parameter for it, satellite still

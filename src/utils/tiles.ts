@@ -26,8 +26,26 @@ export interface PlacedTile {
   /** Where the tile's top-left corner sits inside the panel, in pixels. */
   left: number;
   top: number;
+  /** How big the tile is drawn, in pixels — 256 scaled by the zoom fraction. */
+  size: number;
   /** The column wrapped into range — what goes in the URL. */
   wrapped: number;
+}
+
+const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value));
+
+/**
+ * Tiles exist only at whole zoom levels, but the view does not have to.
+ *
+ * The trick behind a fractional zoom: fetch the tiles from the nearest whole
+ * level and draw them scaled by whatever is left over. A zoom of 8.4 fetches
+ * level 8 tiles and draws them 2^0.4 times larger — about 1.3x. Rounding to
+ * the nearest level rather than down keeps that factor between 0.71 and 1.41,
+ * so tiles are never stretched far enough to look soft.
+ */
+export function tileScale(zoom: number): { tileZoom: number; scale: number } {
+  const tileZoom = clamp(Math.round(zoom), 0, 19);
+  return { tileZoom, scale: 2 ** (zoom - tileZoom) };
 }
 
 /** The point in the whole world picture, in pixels, at a given zoom. */
@@ -59,20 +77,34 @@ export function panelOrigin(
  * whatever is behind the tiles shows through there.
  */
 export function tilesForView(view: TileView, width: number, height: number): PlacedTile[] {
-  const origin = panelOrigin(view, width, height);
-  const count = 2 ** view.zoom;
+  const { tileZoom, scale } = tileScale(view.zoom);
+  const centre = worldPixel(view.lat, view.lng, tileZoom);
+  // The tiles are drawn `scale` times the size they come, so the panel covers
+  // that much less of the world than its own width and height.
+  const originX = centre.x - width / (2 * scale);
+  const originY = centre.y - height / (2 * scale);
+  const spanX = width / scale;
+  const spanY = height / scale;
+  const count = 2 ** tileZoom;
   const tiles: PlacedTile[] = [];
 
-  const firstCol = Math.floor(origin.x / TILE);
-  const lastCol = Math.floor((origin.x + width) / TILE);
-  const firstRow = Math.floor(origin.y / TILE);
-  const lastRow = Math.floor((origin.y + height) / TILE);
+  const firstCol = Math.floor(originX / TILE);
+  const lastCol = Math.floor((originX + spanX) / TILE);
+  const firstRow = Math.floor(originY / TILE);
+  const lastRow = Math.floor((originY + spanY) / TILE);
 
   for (let tx = firstCol; tx <= lastCol; tx += 1) {
     for (let ty = firstRow; ty <= lastRow; ty += 1) {
       if (ty < 0 || ty >= count) continue;
       const wrapped = ((tx % count) + count) % count;
-      tiles.push({ tx, ty, left: tx * TILE - origin.x, top: ty * TILE - origin.y, wrapped });
+      tiles.push({
+        tx,
+        ty,
+        left: (tx * TILE - originX) * scale,
+        top: (ty * TILE - originY) * scale,
+        size: TILE * scale,
+        wrapped,
+      });
     }
   }
   return tiles;
@@ -88,12 +120,12 @@ const SUBDOMAINS = ["a", "b", "c", "d"];
 
 export function tileUrl(
   style: string,
-  view: TileView,
+  tileZoom: number,
   tile: PlacedTile,
   retina: boolean,
 ): string {
   const sub = SUBDOMAINS[(tile.wrapped + tile.ty) % SUBDOMAINS.length];
-  return `https://${sub}.basemaps.cartocdn.com/${style}/${view.zoom}/${tile.wrapped}/${
+  return `https://${sub}.basemaps.cartocdn.com/${style}/${tileZoom}/${tile.wrapped}/${
     tile.ty
   }${retina ? "@2x" : ""}.png`;
 }

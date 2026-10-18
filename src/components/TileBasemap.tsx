@@ -21,6 +21,7 @@ import { useMemo } from "react";
 import { useSite } from "../store/siteContent";
 import {
   TILE_STYLES,
+  tileScale,
   tilesForView,
   tileUrl,
   type TileView,
@@ -44,7 +45,11 @@ export default function TileBasemap({
     [view.lat, view.lng, view.zoom, width, height],
   );
 
-  const retina = typeof window !== "undefined" && (window.devicePixelRatio || 1) > 1.25;
+  // A fractional zoom draws the tiles larger than they come, so fetch the
+  // double-density ones whenever that is happening, not just on dense screens.
+  const { tileZoom, scale } = tileScale(view.zoom);
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const retina = dpr > 1.25 || scale > 1.05;
   const style = TILE_STYLES[theme] ?? TILE_STYLES.dark;
 
   return (
@@ -52,17 +57,17 @@ export default function TileBasemap({
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}
-          src={tileUrl(style, view, tile, retina)}
+          src={tileUrl(style, tileZoom, tile, retina)}
           alt=""
-          width={256}
-          height={256}
+          width={Math.round(tile.size)}
+          height={Math.round(tile.size)}
           draggable={false}
           style={{
             position: "absolute",
             left: `${tile.left}px`,
             top: `${tile.top}px`,
-            width: 256,
-            height: 256,
+            width: `${Math.round(tile.size * 100) / 100}px`,
+            height: `${Math.round(tile.size * 100) / 100}px`,
             maxWidth: "none",
           }}
         />
