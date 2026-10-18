@@ -6,7 +6,7 @@ import { cn } from "../utils/cn";
 import { routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
 import { fitView, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-import { splitRouteAtProgress, type LatLng } from "../utils/routing";
+import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
 
 /**
  * The live tracker's map.
@@ -23,8 +23,13 @@ import { splitRouteAtProgress, type LatLng } from "../utils/routing";
  *
  * The line is PB's, not Google's: solid yellow over what is ridden, dashed
  * yellow marching towards the destination over what is still to come. It
- * follows the stored road when the dashboard has fetched one, and straight
- * segments between the checkpoints until then.
+ * follows the real road — the one stored in the dashboard if that has been
+ * fetched, otherwise the one asked for here — and only falls back to straight
+ * segments between the checkpoints when no road can be had at all.
+ *
+ * Everything drawn sits inside the band between the live badge across the top
+ * of the panel and the route strip along the bottom, so no checkpoint is ever
+ * hidden behind either.
  */
 
 export interface TrackerMapProps {
@@ -37,6 +42,90 @@ export interface TrackerMapProps {
   status: LiveStatus;
   /** "Ping 2m ago" / "Window closed · 6 AM IST" — shown on the strip. */
   pingLabel: string;
+}
+
+/** Space the drawn route has to keep clear of. */
+function useBandInsets(): { top: number; bottom: number } {
+  // The badge across the top and the strip along the bottom; both grow a
+  // little at the small breakpoint.
+  const [insets, setInsets] = useState({ top: 92, bottom: 152 });
+  useEffect(() => {
+    const wide =
+      typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 640px)") : null;
+    const apply = () =>
+      setInsets(wide?.matches ? { top: 110, bottom: 174 } : { top: 92, bottom: 152 });
+    apply();
+    wide?.addEventListener?.("change", apply);
+    return () => wide?.removeEventListener?.("change", apply);
+  }, []);
+  return insets;
+}
+
+const ROAD_CACHE_PREFIX = "pb_road_v1:";
+const ROAD_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const roadKey = (stops: LiveStop[]): string =>
+  ROAD_CACHE_PREFIX + stops.map((s) => `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`).join(";");
+
+/**
+ * The road the ride follows, if we can get hold of it.
+ *
+ * Geometry stored from the dashboard wins — that is the one with no third
+ * party in the loop when a visitor loads the page. Failing that, ask the
+ * routing service here so the line still hugs the road, and remember the
+ * answer for a week so it is one request, not one per visit. When the service
+ * cannot be reached the caller draws straight segments, which is why the
+ * return value is allowed to be null.
+ */
+function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
+  const [road, setRoad] = useState<LatLng[] | null>(null);
+
+  useEffect(() => {
+    if (stored.length >= 2 || stops.length < 2) {
+      setRoad(null);
+      return;
+    }
+
+    const key = roadKey(stops);
+    try {
+      const cached = window.localStorage.getItem(key);
+      if (cached) {
+        const parsed = JSON.parse(cached) as { t?: number; geometry?: LatLng[] };
+        const fresh = parsed?.t && Date.now() - parsed.t < ROAD_CACHE_MAX_AGE_MS;
+        if (fresh && Array.isArray(parsed.geometry) && parsed.geometry.length >= 2) {
+          setRoad(parsed.geometry);
+          return;
+        }
+      }
+    } catch {
+      // A missing or unreadable cache just means we ask again.
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await fetchRoadGeometry(stops);
+        if (cancelled || !result.ok || result.geometry.length < 2) return;
+        setRoad(result.geometry);
+        try {
+          window.localStorage.setItem(
+            key,
+            JSON.stringify({ t: Date.now(), geometry: result.geometry }),
+          );
+        } catch {
+          // Storage may be full or blocked; the road still draws this visit.
+        }
+      } catch {
+        // No road available — straight segments are an honest fallback.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stored, stops]);
+
+  return road;
 }
 
 export default function TrackerMap({
@@ -73,10 +162,17 @@ export default function TrackerMap({
 
   const width = size.width || 600;
   const height = size.height || 400;
+  const insets = useBandInsets();
 
+  const road = useRoadGeometry(stops, routeGeometry);
   const geometry = useMemo(
-    () => (routeGeometry.length >= 2 ? routeGeometry : stops.map((s) => [s.lat, s.lng] as LatLng)),
-    [routeGeometry, stops],
+    () =>
+      routeGeometry.length >= 2
+        ? routeGeometry
+        : road && road.length >= 2
+          ? road
+          : stops.map((s) => [s.lat, s.lng] as LatLng),
+    [routeGeometry, road, stops],
   );
 
   // What has to stay in view: every checkpoint, plus wherever PB is. The road
@@ -88,15 +184,22 @@ export default function TrackerMap({
     [stops, live.lat, live.lng],
   );
 
-  const view = useMemo(() => fitView(frame, width, height, 0.8), [frame, width, height]);
+  // Fit into the band only, then slide the drawing down into it. The map still
+  // fills the whole panel behind the badge and the strip.
+  const bandHeight = Math.max(height - insets.top - insets.bottom, 140);
+  const view = useMemo(() => fitView(frame, width, bandHeight, 0.86), [frame, width, bandHeight]);
+  const offsetY = (insets.top - insets.bottom) / 2;
   const projector = useMemo(
-    () => makeMercatorProjector(view, width, height),
-    [view, width, height],
+    () => makeMercatorProjector(view, width, height, offsetY),
+    [view, width, height, offsetY],
   );
 
+  // The map is centred on whatever our overlay puts at the middle of the
+  // panel, which is not the middle of the band.
+  const mapCentre = projector.toLatLng(50, 50);
   const embedUrl = useMemo(
-    () => viewEmbedUrl(view.lat, view.lng, view.zoom),
-    [view.lat, view.lng, view.zoom],
+    () => viewEmbedUrl(mapCentre.lat, mapCentre.lng, view.zoom),
+    [mapCentre.lat, mapCentre.lng, view.zoom],
   );
   // Re-centring reloads the map, so wait for the view to settle.
   const [src, setSrc] = useState(embedUrl);

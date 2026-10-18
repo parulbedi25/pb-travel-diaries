@@ -99,11 +99,17 @@ export interface Projector {
 /**
  * Turn a known view into the same mapping the iframe is showing, so a pin
  * dropped under the cursor lands on the spot it was dropped on.
+ *
+ * `offsetY` slides the whole projected picture down by that many pixels
+ * without moving the map, which is how the tracker keeps its route inside the
+ * band between the badge across the top and the strip along the bottom. The
+ * map itself still fills the panel; only the drawing on top of it moves.
  */
 export function makeMercatorProjector(
   view: MapView,
   width: number,
   height: number,
+  offsetY = 0,
 ): Projector {
   const world = TILE * 2 ** view.zoom;
   const w = Math.max(width || 600, 1);
@@ -115,10 +121,14 @@ export function makeMercatorProjector(
       const p = project(lat, lng, world);
       return {
         x: ((w / 2 + (p.x - centre.x)) / w) * 100,
-        y: ((h / 2 + (p.y - centre.y)) / h) * 100,
+        y: ((h / 2 + offsetY + (p.y - centre.y)) / h) * 100,
       };
     },
     toLatLng: (x, y) =>
-      unproject(centre.x + (x / 100) * w - w / 2, centre.y + (y / 100) * h - h / 2, world),
+      unproject(
+        centre.x + (x / 100) * w - w / 2,
+        centre.y + (y / 100) * h - h / 2 - offsetY,
+        world,
+      ),
   };
 }
