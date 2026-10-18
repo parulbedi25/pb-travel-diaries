@@ -62,6 +62,10 @@ export default function TileBasemap({
  * Required by the tile licence. Both the vector and the raster map are drawing
  * on OpenStreetMap's data, so its credit is always owed; OpenFreeMap's is added
  * when it is the one serving.
+ *
+ * The raster map is the fallback, and its tiles have names painted into them.
+ * When it is on screen the credit says so, because a labelled map appearing
+ * where a nameless one belongs should never pass as a silent success.
  */
 export function MapAttribution({
   className,
@@ -96,6 +100,7 @@ export function MapAttribution({
           </a>
         </>
       )}
+      {source === "raster" && <> · labels shown</>}
     </p>
   );
 }

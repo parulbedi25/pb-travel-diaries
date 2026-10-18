@@ -17,11 +17,21 @@
  *
  * MapLibre draws to WebGL. On the rare browser where that is unavailable there
  * is no map at all rather than a broken one, so it falls back to the raster
- * tiles, which do carry labels but at least show something.
+ * tiles, which do carry labels but at least show something — and say so in the
+ * credit, because a labelled map should never turn up silently.
+ *
+ * When to hide the labels matters as much as how. They have to go the moment
+ * the style can be named, not when the map has finished drawing: every event
+ * that waits for tiles is too late, and the names are already on screen by
+ * then. See the note above isStyleLoaded below.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Map as MapLibreMap } from "maplibre-gl";
+import {
+  Map as MapLibreMap,
+  type MapSourceDataEvent,
+  type MapStyleDataEvent,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useSite } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
@@ -95,24 +105,60 @@ export default function VectorBasemap({
     }
 
     map.current = created;
-    const strip = () => hideLabels(created);
-    // "load" once the first style is in; "styledata" covers any later reload.
-    created.on("load", strip);
-    created.on("styledata", strip);
 
-    // If the style never arrives at all — blocked, offline, whatever — nothing
-    // gets drawn and there is no error thrown to catch, so the panel would
-    // just sit empty. Give it a deadline and fall back to raster tiles instead.
+    // Has the style *definition* arrived? That is all it takes to name a layer
+    // and hide it. Deliberately not map.isStyleLoaded(): that also waits for
+    // the tile data behind the style, so on an ordinary slow connection it is
+    // still false long after every label could have been switched off — and a
+    // deadline read from it throws away a map that was working and swaps in
+    // labelled tiles. Both mistakes look like "the names came back".
+    let styleIn = false;
+    const sweeps: number[] = [];
+    const strip = () => hideLabels(created);
+
+    // "style.load" is the event for precisely this, new in v6; "data" with a
+    // style dataType is the same signal under its older name. Both are listed
+    // so a rename can never quietly put the names back on the map.
+    const onStyleIn = () => {
+      styleIn = true;
+      strip();
+      // Sprites and glyphs can widen the layer list in the moments after the
+      // style lands, so sweep again rather than trusting the first pass.
+      for (const ms of [0, 150, 600, 2000]) sweeps.push(window.setTimeout(strip, ms));
+    };
+    const onData = (e: MapStyleDataEvent | MapSourceDataEvent) => {
+      if (e?.dataType === "style") onStyleIn();
+    };
+
+    created.on("style.load", onStyleIn);
+    created.on("data", onData);
+    created.on("load", strip);
+    // A later style change — the theme swapping, for one — brings fresh layers.
+    created.on("styledata", strip);
+    created.on("idle", strip);
+
+    // Only a real failure gives up: the style or its sprites could not be
+    // fetched at all, so nothing at all is going to be drawn here.
+    const onError = () => {
+      if (!styleIn) setNoWebGL(true);
+    };
+    created.on("error", onError);
+
+    // If the style simply never arrives, do not sit on an empty panel forever.
+    // Generous, because what follows it is a labelled map.
     const deadline = window.setTimeout(() => {
-      if (!created.isStyleLoaded()) setNoWebGL(true);
-    }, 12000);
-    const clearDeadline = () => window.clearTimeout(deadline);
-    created.once("load", clearDeadline);
+      if (!styleIn) setNoWebGL(true);
+    }, 20000);
 
     return () => {
-      clearDeadline();
+      window.clearTimeout(deadline);
+      sweeps.forEach((id) => window.clearTimeout(id));
+      created.off("style.load", onStyleIn);
+      created.off("data", onData);
       created.off("load", strip);
       created.off("styledata", strip);
+      created.off("idle", strip);
+      created.off("error", onError);
       created.remove();
       map.current = null;
     };
