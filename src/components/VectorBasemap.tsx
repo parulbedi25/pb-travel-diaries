@@ -13,28 +13,31 @@
  *
  * Every style below is keyless — no sign-up, no API key, no request limits —
  * and all of them draw OpenStreetMap's data, so its credit is owed whichever
- * one answers (see MapAttribution in TileBasemap).
+ * one answers (see MapAttribution in TileBasemap). Tried in order: a provider
+ * having a slow day costs a few seconds rather than the map. (Maptoolkit would
+ * be a third, and is not here on purpose: its styles are proprietary and may
+ * only be used with its own tile server.)
  *
- * They are tried in order, and a candidate has to prove itself twice over: the
- * style has to arrive, and then tiles have to actually reach the screen. Fail
- * either and the next one is tried. A provider having a slow day then costs a
- * few seconds rather than the whole map, and the nameless map survives one of
- * them being unreachable from wherever the visitor happens to be.
+ * Patience is the whole difficulty. Too little and a nameless map gets thrown
+ * away for being slow, which is how this ended up showing labelled tiles
+ * instead. Too much and the panel sits empty while it waits. So:
  *
- * Only when the whole chain has failed does it fall back to raster tiles,
- * which do carry labels — and the credit says so when they are on screen,
- * because a labelled map turning up where a nameless one belongs should never
- * pass for a silent success.
+ *  - A candidate is only abandoned when it has *stalled*. Tiles that are still
+ *    arriving, however slowly, mean it is working — and throwing that away
+ *    costs more than waiting for it.
+ *  - While the nameless map is on its way, the raster map is shown underneath
+ *    and dropped the moment tiles land. A slow connection sees a map
+ *    immediately and it goes nameless when the nameless one arrives, rather
+ *    than an empty panel for as long as it takes.
  *
  * Two timings in here are deliberate and easy to get wrong:
  *
  *  - Labels are hidden when the style can name its layers, not when the map has
  *    finished drawing. Anything that waits for tiles is too late; the names are
  *    already on screen.
- *  - The deadline that decides whether a candidate works is read from that same
- *    signal, never from map.isStyleLoaded(), which also waits for tile data and
- *    so reads "not loaded" on any ordinary slow connection — throwing away a
- *    working map to replace it with a labelled one.
+ *  - Nothing is ever judged by map.isStyleLoaded(), which waits for tile data
+ *    as well as the style and so reads "not loaded" on any ordinary slow
+ *    connection — that is what threw away a working map and put labels back.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -49,9 +52,8 @@ import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
 
 /**
- * Keyless vector styles, best first. Both entries hide their labels the same
- * way — every text layer in each of them is a symbol layer — so whichever one
- * answers first, the map comes out nameless.
+ * Keyless vector styles, best first. Every text layer in each of them is a
+ * symbol layer, so whichever one answers first, the map comes out nameless.
  */
 const STYLE_CHAINS: Record<"dark" | "light", string[]> = {
   // OpenFreeMap's Positron and Dark are the styles CARTO's were forked from,
@@ -73,9 +75,13 @@ function providerLabel(styleUrl: string): string | undefined {
   return undefined;
 }
 
-/** How long a candidate gets to arrive, and then to put tiles on the screen. */
-const STYLE_TIMEOUT_MS = 8000;
-const PAINT_TIMEOUT_MS = 6000;
+/** How long the style gets to arrive, and then how long tiles get to show up. */
+const STYLE_TIMEOUT_MS = 15000;
+const PAINT_TIMEOUT_MS = 15000;
+/** Once tiles are arriving, how long they may stop arriving for. */
+const STALL_TIMEOUT_MS = 15000;
+/** How long to hold out before putting a map you can see on the screen. */
+const PLACEHOLDER_AFTER_MS = 3000;
 
 /**
  * Turn every label off.
@@ -109,6 +115,12 @@ export default function VectorBasemap({
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
+  /**
+   * Showing the labelled raster map until the nameless one is ready. Cleared
+   * the moment tiles land, so it also stands in for "the nameless map is what
+   * you are looking at".
+   */
+  const [placeholder, setPlaceholder] = useState(false);
   const sized = width > 1 && height > 1;
 
   const chain = STYLE_CHAINS[theme] ?? STYLE_CHAINS.dark;
@@ -149,12 +161,10 @@ export default function VectorBasemap({
 
     map.current = created;
 
-    // Has the style *definition* arrived, and have tiles reached the screen?
-    // Neither is map.isStyleLoaded(), which waits for tile data as well and so
-    // stays false on an ordinary slow connection long after the labels could
-    // have been switched off.
     let styleIn = false;
-    let painted = false;
+    let paintedNow = false;
+    let tilesSeen = 0;
+    let countedAtCheck = 0;
     let errors = 0;
     const sweeps: number[] = [];
     const timers: number[] = [];
@@ -182,23 +192,40 @@ export default function VectorBasemap({
       // Sprites and glyphs can widen the layer list in the moments after the
       // style lands, so sweep again rather than trusting the first pass.
       for (const ms of [0, 150, 600, 2000]) sweeps.push(window.setTimeout(strip, ms));
-      // Now the tiles have to show up. Waiting forever is how a panel ends up
-      // blank; a labelled map is the lesser evil against no map at all.
-      timers.push(window.setTimeout(() => !painted && next(), PAINT_TIMEOUT_MS));
+      timers.push(window.setTimeout(paintCheck, PAINT_TIMEOUT_MS));
     };
+
+    // Tiles that are still arriving mean the host is answering. Only a stall
+    // is a reason to move on: abandoning a map that is nearly there is how a
+    // slow connection ends up with the labelled one instead.
+    const paintCheck = () => {
+      if (paintedNow) return;
+      if (tilesSeen > countedAtCheck) {
+        countedAtCheck = tilesSeen;
+        timers.push(window.setTimeout(paintCheck, STALL_TIMEOUT_MS));
+        return;
+      }
+      next();
+    };
+
     const onData = (e: MapStyleDataEvent | MapSourceDataEvent) => {
       if (e?.dataType === "style") onStyleIn();
+      // "content" is a tile's contents arriving — the proof that this host is
+      // really serving, however slowly.
+      if (e?.dataType === "source" && e.sourceDataType === "content") tilesSeen += 1;
     };
 
     // "idle" means everything asked for has arrived and been drawn — but it
     // also fires for a map with nothing to draw, hence areTilesLoaded.
     const onIdle = () => {
       strip();
-      if (created.areTilesLoaded()) painted = true;
+      if (!created.areTilesLoaded()) return;
+      paintedNow = true;
+      setPlaceholder(false);
     };
 
     const onError = () => {
-      if (painted) return;
+      if (paintedNow) return;
       errors += 1;
       // Before the style lands an error is the style itself; after it, a
       // handful of failing tiles means the host is not really answering.
@@ -214,6 +241,13 @@ export default function VectorBasemap({
     created.on("error", onError);
 
     timers.push(window.setTimeout(() => !styleIn && next(), STYLE_TIMEOUT_MS));
+    // Something to look at rather than an empty panel. It is replaced, not
+    // added to, the moment the nameless map puts its first tiles on screen.
+    timers.push(
+      window.setTimeout(() => {
+        if (!paintedNow) setPlaceholder(true);
+      }, PLACEHOLDER_AFTER_MS),
+    );
 
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
@@ -242,10 +276,11 @@ export default function VectorBasemap({
     map.current?.resize();
   }, [width, height]);
 
+  const showingRaster = gaveUp || placeholder;
   const credit = attributionClassName ? (
     <MapAttribution
       className={attributionClassName}
-      source={gaveUp ? "raster" : providerLabel(styleUrl)}
+      source={showingRaster ? "raster" : providerLabel(styleUrl)}
     />
   ) : null;
 
@@ -260,6 +295,10 @@ export default function VectorBasemap({
 
   return (
     <>
+      {/* Underneath, so the nameless map covers it as soon as it arrives. */}
+      {placeholder && (
+        <TileBasemap view={view} width={width} height={height} className={className} />
+      )}
       <div ref={host} className={className} aria-hidden="true" />
       {credit}
     </>
