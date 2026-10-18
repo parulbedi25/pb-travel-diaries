@@ -79,10 +79,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
           sub={data.sub}
         />
 
-        <div className="relative mt-14 flex flex-col gap-6">
+        <div className="mt-14 grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
           {/* ---------- stylised live map ---------- */}
           <Reveal className="h-full">
-            <div className="relative flex h-full min-h-[440px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 lg:min-h-[560px]">
+            <div className="relative flex h-full min-h-[440px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50">
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
               <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/15 blur-[100px]" aria-hidden />
               <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/15 blur-[100px]" aria-hidden />
@@ -139,7 +139,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 </a>
               </div>
 
-              <div className="absolute right-5 top-24 grid h-11 w-11 place-items-center rounded-full glass lg:left-5 lg:right-auto lg:top-32" aria-hidden>
+              <div className="absolute right-5 top-24 grid h-11 w-11 place-items-center rounded-full glass" aria-hidden>
                 <span className="flex flex-col items-center leading-none">
                   <Navigation className="h-3.5 w-3.5 fill-saffron-400 text-saffron-400" />
                   <span className="mt-0.5 text-[9px] font-bold text-zinc-400">N</span>
@@ -164,13 +164,9 @@ export default function LiveTracker({ data }: { data: LiveData }) {
             </div>
           </Reveal>
 
-          {/* ---------- live detail card ----------
-               Below the map in the normal flow; from lg up it floats over the
-               map's right side instead, which is what the taller minimum
-               height on the map is for. Kept as one instance and moved with
-               CSS rather than rendered twice for the two breakpoints. */}
-          <Stagger className="flex flex-col gap-5 lg:pointer-events-none lg:absolute lg:right-4 lg:top-4 lg:z-20 lg:w-[380px] lg:max-w-[38%] lg:max-h-[520px] lg:overflow-y-auto">
-            <Item className="lg:pointer-events-auto">
+          {/* ---------- live detail card ---------- */}
+          <Stagger className="flex flex-col gap-5">
+            <Item>
               <div className="rounded-[2rem] glass p-7 sm:p-8">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -271,10 +267,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 </div>
               </div>
             </Item>
-          </Stagger>
 
-          {/* ---------- the stops still ahead, full width beneath the map ---------- */}
-          <Stagger className="flex flex-col gap-5">
             <Item>
               <div className="rounded-[2rem] glass p-6 sm:p-7">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
