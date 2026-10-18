@@ -1,15 +1,8 @@
-import { useMemo } from "react";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  Clock,
-  Compass,
-  MapPin,
-  Mountain,
-  Satellite,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Clock, Compass, MapPin, Mountain } from "lucide-react";
 import { useLiveLocation, type LiveStatus } from "../hooks/useLiveLocation";
-import { placeEmbedUrl, placeLinkUrl } from "../utils/mapEmbed";
+import VectorBasemap from "./VectorBasemap";
+import { makeMercatorProjector } from "../utils/mercator";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
 
@@ -79,6 +72,107 @@ function StatusChip({ status }: { status: LiveStatus }) {
   );
 }
 
+/**
+ * Where the bike is, on our own map.
+ *
+ * The same nameless OpenStreetMap the tracker uses, centred on the last ping,
+ * with the radar drawn by us on top. That is the whole reason for not
+ * embedding somebody else's map here: an iframe is sealed, so nothing of ours
+ * could be drawn on it, and the only view we could have had was the one they
+ * chose to give.
+ */
+function PositionMap({
+  lat,
+  lng,
+  live,
+  label,
+}: {
+  lat: number;
+  lng: number;
+  live: boolean;
+  label: string;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  // The pin has to sit on the exact spot the map puts that coordinate, so the
+  // panel is measured rather than assumed.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const measure = (w?: number, h?: number) => {
+      const width = w ?? host.clientWidth;
+      const height = h ?? host.clientHeight;
+      if (width > 0 && height > 0) setSize({ width, height });
+    };
+    measure();
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries?.[0]?.contentRect;
+      if (rect?.width && rect?.height) measure(rect.width, rect.height);
+      else measure();
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  const width = size.width || 800;
+  const height = size.height || 520;
+  // Close enough to read the road he is on, wide enough to see where that is.
+  const view = { lat, lng, zoom: 12 };
+  const projector = useMemo(
+    () => makeMercatorProjector(view, width, height, 0),
+    [view.lat, view.lng, view.zoom, width, height], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const point = projector.toXY({ lat, lng });
+
+  return (
+    <div ref={hostRef} className="map-paper absolute inset-0 z-0 overflow-hidden">
+      <VectorBasemap
+        view={view}
+        width={width}
+        height={height}
+        className="absolute inset-0"
+        attributionClassName="pointer-events-none absolute bottom-3 right-3 text-[9px] text-zinc-500"
+      />
+      <div
+        className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+        style={{ left: `${point.x}%`, top: `${point.y}%` }}
+      >
+        {live && (
+          <>
+            <span
+              className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
+              aria-hidden="true"
+            />
+            <span
+              className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.07]"
+              aria-hidden="true"
+            />
+          </>
+        )}
+        <span
+          role="status"
+          aria-label={`PB's current position: ${label}`}
+          className={cn(
+            "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
+            live ? "bg-saffron-400 shadow-saffron-400/50" : "bg-zinc-500 shadow-zinc-500/50",
+          )}
+        >
+          {live && (
+            <span
+              className="absolute inset-0 rounded-full bg-saffron-400/40 animate-radar"
+              aria-hidden="true"
+            />
+          )}
+          <span
+            className={cn("h-1.5 w-1.5 rounded-full bg-white", live && "animate-blink")}
+          />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function LiveMapPage() {
   const {
     location,
@@ -89,13 +183,6 @@ export default function LiveMapPage() {
     nextWindowOpenMs,
     windowCloseMs,
   } = useLiveLocation();
-
-  const embedUrl = useMemo(
-    () => placeEmbedUrl(location.lat, location.lng, 13),
-    [location.lat, location.lng],
-  );
-
-  const extUrl = placeLinkUrl(location.lat, location.lng);
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-950">
@@ -117,30 +204,17 @@ export default function LiveMapPage() {
           <span className="sm:ml-1">
             <StatusChip status={status} />
           </span>
-          <a
-            href={extUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold text-ink-950 transition-all duration-300 hover:shadow-[0_0_24px_rgba(255,255,255,0.25)] active:scale-95"
-          >
-            Google Maps direction
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </a>
         </div>
       </header>
 
-      {/* ---------- Google Maps ---------- */}
+      {/* ---------- The map ---------- */}
       <div className="relative min-h-[520px] flex-1">
-        <div className="map-frame map-paper absolute inset-0 z-0">
-          <iframe
-            src={embedUrl}
-            title={`Google Maps showing ${location.name}, ${location.state}`}
-            className="h-full w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            allowFullScreen
-          />
-        </div>
+        <PositionMap
+          lat={location.lat}
+          lng={location.lng}
+          live={status === "live"}
+          label={`${location.name}, ${location.state}`}
+        />
 
         {/* ---------- Info Card ---------- */}
         <div className="absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">
@@ -185,8 +259,8 @@ export default function LiveMapPage() {
                 Updated {formatAge(ageSec)} · IST {istTime}
               </li>
               <li className="flex items-center gap-2.5">
-                <Satellite className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-                No paid keys needed · Google Maps
+                <Compass className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                OpenStreetMap · no names, no key, no tracking
               </li>
             </ul>
 

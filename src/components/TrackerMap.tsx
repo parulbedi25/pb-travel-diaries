@@ -1,27 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Check, Satellite } from "lucide-react";
+import { Check, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
-import { routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
-import { fitView, makeMercatorProjector } from "../utils/mercator";
+import VectorBasemap from "./VectorBasemap";
+import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
 
 /**
  * The live tracker's map.
  *
- * The map underneath is a plain Google view — no route, no markers, no white
- * panel — asked for at a centre and zoom we choose ourselves. That is what
- * makes it possible to draw on top of it: we know exactly how the map is
- * projected (see utils/mercator.ts), so the checkpoints and the line sit on
- * the streets they belong to.
+ * The map underneath is OpenStreetMap, drawn from tiles at a centre and zoom
+ * we choose ourselves. That is what makes it possible to draw on top of it: we
+ * know exactly how the map is projected (see utils/mercator.ts), so the
+ * checkpoints and the line sit on the streets they belong to.
  *
- * Google's own directions embed draws a blue route we cannot restyle, cannot
- * align anything to, and cannot remove the side panel from — hence this
- * approach instead.
- *
- * The line is PB's, not Google's: solid yellow over what is ridden, dashed
+ * The line is ours, not the map's: solid yellow over what is ridden, dashed
  * yellow marching towards the destination over what is still to come. It
  * follows the real road — the one stored in the dashboard if that has been
  * fetched, otherwise the one asked for here — and only falls back to straight
@@ -187,10 +182,12 @@ export default function TrackerMap({
   // Fit into the band only, then slide the drawing down into it. The map still
   // fills the whole panel behind the badge and the strip.
   const bandHeight = Math.max(height - insets.top - insets.bottom, 140);
-  // The pad leaves room for the pin and the name hanging under it, so filling
-  // the rest right up to the edges is safe.
+  // The exact zoom, not a whole level: these tiles are ours, so the route can
+  // be made to fill the band edge to edge rather than landing on whatever
+  // fraction of it a rounded-down zoom happens to give. The pad is just enough
+  // for the pin and the name plate hanging under it.
   const view = useMemo(
-    () => fitView(frame, width, bandHeight, { padX: 30, padY: 38 }),
+    () => fitViewExact(frame, width, bandHeight, { padX: 24, padY: 28 }),
     [frame, width, bandHeight],
   );
   const offsetY = (insets.top - insets.bottom) / 2;
@@ -202,18 +199,21 @@ export default function TrackerMap({
   // The map is centred on whatever our overlay puts at the middle of the
   // panel, which is not the middle of the band.
   const mapCentre = projector.toLatLng(50, 50);
-  const embedUrl = useMemo(
-    () => viewEmbedUrl(mapCentre.lat, mapCentre.lng, view.zoom),
-    [mapCentre.lat, mapCentre.lng, view.zoom],
-  );
-  // Re-centring reloads the map, so wait for the view to settle.
-  const [src, setSrc] = useState(embedUrl);
+  // Re-centring fetches a fresh set of tiles, so wait for the view to settle
+  // rather than pulling new ones on every step of a resize.
+  const [mapView, setMapView] = useState(() => ({
+    lat: mapCentre.lat,
+    lng: mapCentre.lng,
+    zoom: view.zoom,
+  }));
   useEffect(() => {
-    const timer = window.setTimeout(() => setSrc(embedUrl), 500);
+    const timer = window.setTimeout(
+      () => setMapView({ lat: mapCentre.lat, lng: mapCentre.lng, zoom: view.zoom }),
+      500,
+    );
     return () => window.clearTimeout(timer);
-  }, [embedUrl]);
+  }, [mapCentre.lat, mapCentre.lng, view.zoom]);
 
-  const linkUrl = useMemo(() => routeLinkUrl(stops), [stops]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
   const toPx = useCallback(
@@ -260,17 +260,16 @@ export default function TrackerMap({
 
   return (
     <div ref={hostRef} className="absolute inset-0">
-      {/* The map: plain, aligned, and pointer-dead so the overlay stays true. */}
-      <div className="tracker-google map-frame map-paper absolute inset-0">
+      {/* The map: OpenStreetMap with no place names on it, pointer-dead so
+          the overlay stays true. */}
+      <div className="tracker-map map-paper absolute inset-0 overflow-hidden">
         {count > 0 ? (
-          <iframe
-            src={src}
-            title={`Google Maps: ${stops[0]?.name ?? "the start"} to ${
-              stops[count - 1]?.name ?? "the destination"
-            }`}
-            className="h-full w-full border-0"
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
+          <VectorBasemap
+            view={mapView}
+            width={width}
+            height={height}
+            className="absolute inset-0"
+            attributionClassName="pointer-events-auto absolute right-3 top-3 text-[9px] text-zinc-500"
           />
         ) : (
           <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
@@ -280,7 +279,8 @@ export default function TrackerMap({
       </div>
 
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
-      <div className="tracker-google-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className="tracker-map-veil pointer-events-none absolute inset-0" aria-hidden="true" />
+
 
       {/* PB's route: covered solid, still to come dashed and marching on. */}
       <svg
@@ -389,14 +389,14 @@ export default function TrackerMap({
               </span>
               <span
                 className={cn(
-                  "absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
+                  "map-label absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
                   isStart
-                    ? "text-emerald-300"
+                    ? "text-start-label"
                     : isEnd
-                      ? "text-red-300"
+                      ? "text-end-label"
                       : isLive
-                        ? "text-amber-300"
-                        : "text-zinc-300/70",
+                        ? "text-live-label"
+                        : "text-map-label",
                 )}
               >
                 {stop.name}
@@ -415,15 +415,6 @@ export default function TrackerMap({
                 {formatKm(totals[totals.length - 1] ?? 0)}
               </p>
               <div className="flex items-center gap-1">
-                <a
-                  href={linkUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400 transition-all duration-300 hover:border-white/25 hover:text-white"
-                >
-                  Google Maps
-                  <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-                </a>
                 <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
                   <Satellite
                     className={cn(

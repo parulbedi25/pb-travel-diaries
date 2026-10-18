@@ -51,13 +51,14 @@ function unproject(x: number, y: number, world: number): { lat: number; lng: num
  * the raw points to the edge would clip them. `fit` is the fraction of what
  * remains that the stops may fill.
  *
- * Zoom has to be a whole number (that is all Google's `z` accepts), which
- * means the fitted stops land somewhere between half and all of the available
- * box. Keeping `fit` at 1 and reserving the margin in pixels instead is what
- * stops it settling at the bottom of that range and leaving the box half
- * empty.
+ * Two versions of this exist because of where the zoom can come from.
+ * fitViewExact returns the honest fractional answer. fitView rounds it down to
+ * a whole level, which is what anything driven by Google's embed needs: its
+ * `z` parameter only accepts integers, so a fitted route lands somewhere
+ * between half and all of the box it was given. The tracker draws its own
+ * tiles now, so it asks for the exact one and fills the box properly.
  */
-export function fitView(
+function fitBox(
   stops: readonly { lat: number; lng: number }[],
   width: number,
   height: number,
@@ -91,9 +92,31 @@ export function fitView(
   const spanY = Math.max(Math.abs(bottomRight.y - topLeft.y), 1e-6);
   const innerW = Math.max((w - padX * 2) * fit, 1);
   const innerH = Math.max((h - padY * 2) * fit, 1);
-  const zoom = clamp(Math.floor(Math.log2(Math.min(innerW / spanX, innerH / spanY))), 3, 17);
+  const zoom = Math.log2(Math.min(innerW / spanX, innerH / spanY));
   const centre = unproject((topLeft.x + bottomRight.x) / 2, (topLeft.y + bottomRight.y) / 2, TILE);
   return { lat: centre.lat, lng: centre.lng, zoom };
+}
+
+/** The exact zoom that fits — fractional, so the box is filled edge to edge. */
+export function fitViewExact(
+  stops: readonly { lat: number; lng: number }[],
+  width: number,
+  height: number,
+  options: { fit?: number; padX?: number; padY?: number } = {},
+): MapView {
+  const box = fitBox(stops, width, height, options);
+  return { ...box, zoom: clamp(box.zoom, 3, 17) };
+}
+
+/** The same, rounded down to a whole zoom level. */
+export function fitView(
+  stops: readonly { lat: number; lng: number }[],
+  width: number,
+  height: number,
+  options: { fit?: number; padX?: number; padY?: number } = {},
+): MapView {
+  const box = fitBox(stops, width, height, options);
+  return { ...box, zoom: clamp(Math.floor(box.zoom), 3, 17) };
 }
 
 export interface Projector {

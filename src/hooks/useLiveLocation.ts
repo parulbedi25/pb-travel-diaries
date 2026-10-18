@@ -151,3 +151,10 @@ export function useLiveLocation() {
     windowCloseMs,
   };
 }
+
+/** "2m ago" — how old the last ping is, in the shortest honest form. */
+export function ageLabel(sec: number): string {
+  if (sec < 90) return `${sec}s ago`;
+  if (sec < 5400) return `${Math.floor(sec / 60)}m ago`;
+  return `${Math.floor(sec / 3600)}h ago`;
+}

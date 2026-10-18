@@ -12,16 +12,10 @@ import {
 import { resolveFooter, useSite, type LiveData } from "../store/siteContent";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
-import { useLiveLocation } from "../hooks/useLiveLocation";
+import { ageLabel, useLiveLocation } from "../hooks/useLiveLocation";
 import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-
-function ageLabel(sec: number): string {
-  if (sec < 90) return `${sec}s ago`;
-  if (sec < 5400) return `${Math.floor(sec / 60)}m ago`;
-  return `${Math.floor(sec / 3600)}h ago`;
-}
 
 export default function LiveTracker({ data }: { data: LiveData }) {
   const { location, status, ageSec, istTime } = useLiveLocation();
@@ -99,7 +93,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5 sm:p-6">
                 <a
                   href="#/live-map"
-                  aria-label={`Live: PB is in ${location.name}, ${location.state}. Open the live Google Map.`}
+                  aria-label={`Live: PB is in ${location.name}, ${location.state}. Open the live map.`}
                   className="live-plate group flex items-center gap-3 rounded-2xl border-2 px-4 py-3 backdrop-blur-md transition-all duration-300 hover:scale-[1.03] active:scale-100"
                 >
                   <span className="relative flex h-3 w-3 shrink-0">
@@ -254,7 +248,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-ink-950 transition-all duration-300 hover:shadow-[0_0_28px_rgba(255,255,255,0.25)] active:scale-95"
                   >
                     <MapPin className="h-4 w-4" />
-                    Open live Google Map
+                    Open live map
                   </a>
                   <a
                     href={storyHref || "#cta"}
