@@ -13,8 +13,9 @@ import {
 } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
-import { routeEmbedUrl, routeLinkUrl, viewEmbedUrl } from "../utils/mapEmbed";
-import { fitView, makeMercatorProjector } from "../utils/mercator";
+import { routeEmbedUrl, routeLinkUrl } from "../utils/mapEmbed";
+import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
+import TileBasemap, { TileAttribution } from "../components/TileBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 /**
@@ -122,7 +123,7 @@ export default function RouteStopsEditor({
   }, []);
 
   const fit = useMemo(
-    () => fitView(stops, size.width, size.height, { padX: 28, padY: 28 }),
+    () => fitViewExact(stops, size.width, size.height, { padX: 28, padY: 28 }),
     [stops, size.width, size.height],
   );
   const zoom = Math.max(3, Math.min(18, fit.zoom + zoomStep));
@@ -134,17 +135,14 @@ export default function RouteStopsEditor({
   );
   const placed = useMemo(() => stops.map((stop) => projector.toXY(stop)), [stops, projector]);
 
-  // The map underneath is a plain centred view: no route, no markers, no white
-  // panel — and, crucially, a projection we can work out ourselves.
-  const backdropUrl = useMemo(
-    () => viewEmbedUrl(view.lat, view.lng, zoom),
-    [view.lat, view.lng, zoom],
-  );
-  const [backdropSrc, setBackdropSrc] = useState(backdropUrl);
+  // The map underneath is the same tiles the tracker draws: no place names,
+  // and a projection we work out ourselves so the pins land where you click.
+  // Re-fitting pulls a fresh set of tiles, so let the view settle first.
+  const [backdropView, setBackdropView] = useState(view);
   useEffect(() => {
-    const timer = window.setTimeout(() => setBackdropSrc(backdropUrl), 500);
+    const timer = window.setTimeout(() => setBackdropView(view), 500);
     return () => window.clearTimeout(timer);
-  }, [backdropUrl]);
+  }, [view.lat, view.lng, zoom]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
 
   const liveEmbedUrl = useMemo(() => routeEmbedUrl(stops), [stops]);
@@ -303,8 +301,9 @@ export default function RouteStopsEditor({
           Place the stops
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-          Click the map to drop a stop, or drag a pin to move it. The map underneath is a plain
-          Google view pinned to the same projection as the pins, so what you click is what you get.
+          Click the map to drop a stop, or drag a pin to move it. The map underneath is the same
+          nameless tiles the tracker uses, pinned to the same projection as the pins, so what you
+          click is what you get.
         </p>
 
         <div
@@ -313,15 +312,13 @@ export default function RouteStopsEditor({
           className="route-grid relative mt-3 aspect-[3/2] w-full cursor-crosshair overflow-hidden rounded-xl border border-white/10"
         >
           {/* The map underneath. Pointer-dead, so clicks land on our overlay. */}
-          <div className="map-frame pointer-events-none absolute inset-0">
-            <iframe
-              src={backdropSrc}
-              title="Google Maps — place the stops on it"
-              className="h-full w-full border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          </div>
+          <TileBasemap
+            view={backdropView}
+            width={size.width}
+            height={size.height}
+            className="pointer-events-none absolute inset-0 overflow-hidden"
+          />
+          <TileAttribution className="pointer-events-none absolute bottom-1 right-1.5 text-[8px] text-zinc-500" />
 
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
