@@ -33,7 +33,7 @@ export default function Gears({ data }: { data: GearsData }) {
     <section
       id="gears"
       aria-labelledby="gears-title"
-      className="relative scroll-mt-28 overflow-hidden py-24 sm:py-32"
+      className="relative overflow-hidden py-24 sm:py-32"
     >
       <div
         className="pointer-events-none absolute left-1/2 top-0 h-80 w-[760px] -translate-x-1/2 rounded-full bg-saffron-400/[0.07] blur-[130px]"

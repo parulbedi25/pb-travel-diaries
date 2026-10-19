@@ -262,7 +262,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
   const c = useCountdown(data.targetDate);
 
   return (
-    <section id="countdown" aria-labelledby="countdown-title" className="relative scroll-mt-28 py-20 sm:py-28">
+    <section id="countdown" aria-labelledby="countdown-title" className="relative py-20 sm:py-28">
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/12 blur-[110px]"
         aria-hidden

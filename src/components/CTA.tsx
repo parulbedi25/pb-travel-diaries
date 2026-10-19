@@ -13,7 +13,7 @@ export default function CTA({ data }: { data: CtaData }) {
   };
 
   return (
-    <section id="cta" aria-labelledby="cta-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="cta" aria-labelledby="cta-title" className="relative py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <Reveal>
           <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 px-6 py-16 text-center sm:px-12 sm:py-24">
@@ -24,7 +24,7 @@ export default function CTA({ data }: { data: CtaData }) {
             />
             <div className="absolute inset-0 bg-grid opacity-30 [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)]" aria-hidden />
 
-            <div className="relative">
+            <div className="relative" data-section-anchor>
               <span className="inline-flex items-center gap-2 rounded-full glass px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-saffron-300">
                 <Compass className="h-3.5 w-3.5" />
                 {data.badge}

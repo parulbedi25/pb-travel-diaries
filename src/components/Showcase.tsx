@@ -29,7 +29,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
   }, [paused, destinations.length]);
 
   return (
-    <section id="journey" aria-labelledby="journey-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="journey" aria-labelledby="journey-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/10 blur-[120px]"
         aria-hidden

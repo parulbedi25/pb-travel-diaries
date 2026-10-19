@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   motion,
   AnimatePresence,
@@ -11,6 +11,7 @@ import { isAdminSession, resolveHeaderButtons, useSite, type HeaderButton } from
 import BrandLogo from "./BrandLogo";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
+import { ANCHOR_GAP_CSS } from "../utils/anchorScroll";
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -67,10 +68,37 @@ export default function Navbar() {
     .slice(0, 2);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const header = useRef<HTMLElement | null>(null);
   const { scrollY, scrollYProgress } = useScroll();
   const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 28 });
 
   useMotionValueEvent(scrollY, "change", (v) => setScrolled(v > 24));
+
+  // The header is fixed and shrinks as you scroll, so the gap every in-page
+  // jump leaves for it has to be measured, not assumed.
+  useEffect(() => {
+    const el = header.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const publish = (height: number) => {
+      if (height <= 0) return;
+      root.style.setProperty("--header-h", `${height}px`);
+      // Room for the header in the browser's own anchor landing. Only pages
+      // that mount this header get it: the dashboard scrolls its own panels
+      // into view and has no header to clear.
+      root.style.scrollPaddingTop = `calc(${height}px + ${ANCHOR_GAP_CSS})`;
+    };
+    publish(el.getBoundingClientRect().height);
+    // border-box, and measured off the element: the header's height changes
+    // through its padding, which a content-box observation does not see.
+    const observer = new ResizeObserver(() => publish(el.getBoundingClientRect().height));
+    observer.observe(el, { box: "border-box" });
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--header-h");
+      root.style.removeProperty("scroll-padding-top");
+    };
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
@@ -98,6 +126,8 @@ export default function Navbar() {
         initial={{ y: -70, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+        ref={header}
+        data-site-header
         className="fixed inset-x-0 top-0 z-[60]"
       >
         <div
@@ -205,7 +235,12 @@ export default function Navbar() {
                 <motion.a
                   key={link.id}
                   href={link.href}
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    // Unlock now rather than waiting for the effect: the jump
+                    // that follows this click cannot move a locked body.
+                    document.body.style.overflow = "";
+                  }}
                   initial={{ opacity: 0, x: -24 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -24 }}

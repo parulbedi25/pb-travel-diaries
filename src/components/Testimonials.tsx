@@ -5,7 +5,7 @@ import { isOn } from "../utils/enabled";
 
 export default function Testimonials({ data }: { data: StoriesData }) {
   return (
-    <section id="stories" aria-labelledby="stories-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="stories" aria-labelledby="stories-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute left-1/2 top-10 h-72 w-[560px] -translate-x-1/2 rounded-full bg-saffron-500/10 blur-[120px]"
         aria-hidden

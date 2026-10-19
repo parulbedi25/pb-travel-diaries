@@ -12,7 +12,7 @@ export default function Pricing({ data }: { data: PricingData }) {
   const [yearly, setYearly] = useState(true);
 
   return (
-    <section id="pricing" aria-labelledby="pricing-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="pricing" aria-labelledby="pricing-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden

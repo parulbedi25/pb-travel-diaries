@@ -23,7 +23,7 @@ const ICONS: Record<string, LucideIcon> = {
 
 export default function Features({ data }: { data: FeaturesData }) {
   return (
-    <section id="features" aria-labelledby="features-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="features" aria-labelledby="features-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute left-1/2 top-0 h-72 w-[640px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[120px]"
         aria-hidden

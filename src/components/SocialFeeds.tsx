@@ -34,7 +34,7 @@ function instagramEmbed(url: string): string | null {
 export function YouTubeSection({ data }: { data: YouTubeData }) {
   const items = data.items.filter(isOn);
   return (
-    <section id="youtube" aria-labelledby="youtube-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="youtube" aria-labelledby="youtube-title" className="relative py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeader
           eyebrow={data.eyebrow}
@@ -94,7 +94,7 @@ export function YouTubeSection({ data }: { data: YouTubeData }) {
 export function InstagramSection({ data }: { data: InstagramData }) {
   const items = data.items.filter(isOn);
   return (
-    <section id="instagram" aria-labelledby="instagram-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="instagram" aria-labelledby="instagram-title" className="relative py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
         <SectionHeader
           eyebrow={data.eyebrow}
