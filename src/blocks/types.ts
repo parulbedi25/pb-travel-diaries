@@ -245,15 +245,6 @@ export function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-export function num(value: unknown, fallback: number): number {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-export function bool(value: unknown, fallback = false): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
 /** Images are stored as { src, alt } so every gallery slot has its own alt text. */
 export interface BlockImage {
   src: string;

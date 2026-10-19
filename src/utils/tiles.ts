@@ -61,16 +61,6 @@ export function worldPixel(lat: number, lng: number, zoom: number): { x: number;
   };
 }
 
-/** The inverse of worldPixel: the panel is `width` × `height` around `view`. */
-export function panelOrigin(
-  view: TileView,
-  width: number,
-  height: number,
-): { x: number; y: number } {
-  const centre = worldPixel(view.lat, view.lng, view.zoom);
-  return { x: centre.x - width / 2, y: centre.y - height / 2 };
-}
-
 /**
  * The tiles covering a width × height panel centred on `view`.
  *
