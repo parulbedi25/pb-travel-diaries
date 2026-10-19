@@ -25,7 +25,7 @@ export default function Features({ data }: { data: FeaturesData }) {
   return (
     <section id="features" aria-labelledby="features-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute left-1/2 top-0 h-72 w-[640px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[120px]"
+        className="pointer-events-none absolute left-1/2 top-0 h-72 w-[640px] -translate-x-1/2 rounded-full bg-saffron-400/6 blur-[120px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">

@@ -19,7 +19,7 @@ export default function CTA({ data }: { data: CtaData }) {
           <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 px-6 py-16 text-center sm:px-12 sm:py-24">
             <div className="absolute inset-0 bg-white/[0.04]" aria-hidden />
             <div
-              className="absolute -top-40 left-1/2 h-80 w-[560px] -translate-x-1/2 rounded-full bg-saffron-400/25 blur-[110px] animate-pulse-soft"
+              className="absolute -top-40 left-1/2 h-80 w-[560px] -translate-x-1/2 rounded-full bg-saffron-400/12 blur-[110px] animate-pulse-soft"
               aria-hidden
             />
             <div className="absolute inset-0 bg-grid opacity-30 [mask-image:radial-gradient(ellipse_at_center,black,transparent_80%)]" aria-hidden />

@@ -67,7 +67,7 @@ export default function ShopPage() {
     <div className="min-h-screen overflow-hidden bg-ink-950 text-white">
       <Navbar />
       <main className="relative min-h-[70vh] pb-24 pt-32 sm:pt-40">
-        <div className="pointer-events-none absolute left-1/2 top-16 h-80 w-[min(90vw,52rem)] -translate-x-1/2 rounded-full bg-saffron-400/[0.08] blur-[130px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute left-1/2 top-16 h-80 w-[min(90vw,52rem)] -translate-x-1/2 rounded-full bg-saffron-400/[0.05] blur-[130px]" aria-hidden="true" />
         <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
           <Reveal>
             <div className="mx-auto max-w-3xl text-center">

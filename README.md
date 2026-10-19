@@ -188,6 +188,21 @@ in `server/db/migrations.js`, applied by the next boot or `npm run db:migrate`;
 replays the same list, so old and new databases end up identical. Full
 instructions in [DEPLOYMENT.md §9](DEPLOYMENT.md#9-changing-the-database-later).
 
+**Blanked sections repair themselves.** The published JSON stores only what a
+section needs; anything it leaves out falls back to the content built into the
+app. A slot that is present but *empty* is different — it wins, and the section
+shows nothing. If a saved site ever comes back with My Picks, the live
+tracker's stops, a section's copy or its photos empty, the app fills those slots
+from the built-in content once, marks it with `restore-default-data-v1` in the
+content's migration list, and leaves later edits alone. Dates, schedules and
+uploaded files are never filled in.
+
+**`locked` is never stored.** It is a note the server adds to one response for
+one visitor, and it is removed again on the way in — from a published snapshot
+and from any response to a signed-in user. A members-only section still closes
+for a visitor who is not signed in; a section that is not members-only can
+never show the members-only card.
+
 Passwords are never stored or logged in clear; the browser holds only an
 httpOnly session cookie it cannot read.
 

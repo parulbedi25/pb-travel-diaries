@@ -230,7 +230,7 @@ export default function CountdownSection({ data }: { data: CountdownData }) {
   return (
     <section id="countdown" aria-labelledby="countdown-title" className="relative py-20 sm:py-28">
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/12 blur-[110px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/6 blur-[110px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-4xl px-5 sm:px-8">
@@ -286,7 +286,7 @@ export function CountdownPage({ data }: { data: CountdownData }) {
       <ThemeToggle className="fixed right-4 top-4 z-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
-        className="pointer-events-none absolute -top-24 left-1/2 h-96 w-[720px] -translate-x-1/2 rounded-full bg-saffron-400/20 blur-[130px]"
+        className="pointer-events-none absolute -top-24 left-1/2 h-96 w-[720px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden
       />
       <div className="relative w-full max-w-4xl text-center">

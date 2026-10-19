@@ -454,6 +454,60 @@ test("members-only sections are stripped for visitors, not for readers", async (
   cookies.session = owner;
 });
 
+test("a locked flag sent back by a browser is never stored or served", async () => {
+  const owner = cookies.session;
+
+  // This is what a dashboard save looks like after the page was opened as an
+  // anonymous visitor: one section still carries the lock the server put on
+  // the response. Storing it would show the members-only card to everybody,
+  // including the owner, until someone edited the JSON by hand.
+  const stale = {
+    v: 1,
+    sections: [
+      { id: "sec-hero", type: "hero", enabled: true, locked: true, data: { headline: "For everyone" } },
+      {
+        id: "sec-journey",
+        type: "journey",
+        enabled: true,
+        label: "Journey Showcase",
+        membersOnly: true,
+        data: { headline: "Only for the tribe" },
+      },
+    ],
+    nav: [],
+  };
+
+  const published = await call("PUT", "/api/content", {
+    content: stale,
+    description: "Stale lock test",
+    revisionId: "rev-stale-lock",
+  });
+  assert.equal(published.status, 200);
+
+  // The owner's own view is not bricked by someone else's lock flag.
+  delete cookies.session;
+  cookies.session = owner;
+  const asOwner = (await call("GET", "/api/content")).json.content;
+  assert.equal(asOwner.sections[0].locked, undefined, "the public section is not locked for the owner");
+  assert.equal(asOwner.sections[0].data.headline, "For everyone");
+
+  // And nothing was written to disk in the first place.
+  const stored = (await call("GET", "/api/revisions")).json.revisions.find(
+    (revision) => revision.id === "rev-stale-lock",
+  );
+  assert.equal(stored.content.sections[0].locked, undefined, "the lock is dropped before storing");
+
+  // A real members-only section still closes for a visitor.
+  delete cookies.session;
+  const anonymous = (await call("GET", "/api/content")).json.content;
+  assert.equal(anonymous.sections[0].locked, undefined);
+  assert.equal(anonymous.sections[1].locked, true);
+  assert.deepEqual(anonymous.sections[1].data, {});
+
+  // Leave the gated section in place for the tests that follow.
+  cookies.session = owner;
+});
+
 test("a disabled account is told so, and loses the members-only sections", async () => {
   const owner = cookies.session;
 

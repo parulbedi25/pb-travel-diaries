@@ -31,7 +31,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
   return (
     <section id="journey" aria-labelledby="journey-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/10 blur-[120px]"
+        className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/6 blur-[120px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">

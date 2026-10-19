@@ -34,7 +34,7 @@ export default function MaintenancePage({ data }: { data: MaintenanceData }) {
       </div>
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/15 blur-[130px]"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-80 w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400/8 blur-[130px]"
         aria-hidden
       />
 
