@@ -49,6 +49,14 @@ export const staggerChild: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: EASE } },
 };
 
+/**
+ * Reveals its children in sequence, once.
+ *
+ * The `once` reveal only runs for the children present at the time. If the
+ * list can change afterwards — a filter, a tab, a sort — give this container a
+ * `key` derived from whatever changed, so the new children get a reveal of
+ * their own instead of inheriting `hidden` from a container that already ran.
+ */
 export function Stagger({
   children,
   className,
