@@ -55,6 +55,7 @@ import CountdownSection, {
 } from "./components/CountdownSection";
 import { EASE } from "./components/ui/motion";
 import { useAnchorScroll } from "./hooks/useAnchorScroll";
+import { useRouteScroll } from "./hooks/useRouteScroll";
 import { ADMIN_PATHS, LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
 import ShopPage from "./components/ShopPage";
 
@@ -252,6 +253,9 @@ function Shell() {
   // header. Installed here, above the routes that take the whole page over,
   // so it is running whenever there is a menu to click.
   useAnchorScroll();
+  // And where each page opens: frontend pages at the top, the dashboard
+  // where it was left.
+  useRouteScroll(route);
 
   // Hide the loader as soon as the first paint has settled.
   useEffect(() => {
