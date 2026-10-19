@@ -511,11 +511,14 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1)",
           }}
         >
+      {/* Length ratio of the shipped file (1920×1080): the box holds this
+          shape open before the lazy photo arrives, so the section never changes
+          height — and never moves the sections below it — when it lands. */}
       <Photo
         src={data.mainImage}
         alt={data.mainImageAlt}
         className="h-auto"
-        aspect="1200 / 627"
+        aspect="16 / 9"
         label="Bike photo unavailable"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950/85 via-transparent to-ink-950/25" aria-hidden />

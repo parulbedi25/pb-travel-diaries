@@ -36,9 +36,13 @@ export default function Photo({
   label?: string;
 }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   // A new URL deserves a fresh attempt.
-  useEffect(() => setFailed(false), [src]);
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [src]);
 
   if (!src || failed) {
     return (
@@ -69,7 +73,15 @@ export default function Photo({
       loading={priority ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : undefined}
       decoding="async"
+      onLoad={() => setLoaded(true)}
       onError={() => setFailed(true)}
+      // The expected shape, held open until the bytes arrive. An <img> with no
+      // dimensions is 0px tall until then, so a photo that sizes its own block
+      // (the Machine photo) used to push the rest of the page down the moment
+      // it loaded — mid-scroll, which is exactly when a lazy photo is fetched.
+      // Once it has loaded the photo speaks for itself: a picture uploaded at a
+      // different ratio keeps that ratio instead of being forced into this one.
+      style={aspect && !loaded ? { aspectRatio: aspect } : undefined}
       className={cn("block w-full", className)}
     />
   );
