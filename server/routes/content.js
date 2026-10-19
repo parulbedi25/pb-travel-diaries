@@ -6,15 +6,18 @@ import { currentUser, requireEditor, signupAllowed } from "../lib/auth.js";
 export const contentRouter = express.Router();
 
 /**
- * What a visitor may see.
+ * What this request may see.
  *
- * Sections marked "members only" keep their place in the page — the locked card
- * needs the label and the anchor — but their data is removed, so the real
- * content never reaches a browser that has not signed in. Signed-in readers
- * get the full site; the gate is about accounts, not about which role.
+ * The rule is about being signed in, not about the role: the owner, an admin
+ * and a read-only reader all get every section. Only a visitor with no account
+ * gets the members-only sections removed.
+ *
+ * A locked section keeps its place in the page — the card needs the label and
+ * the anchor — but its data is removed, so the real content never reaches a
+ * browser that has not signed in.
  */
-function visibleTo(content, signedIn) {
-  if (signedIn || !Array.isArray(content?.sections)) return content;
+export function visibleTo(content, user) {
+  if (user || !Array.isArray(content?.sections)) return content;
   return {
     ...content,
     sections: content.sections.map((section) =>
@@ -35,7 +38,7 @@ contentRouter.get("/content", async (req, res, next) => {
     if (!row) return res.json({ content: null, updatedAt: null, updatedBy: null });
     const user = await currentUser(req);
     res.json({
-      content: visibleTo(parseJson(row.content), Boolean(user)),
+      content: visibleTo(parseJson(row.content), user),
       updatedAt: row.updatedAt,
       updatedBy: row.updatedBy,
     });

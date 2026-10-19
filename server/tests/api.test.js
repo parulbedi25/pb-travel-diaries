@@ -420,9 +420,37 @@ test("members-only sections are stripped for visitors, not for readers", async (
   assert.equal(login.status, 200);
   const asReader = (await call("GET", "/api/content")).json.content;
   assert.deepEqual(asReader.sections[1].data, { headline: "Only for the tribe" });
+  assert.equal(asReader.sections[1].locked, undefined, "a signed-in reader sees the real section");
+
+  // An admin added from the dashboard sees exactly the same thing as the
+  // owner and the reader: the gate is about being signed in, not the role.
+  delete cookies.session;
+  cookies.session = owner;
+  const created = await call("POST", "/api/auth/users", {
+    username: "editor1",
+    password: "editorpass9",
+    role: "admin",
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.json.user.role, "admin");
+
+  delete cookies.session;
+  const adminLogin = await call("POST", "/api/auth/login", {
+    username: "editor1",
+    password: "editorpass9",
+  });
+  assert.equal(adminLogin.status, 200);
+  assert.equal(adminLogin.json.user.role, "admin");
+  const asAdmin = (await call("GET", "/api/content")).json.content;
+  assert.deepEqual(asAdmin.sections[1].data, { headline: "Only for the tribe" });
+  assert.equal(asAdmin.sections[1].locked, undefined, "an admin sees the real section");
+
+  // Every signed-in role gets the whole site; only no session at all locks it.
+  delete cookies.session;
+  const againAnonymous = (await call("GET", "/api/content")).json.content;
+  assert.equal(againAnonymous.sections[1].locked, true);
 
   // Restore the owner for any later test.
-  delete cookies.session;
   cookies.session = owner;
 });
 

@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   SiteProvider,
+  canEditSite,
   deepMerge,
   defaultDataFor,
   sectionData,
@@ -88,9 +89,15 @@ function dataOf<T>(entry: SectionEntry, revealed: boolean): T {
 }
 
 function Section({ entry, revealed = false }: { entry: SectionEntry; revealed?: boolean }) {
-  // Members-only sections arrive without their data for visitors. This is the
-  // lock card, not an overlay over the real thing.
-  if (entry.locked) return <LockedSection entry={entry} />;
+  const { previewAsVisitor, account } = useSite();
+  // The server removes a members-only section's data for anonymous visitors,
+  // so `locked` is what a visitor gets. An editor who switched on "Preview as
+  // User" sees that same card, so the preview is honest: the account still has
+  // the real sections, and only the deliberate preview hides them.
+  const previewingAsVisitor = previewAsVisitor && canEditSite(account);
+  if (entry.locked || (previewingAsVisitor && entry.membersOnly)) {
+    return <LockedSection entry={entry} />;
+  }
   switch (entry.type) {
     case "hero":
       return <Hero data={dataOf<HeroData>(entry, revealed)} />;

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -1966,11 +1967,24 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const [previewAsVisitor, setPreviewAsVisitor] = useState(false);
   const [theme, setThemeState] = useState<Theme>("dark");
   const [account, setAccountState] = useState<Account | null>(null);
+  const accountRef = useRef<Account | null>(null);
   const [siteTitle, setSiteTitle] = useState("PB Travel Diaries");
 
+  /**
+   * The published site as it arrived, and the draft being edited. Kept in refs
+   * so `setAccount` can tell an untouched draft from one with unsaved edits.
+   */
+  const contentRef = useRef(content);
+  const draftRef = useRef(draft);
+  contentRef.current = content;
+  draftRef.current = draft;
+
   const setAccount = useCallback((next: Account | null) => {
+    const previous = accountRef.current;
+    accountRef.current = next;
     setAccountState(next);
     adminSession = canEditSite(next);
+
     // Signing in through the dashboard happens after boot, when the anonymous
     // page skipped the editor-only history. Fetch it now; signing out drops it.
     if (canEditSite(next)) {
@@ -1980,6 +1994,26 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         .catch(() => undefined);
     } else {
       setRevisions([]);
+    }
+
+    // The content this page holds was fetched with the previous session, so a
+    // visitor's copy is still locked and an account's copy stays unlocked
+    // after signing out. Both roles — owner, admin and reader — see every
+    // section; only an anonymous visitor gets the lock cards. Refetching here
+    // makes signing in from the dashboard show the real sections without a
+    // page reload. Unsaved dashboard edits are left alone.
+    if (previous?.id !== next?.id) {
+      void siteApi
+        .loadContent()
+        .then(({ content: saved }) => {
+          if (!saved) return;
+          const fresh = normaliseSavedContent(saved);
+          const untouched =
+            JSON.stringify(draftRef.current) === JSON.stringify(contentRef.current);
+          setContent(fresh);
+          if (untouched) setDraft(structuredClone(fresh));
+        })
+        .catch(() => undefined);
     }
   }, []);
 
@@ -2011,6 +2045,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       }
       if (statusResult.status === "fulfilled" && statusResult.value.user) {
         setAccountState(statusResult.value.user);
+        accountRef.current = statusResult.value.user;
         adminSession = canEditSite(statusResult.value.user);
         try {
           setRevisions(toRevisions(await siteApi.loadRevisions()));

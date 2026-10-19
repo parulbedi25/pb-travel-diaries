@@ -111,5 +111,3 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
 export function osmTileUrl(tileZoom: number, tile: PlacedTile): string {
   return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
 }
-
-export { TILE as TILE_SIZE };
