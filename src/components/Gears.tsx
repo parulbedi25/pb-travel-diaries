@@ -127,7 +127,15 @@ export default function Gears({ data }: { data: GearsData }) {
             </div>
 
             {visibleItems.length > 0 ? (
-              <Stagger className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <Stagger
+                // Re-mounted whenever the filter changes. This container
+                // reveals its cards once, and a card mounted after that
+                // reveal never animates out of the `hidden` state it
+                // inherits — it would sit in the grid at opacity 0. Same
+                // guard as the shop page's grid.
+                key={activeCategory ?? "all"}
+                className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+              >
                 {visibleItems.map((item, index) => {
                   const title = item.name?.trim() || [item.brand, item.model].filter(Boolean).join(" ") || "Gear item";
                   const maker = [item.brand, item.model].map((value) => value?.trim()).filter(Boolean).join(" · ");
