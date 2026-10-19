@@ -46,7 +46,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
   return (
     <section id="showreel" aria-labelledby="benefits-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
+        className="pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">

@@ -7,7 +7,7 @@ export default function Testimonials({ data }: { data: StoriesData }) {
   return (
     <section id="stories" aria-labelledby="stories-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute left-1/2 top-10 h-72 w-[560px] -translate-x-1/2 rounded-full bg-saffron-500/10 blur-[120px]"
+        className="pointer-events-none absolute left-1/2 top-10 h-72 w-[560px] -translate-x-1/2 rounded-full bg-saffron-500/6 blur-[120px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">

@@ -36,7 +36,7 @@ export default function Gears({ data }: { data: GearsData }) {
       className="relative overflow-hidden py-24 sm:py-32"
     >
       <div
-        className="pointer-events-none absolute left-1/2 top-0 h-80 w-[760px] -translate-x-1/2 rounded-full bg-saffron-400/[0.07] blur-[130px]"
+        className="pointer-events-none absolute left-1/2 top-0 h-80 w-[760px] -translate-x-1/2 rounded-full bg-saffron-400/[0.05] blur-[130px]"
         aria-hidden="true"
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -57,7 +57,7 @@ export default function Gears({ data }: { data: GearsData }) {
           <Reveal className="mx-auto mt-12 max-w-3xl">
             <div className="relative overflow-hidden rounded-[2rem] border border-dashed border-white/15 bg-white/[0.025] px-6 py-12 text-center sm:px-10 sm:py-16">
               <div
-                className="pointer-events-none absolute left-1/2 top-0 h-40 w-64 -translate-x-1/2 rounded-full bg-saffron-400/[0.08] blur-[70px]"
+                className="pointer-events-none absolute left-1/2 top-0 h-40 w-64 -translate-x-1/2 rounded-full bg-saffron-400/[0.06] blur-[70px]"
                 aria-hidden="true"
               />
               <div className="relative mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-saffron-300/20 bg-saffron-300/[0.08] text-saffron-300">

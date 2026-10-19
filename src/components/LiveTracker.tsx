@@ -78,8 +78,8 @@ export default function LiveTracker({ data }: { data: LiveData }) {
           <Reveal className="h-full">
             <div className="relative flex h-full min-h-[440px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50">
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
-              <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/15 blur-[100px]" aria-hidden />
-              <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/15 blur-[100px]" aria-hidden />
+              <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
+              <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
               <TrackerMap
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}

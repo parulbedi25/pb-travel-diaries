@@ -14,7 +14,7 @@ export default function Pricing({ data }: { data: PricingData }) {
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
+        className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">

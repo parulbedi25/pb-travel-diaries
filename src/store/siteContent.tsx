@@ -1263,7 +1263,7 @@ const CTA: CtaData = {
 
 export const DEFAULT_CONTENT: SiteContent = {
   v: 1,
-  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1", "phoenix-glove-photo-v1"],
+  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1", "phoenix-glove-photo-v1", "restore-default-data-v1"],
   nav: [
     { id: "nav-live", label: "Live", href: "#/live-map", enabled: true },
     { id: "nav-journey", label: "The Journey", href: "#journey", enabled: true },
@@ -1414,6 +1414,117 @@ function adoptMaintenanceStamp(draft: SiteContent, published: SiteContent): Site
     data: { ...data, startedAt: stamped.startedAt, endedAt: stamped.endedAt },
   };
   return { ...draft, sections };
+}
+
+/* ═══════════════════════ Restoring defaults ═══════════════════════ */
+
+/** The marker that keeps the repair below a one-time event. */
+const RESTORE_DEFAULTS_MIGRATION = "restore-default-data-v1";
+
+/**
+ * Slots that belong to the deployment rather than to the template — a schedule
+ * the owner has not set yet, a PDF they have not uploaded, the odometer's own
+ * update stamp. An empty one of these is a real answer, so it is never filled
+ * in from the built-in content.
+ */
+const NEVER_RESTORE = new Set([
+  "targetDate",
+  "startedAt",
+  "endedAt",
+  "scheduledAt",
+  "revealSectionIds",
+  "pdfFile",
+  "extraMilestones",
+  "updatedAt",
+]);
+
+const isEmptySlot = (value: unknown): boolean => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+};
+
+/**
+ * Put the built-in content back into any slot a saved site has left blank.
+ *
+ * Every section's stored data is already merged over the defaults when it is
+ * rendered, so a *missing* key has always been fine. A key that is present but
+ * empty is different: it wins the merge and the section shows nothing. That is
+ * how a site can lose My Picks, the live tracker's stops or the bike photo
+ * while the code still ships them.
+ *
+ * Runs once, guarded by `restore-default-data-v1`, so anything the owner clears
+ * afterwards stays cleared.
+ */
+function restoreBlankedDefaults(
+  data: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+  filled: string[],
+  prefix = "",
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...data };
+  for (const [key, fallback] of Object.entries(defaults)) {
+    if (NEVER_RESTORE.has(key)) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    const current = next[key];
+
+    if (isPlainObject(current) && isPlainObject(fallback)) {
+      next[key] = restoreBlankedDefaults(current, fallback, filled, path);
+      continue;
+    }
+    if (isEmptySlot(current) && !isEmptySlot(fallback)) {
+      next[key] = structuredClone(fallback);
+      filled.push(path);
+    }
+  }
+  return next;
+}
+
+/** A copy of `content` with blank slots filled from the built-in defaults. */
+function repairDefaults(content: SiteContent): SiteContent {
+  const appliedMigrations = Array.isArray(content.migrations) ? content.migrations : [];
+  if (appliedMigrations.includes(RESTORE_DEFAULTS_MIGRATION)) return content;
+
+  const filled: string[] = [];
+  const sections = content.sections.map((section) => {
+    // A locked section arrives without its data; filling it would put the
+    // template's copy in front of a visitor who has not signed in.
+    if (section.locked) return section;
+    const defaults = defaultDataFor(section.type);
+    if (!defaults || Object.keys(defaults).length === 0) return section;
+    const before = filled.length;
+    const data = restoreBlankedDefaults(section.data ?? {}, defaults, filled);
+    return filled.length > before ? { ...section, data } : section;
+  });
+
+  return {
+    ...content,
+    sections,
+    migrations: [...appliedMigrations, RESTORE_DEFAULTS_MIGRATION],
+  };
+}
+
+/**
+ * `locked` is a property of one anonymous response, never of the site. A copy
+ * that carries it into the stored content would keep showing the members-only
+ * card to everybody, including the owner, long after the section was made
+ * public again.
+ *
+ * Only sections that are not members-only are cleared: for those, a lock is
+ * always a leftover. A true members-only section keeps its lock, so its data
+ * still never reaches a visitor who has not signed in.
+ */
+function withoutLockFlags(content: SiteContent): SiteContent {
+  let touched = false;
+  const sections = content.sections.map((section) => {
+    if (section.locked === undefined || section.membersOnly) return section;
+    touched = true;
+    const rest = { ...section };
+    delete rest.locked;
+    return rest;
+  });
+  return touched ? { ...content, sections } : content;
 }
 
 /**
@@ -1817,10 +1928,18 @@ export function normaliseSavedContent(parsed: SiteContent): SiteContent {
       sections: allSections,
       nav: migratedNav,
     });
+
+    // Something blanked this site's sections — a save made while the page held
+    // the anonymous copy, an older build, an import. Put the built-in content
+    // back into every slot that came back empty, once, so My Picks, the live
+    // tracker's stops and the bike photo return without the owner retyping
+    // them. The next save records the marker and this stops running.
+    const repaired = repairDefaults(withoutLockFlags(normalized));
+
     // A schedule whose moment has passed still switches maintenance on for
     // every visitor. It is persisted by the next dashboard save rather than
     // written from a visitor's browser, which no longer holds the site.
-    return applyMaintenanceSchedule(normalized);
+    return applyMaintenanceSchedule(repaired);
   }
 }
 

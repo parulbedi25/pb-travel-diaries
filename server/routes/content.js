@@ -17,12 +17,55 @@ export const contentRouter = express.Router();
  * browser that has not signed in.
  */
 export function visibleTo(content, user) {
-  if (user || !Array.isArray(content?.sections)) return content;
+  if (!Array.isArray(content?.sections)) return content;
+
+  // Whoever is signed in gets every section, and never a lock: the flag is
+  // only ever a note to a visitor who is not.
+  if (user) {
+    return {
+      ...content,
+      sections: content.sections.map((section) => {
+        if (!section || typeof section !== "object" || !("locked" in section)) return section;
+        const shown = { ...section };
+        delete shown.locked;
+        return shown;
+      }),
+    };
+  }
+
   return {
     ...content,
-    sections: content.sections.map((section) =>
-      section?.membersOnly ? { ...section, locked: true, data: {} } : section,
-    ),
+    sections: content.sections.map((section) => {
+      if (!section || typeof section !== "object") return section;
+      if (section.membersOnly) return { ...section, locked: true, data: {} };
+      // A lock left over from an older save means nothing for a public
+      // section, and passing it on would hide the section from everybody.
+      if (!("locked" in section)) return section;
+      const shown = { ...section };
+      delete shown.locked;
+      return shown;
+    }),
+  };
+}
+
+/**
+ * What is written to the database.
+ *
+ * `locked` is a property of one response to one visitor, not of the site: it
+ * is added by `visibleTo` and removed again on the way in. Without this, a
+ * browser that saved the anonymous copy would persist those flags, and the
+ * members-only card would then be served to everyone — the owner included.
+ */
+export function writable(content) {
+  if (!Array.isArray(content?.sections)) return content;
+  return {
+    ...content,
+    sections: content.sections.map((section) => {
+      if (!section || typeof section !== "object" || !("locked" in section)) return section;
+      const stored = { ...section };
+      delete stored.locked;
+      return stored;
+    }),
   };
 }
 
@@ -62,9 +105,10 @@ contentRouter.put("/content", requireEditor, async (req, res, next) => {
       return res.status(400).json({ error: "That content does not look like a saved site." });
     }
 
+    const stored = writable(content);
     const description = String(req.body?.description ?? "").slice(0, 255) || "Website update";
     const revisionId = String(req.body?.revisionId ?? "").slice(0, 64) || `rev-${Date.now()}`;
-    const serialised = JSON.stringify(content);
+    const serialised = JSON.stringify(stored);
     if (serialised.length > 8_000_000) {
       return res.status(413).json({ error: "That site snapshot is too large to store." });
     }

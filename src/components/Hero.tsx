@@ -28,9 +28,9 @@ export default function Hero({ data }: { data: HeroData }) {
       {/* ambient background */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_75%_60%_at_50%_0%,black,transparent)]" />
-        <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/20 blur-[100px] animate-pulse-soft" />
-        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/15 blur-[100px]" />
-        <div className="glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/15 blur-[100px]" />
+        <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[100px] animate-pulse-soft" />
+        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
+        <div className="glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
