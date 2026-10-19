@@ -7,6 +7,7 @@
  * for real. It is NOT durable and must never be used for the live site.
  */
 import { REVISION_LIMIT } from "./mysql.js";
+import { LATEST_VERSION } from "./migrations.js";
 
 const clone = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
 
@@ -29,7 +30,7 @@ export function createMemoryRepo() {
     async close() {},
     /** Nothing to migrate in memory; kept so both drivers share one shape. */
     async migrate() {
-      return { version: 0, upgradedFrom: 0 };
+      return { version: LATEST_VERSION, upgradedFrom: LATEST_VERSION, applied: [] };
     },
 
     async getContent() {
@@ -85,6 +86,7 @@ export function createMemoryRepo() {
         passwordHash,
         role,
         disabled: 0,
+        disabledAt: null,
         createdAt: new Date().toISOString(),
         lastLoginAt: null,
       });
@@ -99,6 +101,19 @@ export function createMemoryRepo() {
     async touchLastLogin(id) {
       const user = state.users.find((u) => u.id === Number(id));
       if (user) user.lastLoginAt = new Date().toISOString();
+    },
+
+    async setUserDisabled(id, disabled) {
+      const user = state.users.find((u) => u.id === Number(id));
+      if (!user) return false;
+      user.disabled = disabled ? 1 : 0;
+      user.disabledAt = disabled ? new Date().toISOString() : null;
+      if (disabled) {
+        for (const [hash, session] of state.sessions) {
+          if (session.userId === Number(id)) state.sessions.delete(hash);
+        }
+      }
+      return true;
     },
 
     async deleteUser(id) {
@@ -182,6 +197,18 @@ export function createMemoryRepo() {
       const before = state.media.length;
       state.media = state.media.filter((m) => m.id !== id);
       return state.media.length < before;
+    },
+
+    /** Everything a backup needs, matching the MySQL export's shape. */
+    async exportAll() {
+      return clone({
+        users: state.users.map((u) => ({ ...u })),
+        settings: [...state.settings].map(([settingKey, value]) => ({ settingKey, value })),
+        media: state.media.map((m) => ({ ...m })),
+        authEvents: state.events.map((e) => ({ ...e })),
+        revisions: state.revisions.map((r) => ({ ...r })),
+        content: state.content,
+      });
     },
 
     async getSetting(key) {

@@ -55,3 +55,7 @@ media/*
 
 # The deployable folder produced by `npm run package`
 /release/
+
+# The daily backups: database dumps with password hashes and media. They live
+# on the server, not in the repository.
+/backup/

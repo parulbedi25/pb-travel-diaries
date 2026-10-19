@@ -43,20 +43,35 @@ after(async () => {
   await fs.rm(mediaDir, { recursive: true, force: true });
 });
 
-/** A tiny executor that records SQL and reports a chosen schema version. */
+/** A tiny executor that records SQL and behaves like the migration ledger. */
 function fakeExecutor(version = 0) {
   let current = version;
+  const applied = new Set();
   const seen = [];
   return {
     seen,
+    applied,
     async query(sql, params) {
-      seen.push({ sql: String(sql), params });
-      if (String(sql).includes("SELECT value FROM settings")) {
-        return [current ? [{ value: String(current) }] : []];
+      const text = String(sql);
+      seen.push({ sql: text, params });
+
+      if (text.includes("SELECT MAX(version) AS version FROM schema_migrations")) {
+        return [[{ version: applied.size ? Math.max(...applied) : null }]];
       }
-      if (String(sql).startsWith("INSERT INTO settings") && String(sql).includes("schema_version")) {
+      if (text.includes("COUNT(*) AS n FROM schema_migrations")) {
+        return [[{ n: applied.size }]];
+      }
+      if (text.includes("INSERT IGNORE INTO schema_migrations") || text.includes("INSERT INTO schema_migrations")) {
+        applied.add(Number(params?.[0]));
+        return [{ affectedRows: 1 }];
+      }
+      if (text.includes("SELECT value FROM settings")) {
+        return [[...(current ? [{ value: String(current) }] : [])]];
+      }
+      if (text.startsWith("INSERT INTO settings") && text.includes("schema_version")) {
         current = Number(params?.[0]) || 0;
       }
+      if (text.includes("SELECT COUNT(*) AS n FROM users")) return [[{ n: 0 }]];
       return [{ affectedRows: 1 }];
     },
   };
@@ -67,28 +82,72 @@ test("the schema creates tables, records its version and upgrades only once", as
   const first = await applySchema(fresh);
   assert.equal(first.version, LATEST_VERSION);
   assert.equal(first.upgradedFrom, 0);
+  assert.deepEqual(first.applied, [1, 2, 3], "a new database replays every migration in order");
 
   const statements = fresh.seen.map((entry) => entry.sql);
   assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS users")));
   assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS auth_events")));
   assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS settings")));
+  assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS schema_migrations")));
   assert.ok(
     statements.some((sql) => sql.includes("ALTER TABLE users MODIFY role")),
     "a fresh schema applies the reader-role migration",
   );
+  assert.ok(
+    statements.some((sql) => sql.includes("ADD COLUMN disabled_at")),
+    "a fresh schema applies the disabled-account migration",
+  );
+  assert.ok(
+    statements.some((sql) => sql.includes("'user_disabled'")),
+    "the access log accepts the new event labels",
+  );
   assert.ok(statements.some((sql) => sql.includes("'schema_version'")));
 
-  const upgraded = fakeExecutor(LATEST_VERSION);
-  const second = await applySchema(upgraded);
+  // Running again on the same database must not repeat a single ALTER.
+  const before = fresh.seen.length;
+  const second = await applySchema(fresh);
   assert.equal(second.upgradedFrom, LATEST_VERSION);
+  assert.deepEqual(second.applied, [], "nothing left to apply");
+  const after = fresh.seen.slice(before).map((entry) => entry.sql);
   assert.ok(
-    !upgraded.seen.some((entry) => entry.sql.includes("ALTER TABLE users")),
+    !after.some((sql) => sql.includes("ALTER TABLE users")),
     "an up-to-date database is not altered again",
   );
+});
+
+test("a database from before the ledger is adopted, not re-migrated", async () => {
+  // Version 2 is the state every installation reached before this change: it
+  // has the setting but no `schema_migrations` rows.
+  const legacy = fakeExecutor(2);
+  const result = await applySchema(legacy);
+
+  assert.equal(result.upgradedFrom, 2);
+  assert.deepEqual(result.applied, [3], "only the new migration runs");
+
+  const statements = legacy.seen.map((entry) => entry.sql);
   assert.ok(
-    !upgraded.seen.some((entry) => entry.sql.includes("schema_version") && entry.sql.startsWith("INSERT")),
-    "the version row is only written when it changes",
+    !statements.some((sql) => sql.includes("ALTER TABLE users MODIFY role")),
+    "the reader-role ALTER already happened and is not attempted twice",
   );
+  assert.ok(statements.some((sql) => sql.includes("ADD COLUMN disabled_at")));
+
+  const adopted = legacy.seen.filter((entry) => entry.sql.includes("INSERT IGNORE INTO schema_migrations"));
+  assert.equal(adopted.length, 2, "versions 1 and 2 are recorded as adopted");
+  assert.deepEqual(legacy.applied, new Set([1, 2, 3]));
+});
+
+test("a restore can stop at the backup's schema version and catch up afterwards", async () => {
+  const executor = fakeExecutor(0);
+  const partial = await applySchema(executor, { upTo: 1 });
+  assert.deepEqual(partial.applied, [1]);
+  assert.equal(
+    executor.seen.some((entry) => entry.sql.includes("ADD COLUMN disabled_at")),
+    false,
+    "the newer columns wait until the rows are back in place",
+  );
+
+  const rest = await applySchema(executor);
+  assert.deepEqual(rest.applied, [2, 3]);
 });
 
 test("setup input is validated before any connection is opened", () => {

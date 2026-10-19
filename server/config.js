@@ -81,6 +81,27 @@ export const config = {
   bcryptRounds: int(process.env.BCRYPT_ROUNDS, 10),
   /** Largest upload accepted, in megabytes. */
   maxUploadMb: int(process.env.MAX_UPLOAD_MB, 25),
+  /**
+   * The daily backup.
+   *
+   * A zip is written to ./backup (created on first use, at the app's root)
+   * every day at BACKUP_HOUR, and only the newest BACKUP_KEEP are kept. The
+   * archive holds the database contents as a standalone `pb-restore.json`
+   * importer, the uploaded media, and the application files.
+   */
+  backup: {
+    enabled: bool(process.env.BACKUP_ENABLED, true),
+    /** Local hour (0–23) the daily run should happen. Default: 2am. */
+    hour: Math.min(23, Math.max(0, int(process.env.BACKUP_HOUR, 2))),
+    /** How many zips to keep. The rest are deleted oldest-first. */
+    keep: Math.max(1, int(process.env.BACKUP_KEEP, 10)),
+    /** `backup/` at the project root unless told otherwise. */
+    dir: path.resolve(root, process.env.BACKUP_DIR || "backup"),
+    /** Include the app's own files (server/, dist/, public/, src/…) in the zip. */
+    includeApp: bool(process.env.BACKUP_INCLUDE_APP, true),
+  },
+  /** Largest backup archive accepted by the restore screen, in megabytes. */
+  maxRestoreMb: int(process.env.MAX_RESTORE_MB, 2048),
   /** Behind Passenger/Plesk/Nginx the real IP and protocol arrive in headers. */
   trustProxy: bool(process.env.TRUST_PROXY, true),
   /** Requests per minute per IP across the whole API. 0 turns it off. */

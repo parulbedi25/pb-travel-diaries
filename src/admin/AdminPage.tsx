@@ -12,6 +12,7 @@ import {
   FileText,
   Gauge,
   Crosshair,
+  DatabaseBackup,
   FileArchive,
   FileImage,
   FileSpreadsheet,
@@ -28,7 +29,9 @@ import {
   Palette,
   Link2,
   Power,
+  PowerOff,
   List,
+  Loader2,
   Lock,
   LogOut,
   Moon,
@@ -125,7 +128,7 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
-import { siteApi, type Account, type AuthEvent } from "../api/siteApi";
+import { siteApi, type Account, type AuthEvent, type BackupState } from "../api/siteApi";
 import { describeApiError } from "../api/client";
 
 /* ═══════════════ Admin auth ═══════════════
@@ -3434,6 +3437,29 @@ function AccessPanel() {
   };
 
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null);
+  const [pendingDisable, setPendingDisable] = useState<Account | null>(null);
+
+  /**
+   * Switch an account off. The server drops every session it had, so the
+   * members-only sections close on their very next request — no reload and no
+   * waiting for the cookie to expire.
+   */
+  const setDisabled = async (user: Account, disabled: boolean) => {
+    setPendingDisable(null);
+    setMsg(null);
+    try {
+      await siteApi.setUserDisabled(user.id, disabled);
+      await refresh();
+      setMsg({
+        ok: true,
+        text: disabled
+          ? `${user.username} can no longer sign in and can only read the public site.`
+          : `${user.username} can sign in again.`,
+      });
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    }
+  };
 
   const removeUser = async (user: Account) => {
     setPendingDelete(null);
@@ -3476,8 +3502,9 @@ function AccessPanel() {
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
           Accounts created here can edit the site (admin) or only read the members-only sections
-          (reader). Public sign-up creates readers. Passwords are bcrypt hashes in the database —
-          never in this browser.
+          (reader). Public sign-up creates readers. Disabling an account signs it out everywhere and
+          closes the members-only sections to it — the public site stays open. Passwords are bcrypt
+          hashes in the database, never in this browser.
         </p>
 
         <ul className="mt-4 grid gap-2">
@@ -3490,16 +3517,37 @@ function AccessPanel() {
               {account?.id === user.id && (
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">you</span>
               )}
+              {user.disabled && (
+                <span className="rounded-full border border-red-400/25 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-300">
+                  disabled
+                </span>
+              )}
               {user.email && <span className="truncate text-xs text-zinc-500">{user.email}</span>}
               {user.role !== "owner" && account?.id !== user.id && (
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(user)}
-                  className="ml-auto grid h-8 w-8 place-items-center rounded-lg text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
-                  aria-label={`Delete ${user.username}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="ml-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPendingDisable(user)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-colors",
+                      user.disabled
+                        ? "bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
+                        : "bg-white/[0.05] text-zinc-400 hover:bg-amber-400/15 hover:text-amber-200",
+                    )}
+                    aria-label={`${user.disabled ? "Enable" : "Disable"} ${user.username}`}
+                  >
+                    {user.disabled ? <Power className="h-3 w-3" /> : <PowerOff className="h-3 w-3" />}
+                    {user.disabled ? "Enable" : "Disable"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(user)}
+                    className="grid h-8 w-8 place-items-center rounded-lg text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                    aria-label={`Delete ${user.username}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               )}
             </li>
           ))}
@@ -3589,6 +3637,20 @@ function AccessPanel() {
           </table>
         </div>
       </div>
+
+      {pendingDisable && (
+        <ConfirmDialog
+          title={`${pendingDisable.disabled ? "Enable" : "Disable"} ${pendingDisable.username}?`}
+          message={
+            pendingDisable.disabled
+              ? "They will be able to sign in again and read the members-only sections."
+              : "They are signed out everywhere, cannot sign in, and can only read the public site. You can switch them back on at any time."
+          }
+          confirmLabel={pendingDisable.disabled ? "Enable account" : "Disable account"}
+          onConfirm={() => void setDisabled(pendingDisable, !pendingDisable.disabled)}
+          onCancel={() => setPendingDisable(null)}
+        />
+      )}
 
       {pendingDelete && (
         <ConfirmDialog
@@ -5186,9 +5248,150 @@ function ShopPanel() {
     </div>
   );
 }
+/* ═══════════════ Backups ═══════════════ */
+
+/**
+ * The daily zip, as the server sees it: the schedule, the archives on disk, a
+ * button for taking one now, and a download link each. Restoring happens on
+ * the first-run setup screen — this is the half you use while the site is live.
+ */
+function BackupsPanel() {
+  const [state, setState] = useState<BackupState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setState(await siteApi.listBackups());
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const backupNow = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const backup = await siteApi.createBackup();
+      setMsg({ ok: true, text: `Wrote ${backup.name} (${formatBytes(backup.bytes)}).` });
+      await refresh();
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hour = String(state?.hour ?? 2).padStart(2, "0");
+
+  return (
+    <div className="grid gap-6">
+      <div className="rounded-3xl glass p-6">
+        <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+          <DatabaseBackup className="h-4 w-4 text-saffron-300" /> Backups
+        </h3>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          Every day at {hour}:00 the server writes a zip into <span className="text-zinc-300">backup/</span>{" "}
+          at the root of the installation and keeps the newest {state?.keep ?? 10}. Each zip holds the
+          whole database (accounts included, with their password hashes), every uploaded file, and the
+          application itself — so a redeploy can restore from it alone.
+        </p>
+
+        <div className="mt-4 grid gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 sm:grid-cols-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Schedule</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {state?.enabled === false ? "Off" : `Daily at ${hour}:00`}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Last backup</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {state?.lastBackupAt ? whenLabel(state.lastBackupAt) : "Never yet"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Next one</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {state?.nextRunAt ? whenLabel(state.nextRunAt) : "—"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void backupNow()}
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all hover:brightness-110 active:scale-95 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <DatabaseBackup className="h-4 w-4" />}
+            {busy ? "Archiving…" : "Back up now"}
+          </button>
+          <p className="text-[11px] leading-relaxed text-zinc-600">
+            Stored in <span className="font-mono text-zinc-400">{state?.dir ?? "backup/"}</span>. Keep a
+            copy somewhere else too — a backup on the same disk is not a backup.
+          </p>
+        </div>
+
+        {msg && (
+          <p className={cn("mt-3 text-xs font-medium", msg.ok ? "text-emerald-300" : "text-red-400")}>
+            {msg.text}
+          </p>
+        )}
+
+        <ul className="mt-5 grid gap-2">
+          {(state?.backups ?? []).map((backup) => (
+            <li
+              key={backup.name}
+              className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3"
+            >
+              <FileArchive className="h-4 w-4 shrink-0 text-zinc-500" />
+              <div className="min-w-0">
+                <p className="truncate font-mono text-[11px] text-zinc-300">{backup.name}</p>
+                <p className="text-[10px] text-zinc-600">
+                  {whenLabel(backup.createdAt)} · {formatBytes(backup.bytes)}
+                </p>
+              </div>
+              <a
+                href={`/api/backups/${encodeURIComponent(backup.name)}`}
+                download
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-[10px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+              >
+                <Download className="h-3 w-3" /> Download
+              </a>
+            </li>
+          ))}
+          {state && state.backups.length === 0 && (
+            <li className="text-xs text-zinc-500">No archives yet. The first one runs tonight.</li>
+          )}
+        </ul>
+
+        <div className="mt-5 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            Restoring one
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+            Deploy the application on the new server without the <span className="text-zinc-300">data/</span>{" "}
+            folder, open the site, and choose <span className="text-zinc-300">Restore a backup</span> on the
+            setup screen. Upload the zip; the database details it carries are filled in and can be edited
+            before anything is written. The archive&apos;s{" "}
+            <span className="font-mono text-zinc-400">pb-restore.json</span> can also be edited by hand if
+            you prefer.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings";
+type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings" | "backups";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
@@ -5199,6 +5402,7 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "theme", label: "Theme colours", icon: Palette },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "backups", label: "Backups", icon: DatabaseBackup },
 ];
 
 export default function AdminPage() {
@@ -5439,6 +5643,7 @@ export default function AdminPage() {
           {tab === "theme" && <ThemePanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
+          {tab === "backups" && <BackupsPanel />}
         </main>
       </div>
 

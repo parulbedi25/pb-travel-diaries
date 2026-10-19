@@ -454,6 +454,95 @@ test("members-only sections are stripped for visitors, not for readers", async (
   cookies.session = owner;
 });
 
+test("a disabled account is told so, and loses the members-only sections", async () => {
+  const owner = cookies.session;
+
+  // A reader who has signed in and can see the gated section.
+  const signup = await call("POST", "/api/auth/signup", {
+    username: "disabled1",
+    password: "readonly9",
+  });
+  assert.equal(signup.status, 201);
+  const readerId = signup.json.user.id;
+  const readerSession = cookies.session;
+
+  const before = (await call("GET", "/api/content")).json.content;
+  const gated = before.sections.find((section) => section.membersOnly);
+  assert.ok(gated && !gated.locked, "the reader starts out able to read the gated section");
+
+  // The owner switches the account off from the dashboard.
+  cookies.session = owner;
+  const disabled = await call("PATCH", `/api/auth/users/${readerId}`, { disabled: true });
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.json.user.disabled, true);
+
+  // The session that was already open cannot read anything gated any more.
+  cookies.session = readerSession;
+  const after = (await call("GET", "/api/content")).json.content;
+  const nowLocked = after.sections.find((section) => section.membersOnly);
+  assert.equal(nowLocked.locked, true, "the members-only section closes on the next request");
+  assert.deepEqual(nowLocked.data, {});
+  assert.equal((await call("GET", "/api/auth/me")).status, 401, "the session is gone");
+
+  // The public half of the site is untouched.
+  const publicSection = after.sections.find((section) => !section.membersOnly);
+  assert.equal(publicSection.locked, undefined);
+  assert.ok(publicSection.data && Object.keys(publicSection.data).length > 0);
+
+  // Signing in again says exactly why, once the password is right.
+  const refused = await call("POST", "/api/auth/login", {
+    username: "disabled1",
+    password: "readonly9",
+  });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.json.code, "account_disabled");
+  assert.match(refused.json.error, /disabled/i);
+
+  // A wrong password still gets the generic answer, so the form cannot be
+  // used to find out which accounts exist or are switched off.
+  const wrong = await call("POST", "/api/auth/login", {
+    username: "disabled1",
+    password: "not-the-password",
+  });
+  assert.equal(wrong.status, 401);
+  assert.match(wrong.json.error, /Incorrect username or password/);
+
+  // Re-enabling restores the account, and only then does it sign in.
+  cookies.session = owner;
+  const enabled = await call("PATCH", `/api/auth/users/${readerId}`, { disabled: false });
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.json.user.disabled, false);
+
+  delete cookies.session;
+  const back = await call("POST", "/api/auth/login", {
+    username: "disabled1",
+    password: "readonly9",
+  });
+  assert.equal(back.status, 200);
+  assert.equal((await call("GET", "/api/auth/me")).status, 200);
+
+  // ...and cannot be used to switch off the owner, or the account doing it.
+  cookies.session = owner;
+  const me = (await call("GET", "/api/auth/status")).json.user;
+  assert.equal(
+    (await call("PATCH", `/api/auth/users/${me.id}`, { disabled: true })).status,
+    400,
+  );
+  const ownerRow = (await call("GET", "/api/auth/users")).json.users.find((u) => u.role === "owner");
+  assert.equal(
+    (await call("PATCH", `/api/auth/users/${ownerRow.id}`, { disabled: true })).status,
+    400,
+  );
+  assert.equal(
+    (await call("PATCH", `/api/auth/users/${readerId}`, { disabled: "yes" })).status,
+    400,
+    "the flag has to be a real boolean",
+  );
+
+  // Clean up so later tests keep their reader.
+  await call("DELETE", `/api/auth/users/${readerId}`);
+});
+
 test("the site title is public and only an editor can change it", async () => {
   const publicSettings = await call("GET", "/api/settings/site");
   assert.equal(publicSettings.status, 200);

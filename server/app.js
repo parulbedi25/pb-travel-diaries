@@ -8,6 +8,8 @@ import { pruneAttempts } from "./lib/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { contentRouter, settingsRouter } from "./routes/content.js";
 import { mediaRouter } from "./routes/media.js";
+import { backupsRouter } from "./routes/backups.js";
+import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
 
 /**
@@ -80,10 +82,12 @@ export function createApp() {
   // Setup answers before any database-backed route: it must work when there
   // is no database at all.
   api.use(setupRouter);
+  api.use(restoreRouter);
   api.use("/auth", authRouter);
   api.use(contentRouter);
   api.use(settingsRouter);
   api.use(mediaRouter);
+  api.use(backupsRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
   app.use("/api", api);

@@ -1,16 +1,16 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- PB Travel Diaries — MariaDB / MySQL schema
 --
--- GENERATED FILE — edit server/db/schema.js and run `npm run schema:sql`.
+-- GENERATED FILE — edit server/db/schema.js and server/db/migrations.js, then
+-- run `npm run schema:sql`.
 --
 -- You do not have to import this: the first-run setup screen creates every
 -- table, and the server applies pending migrations at boot. It is kept for
--- people who prefer phpMyAdmin or Adminer (open the database, then Import)
--- Import).
+-- people who prefer phpMyAdmin or Adminer (open the database, then Import).
 --
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK
 -- constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in the
--- application. Schema version: 2.
+-- application. Schema version: 3.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS site_content (
@@ -94,8 +94,25 @@ CREATE TABLE IF NOT EXISTS settings (
     PRIMARY KEY (setting_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INT UNSIGNED NOT NULL,
+    name        VARCHAR(160) NOT NULL DEFAULT '',
+    applied_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (version)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (1, 'initial schema');
+
 ALTER TABLE users MODIFY role ENUM('owner','admin','reader') NOT NULL DEFAULT 'reader';
 
-INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '2');
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (2, 'read-only reader role');
+
+ALTER TABLE users ADD COLUMN disabled_at DATETIME NULL AFTER disabled;
+
+ALTER TABLE auth_events MODIFY event ENUM('signup','login','logout','failed_login','password_change','user_created','user_deleted','user_disabled','user_enabled') NOT NULL;
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (3, 'disabled accounts');
+
+INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '3');
 
 INSERT IGNORE INTO settings (setting_key, value) VALUES ('theme', '"dark"');
