@@ -85,40 +85,6 @@ export function useCountdownFinished(targetIso: string): boolean {
   return finished;
 }
 
-/* ───────────────── Day / Hour / Min / Sec tiles (used by Maintenance) ───────────────── */
-
-export function CountdownDots({ target, size = "md" }: { target: string; size?: "sm" | "md" | "lg" }) {
-  const c = useCountdown(target);
-  if (!c.valid) return null;
-
-  const units = [
-    { v: c.days, l: "Days" },
-    { v: c.hours, l: "Hours" },
-    { v: c.minutes, l: "Mins" },
-    { v: c.seconds, l: "Secs" },
-  ];
-  const pad = size === "lg" ? "px-4 py-4 sm:px-7 sm:py-6" : size === "sm" ? "px-2.5 py-2" : "px-3.5 py-3.5";
-  const num = size === "lg" ? "text-3xl sm:text-5xl" : size === "sm" ? "text-base" : "text-xl sm:text-2xl";
-
-  return (
-    <div role="timer" aria-live="off" className="flex items-stretch gap-2 sm:gap-3">
-      {units.map((u) => (
-        <div
-          key={u.l}
-          className={cn("cd-tile min-w-0 rounded-2xl border text-center backdrop-blur-md", pad)}
-        >
-          <p className={cn("cd-ink font-display font-bold tabular-nums", num)}>
-            {String(u.v).padStart(2, "0")}
-          </p>
-          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-            {u.l}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ───────────────── Digital clock readout ───────────────── */
 
 /** One digit that flips down when its value changes. */

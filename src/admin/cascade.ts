@@ -186,11 +186,6 @@ export function cascadeNavAll(c: SiteContent, on: boolean): SiteContent {
   return { ...c, nav: c.nav.map((n) => ({ ...n, enabled: on })) };
 }
 
-/** Switch a section on together with all of its children (used when a countdown reveals it). */
-export function enableWithChildren(s: SectionEntry): SectionEntry {
-  return applySection(s, true);
-}
-
 /** One header link on or off. The header master switch reads from these. */
 export function cascadeNavItem(c: SiteContent, id: string, on: boolean): SiteContent {
   return { ...c, nav: c.nav.map((n) => (n.id === id ? { ...n, enabled: on } : n)) };

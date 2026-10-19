@@ -2413,10 +2413,3 @@ export function useSite(): SiteContextValue {
   return ctx;
 }
 
-/** Merged (default + saved override) data for a section type. */
-export function useSectionData<T>(type: SectionType): T {
-  const { content } = useSite();
-  const entry = content.sections.find((s) => s.type === type);
-  if (!entry) return structuredClone(defaultDataFor(type)) as T;
-  return deepMerge(defaultDataFor(type), entry.data) as T;
-}

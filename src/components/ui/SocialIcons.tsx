@@ -45,8 +45,6 @@ const pathFor = (key: string) => BRAND_PATHS.find((b) => b.key === key)?.path ??
  */
 export const YouTubeIcon = brandMark(pathFor("youtube"));
 export const InstagramIcon = brandMark(pathFor("instagram"));
-export const XIcon = brandMark(pathFor("x"));
-export const FacebookIcon = brandMark(pathFor("facebook"));
 
 export type SocialIconComponent = ComponentType<{ className?: string }>;
 
@@ -151,14 +149,6 @@ const genericSpecs: SocialIconSpec[] = [
 ];
 
 export const SOCIAL_ICONS: SocialIconSpec[] = [...brandSpecs, ...genericSpecs];
-
-/** Label-keyed view of the registry, for anything still matching by label. */
-export const SOCIALS: { label: string; Icon: SocialIconComponent }[] = SOCIAL_ICONS.map(
-  ({ label, Icon }) => ({ label, Icon })
-);
-
-export const socialIconLabel = (key: string | undefined): string =>
-  SOCIAL_ICONS.find((s) => s.key === key)?.label ?? "";
 
 /**
  * Labels used before the icon picker existed, mapped onto today's keys so a
