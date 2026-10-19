@@ -4,9 +4,9 @@
  * Local dev:  npm run dev         → API :4000, Vite :5173 (hot reload)
  * Production: npm start           → http://localhost:4000
  *             npm run prod        → build, then the same
- * Hosting:    cPanel/Plesk "Node.js App" → startup file server/scripts/start.js
+ * Hosting:    any Node host (Passenger, Plesk, systemd) → server/scripts/start.js
  *
- * Under Passenger (cPanel) the panel supplies PORT, and it can be a socket
+ * Under Passenger the panel supplies PORT, and it can be a socket
  * path rather than a number — `listen` accepts both.
  */
 import { config } from "./config.js";

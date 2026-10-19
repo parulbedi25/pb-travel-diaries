@@ -22,7 +22,7 @@ const header = `-- ────────────────────�
 --
 -- You do not have to import this: the first-run setup screen creates every
 -- table, and the server applies pending migrations at boot. It is kept for
--- people who prefer phpMyAdmin (cPanel → phpMyAdmin → select the database →
+-- people who prefer phpMyAdmin or Adminer (open the database, then Import)
 -- Import).
 --
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK

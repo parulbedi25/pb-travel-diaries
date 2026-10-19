@@ -23,6 +23,7 @@ const {
   friendlyDatabaseError,
   installDatabase,
   SetupError,
+  testConnection,
   validateSetupInput,
 } = await import("../lib/installer.js");
 const { publicInstall, readInstall, writeInstall } = await import("../lib/installFile.js");
@@ -196,7 +197,7 @@ test("installDatabase creates the database, applies the schema and saves the ans
   }
 });
 
-test("a database created in cPanel is connected to, not recreated", async () => {
+test("a database created outside the app is connected to, not recreated", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-install-"));
   const file = path.join(dir, "install.json");
   const sql = [];
@@ -275,7 +276,8 @@ test("a rejected database password is explained without leaking it", async () =>
       ),
       (error) => {
         assert.ok(error instanceof SetupError);
-        assert.match(error.message, /cPanel/);
+        assert.match(error.message, /create that database user/i);
+        assert.match(error.message, /all privileges/i);
         assert.doesNotMatch(error.message, /hunter2/);
         return true;
       },
@@ -286,11 +288,156 @@ test("a rejected database password is explained without leaking it", async () =>
   }
 });
 
-test("friendlyDatabaseError covers the common cPanel mistakes", () => {
+test("database errors explain what to create, without naming one hosting panel", () => {
   const db = { host: "localhost", port: 3306, database: "db", user: "u" };
-  assert.match(friendlyDatabaseError({ code: "ER_BAD_DB_ERROR" }, db), /does not exist/);
-  assert.match(friendlyDatabaseError({ code: "ECONNREFUSED" }, db), /localhost:3306/);
-  assert.match(friendlyDatabaseError({ code: "ER_DBACCESS_DENIED_ERROR" }, db), /ALL PRIVILEGES/);
+
+  const missing = friendlyDatabaseError({ code: "ER_BAD_DB_ERROR" }, db);
+  assert.match(missing, /does not exist/);
+  assert.match(missing, /create it first/i);
+  assert.match(missing, /all privileges/i);
+
+  const denied = friendlyDatabaseError({ code: "ER_DBACCESS_DENIED_ERROR" }, db);
+  assert.match(denied, /not allowed to open/);
+  assert.match(denied, /all privileges/i);
+
+  const refused = friendlyDatabaseError({ code: "ECONNREFUSED" }, db);
+  assert.match(refused, /localhost:3306/);
+  assert.match(refused, /hosting panel/i);
+
+  // The wording is the same whichever panel the site is deployed on.
+  for (const message of [missing, denied, refused]) {
+    assert.doesNotMatch(message, /cPanel|Plesk|DirectAdmin|Namecheap/i);
+  }
+});
+
+test("testing a missing database reports what is there and what is missing", async () => {
+  let sawWithoutDatabase = false;
+  const connect = async (options) => ({
+    async query(statement) {
+      if (!options.database) {
+        sawWithoutDatabase = true;
+        return [[{ version: "10.11.6-MariaDB" }]];
+      }
+      const error = new Error("Unknown database 'pb_new'");
+      error.code = "ER_BAD_DB_ERROR";
+      throw error;
+    },
+    async end() {},
+  });
+
+  const result = await testConnection(
+    { siteTitle: "PB", host: "localhost", database: "pb_new", user: "pb_user", password: "p" },
+    { connect },
+  );
+
+  assert.equal(sawWithoutDatabase, true, "the server is still asked whether it answers");
+  assert.equal(result.ok, false);
+  assert.equal(result.databaseExists, false);
+  assert.equal(result.serverVersion, "10.11.6-MariaDB");
+  assert.match(result.message, /does not exist yet/);
+  assert.match(result.message, /create it in your hosting panel/i);
+  assert.match(result.message, /all privileges/i);
+});
+
+test("a successful connection test says the database is reachable", async () => {
+  const connect = async () => ({
+    async query() {
+      return [[{ version: "10.11.6-MariaDB", current: "pb" }]];
+    },
+    async end() {},
+  });
+
+  const result = await testConnection(
+    { siteTitle: "PB", host: "localhost", database: "pb", user: "pb_user", password: "p" },
+    { connect },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.databaseExists, true);
+  assert.match(result.message, /10\.11\.6-MariaDB/);
+  assert.match(result.message, /can open it/);
+});
+
+test("creating tables on a missing database asks for it to be created first", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-install-"));
+  const file = path.join(dir, "install.json");
+  const connect = async (options) => ({
+    async query(statement) {
+      if (String(statement).includes("information_schema.SCHEMATA")) return [[]];
+      if (String(statement).includes("CREATE DATABASE")) {
+        const error = new Error("Access denied");
+        error.code = "ER_DBACCESS_DENIED_ERROR";
+        throw error;
+      }
+      // Opening the database tells the installer the database itself is gone,
+      // rather than merely not granted to this user.
+      if (options.database) {
+        const error = new Error("Unknown database 'pb_new'");
+        error.code = "ER_BAD_DB_ERROR";
+        throw error;
+      }
+      return [{ affectedRows: 1 }];
+    },
+    async end() {},
+  });
+
+  try {
+    await assert.rejects(
+      installDatabase(
+        { siteTitle: "PB", host: "localhost", database: "pb_new", user: "pb_user", password: "p" },
+        { connect, file, apply: false },
+      ),
+      (error) => {
+        assert.ok(error instanceof SetupError);
+        assert.match(error.message, /does not exist yet/);
+        assert.match(error.message, /add the user/i);
+        assert.match(error.message, /all privileges/i);
+        return true;
+      },
+    );
+    await assert.rejects(fs.access(file), "no install file for a failed setup");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a database the user cannot open is distinguished from a missing one", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-install-"));
+  const file = path.join(dir, "install.json");
+  const connect = async (options) => ({
+    async query(statement) {
+      if (String(statement).includes("information_schema.SCHEMATA")) return [[]];
+      if (String(statement).includes("CREATE DATABASE")) {
+        const error = new Error("Access denied");
+        error.code = "ER_DBACCESS_DENIED_ERROR";
+        throw error;
+      }
+      if (options.database) {
+        const error = new Error("Access denied for database");
+        error.code = "ER_DBACCESS_DENIED_ERROR";
+        throw error;
+      }
+      return [{ affectedRows: 1 }];
+    },
+    async end() {},
+  });
+
+  try {
+    await assert.rejects(
+      installDatabase(
+        { siteTitle: "PB", host: "localhost", database: "pb_existing", user: "pb_user", password: "p" },
+        { connect, file, apply: false },
+      ),
+      (error) => {
+        assert.ok(error instanceof SetupError);
+        assert.match(error.message, /exists, but the user/i);
+        assert.match(error.message, /all privileges/i);
+        assert.doesNotMatch(error.message, /does not exist/i);
+        return true;
+      },
+    );
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("setup endpoints are locked once a site is installed", async () => {

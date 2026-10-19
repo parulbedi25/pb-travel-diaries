@@ -34,6 +34,17 @@ export interface SetupDatabaseInput {
   socketPath?: string;
 }
 
+/** What the setup screen learns from "Test connection". */
+export interface SetupTestResult {
+  /** True only when the database exists and the user can open it. */
+  ok: boolean;
+  serverVersion: string;
+  database: string;
+  databaseExists: boolean;
+  /** A sentence to show as-is: what worked, or what to create first. */
+  message: string;
+}
+
 export interface SiteSettings {
   title: string;
   allowSignup: boolean;
@@ -196,8 +207,8 @@ export const siteApi = {
 
   setupStatus: () => api.get<SetupStatus>("/api/setup/status"),
 
-  async testDatabase(input: SetupDatabaseInput): Promise<{ ok: boolean; serverVersion: string }> {
-    return api.post<{ ok: boolean; serverVersion: string }>("/api/setup/test", input);
+  async testDatabase(input: SetupDatabaseInput): Promise<SetupTestResult> {
+    return api.post<SetupTestResult>("/api/setup/test", input);
   },
 
   async setupDatabase(input: SetupDatabaseInput): Promise<{

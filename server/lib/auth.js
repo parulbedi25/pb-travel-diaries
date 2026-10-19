@@ -7,7 +7,7 @@ import { getRepo } from "../db/index.js";
 
 /**
  * bcrypt, deliberately slow. The cost is configurable because a shared
- * Namecheap plan and a VPS should not use the same work factor.
+ * shared plan and a VPS should not use the same work factor.
  */
 export function hashPassword(password) {
   return bcrypt.hash(password, config.bcryptRounds);
