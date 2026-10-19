@@ -30,3 +30,22 @@ yarn-error.log*
 
 # Environment files (local configs)
 /.env.*
+!.env.example
+!.env.development.example
+!.env.production.example
+
+# Uploaded media: content, not code. Back it up, don't commit it.
+media/*
+!media/README.md
+!media/.gitkeep
+
+# Server configuration (database password lives here)
+.env
+.env.local
+
+# SQLite/MariaDB scratch files
+*.sqlite
+*.sqlite3
+
+# Local scratch (test harnesses, PR bodies)
+/.s/

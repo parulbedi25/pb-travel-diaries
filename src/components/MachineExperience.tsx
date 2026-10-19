@@ -23,7 +23,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { BikeHotspot, MachineData } from "../store/siteContent";
-import { isAdminSession, useSite } from "../store/siteContent";
+import { useSite } from "../store/siteContent";
 import { getMedia } from "../admin/mediaLibrary";
 import { isOn } from "../utils/enabled";
 import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
@@ -288,8 +288,8 @@ function AccessoryBubble({
 }
 
 export default function MachineExperience({ data }: { data: MachineData }) {
-  const { setMachineSubsectionLayout, previewAsVisitor } = useSite();
-  const admin = isAdminSession() && !previewAsVisitor;
+  const { setMachineSubsectionLayout, previewAsVisitor, account } = useSite();
+  const admin = Boolean(account) && !previewAsVisitor;
   const spots = Array.isArray(data.hotspots) ? data.hotspots.filter(isOn) : [];
   const gallery = Array.isArray(data.gallery)
     ? data.gallery.map((photo, sourceIndex) => ({ photo, sourceIndex })).filter(({ photo }) => isOn(photo))

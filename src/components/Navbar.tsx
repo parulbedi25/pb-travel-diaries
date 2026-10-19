@@ -7,7 +7,7 @@ import {
   useMotionValueEvent,
 } from "framer-motion";
 import { Menu, X, ArrowUpRight, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
-import { isAdminSession, resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
+import { resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
@@ -60,8 +60,8 @@ function HeaderCta({
 }
 
 export default function Navbar() {
-  const { content, previewAsVisitor, setPreviewAsVisitor } = useSite();
-  const isAdmin = isAdminSession();
+  const { content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
+  const isAdmin = Boolean(account);
   const nav = content.nav.filter((l) => l.enabled);
   const ctas = resolveHeaderButtons(content.headerButtons)
     .filter((b) => b.enabled && b.label.trim())

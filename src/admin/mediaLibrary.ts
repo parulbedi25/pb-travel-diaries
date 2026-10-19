@@ -1,3 +1,5 @@
+import { siteApi } from "../api/siteApi";
+
 export interface MediaItem {
   id: string;
   name: string;
@@ -114,66 +116,51 @@ export const MEDIA_ACCEPT =
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
 
-const DB_NAME = "pb_media_v1";
-const STORE = "files";
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
+/**
+ * The media folder now lives on the server.
+ *
+ * Uploads are written to MEDIA_DIR (default ./media) and indexed in the
+ * database; `dataUrl` carries the public URL, which every image picker already
+ * treats as a plain `src`. That keeps the whole dashboard unchanged while the
+ * bytes move somewhere they can be backed up.
+ */
 
 export async function listMedia(): Promise<MediaItem[]> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => {
-      const rows = (req.result as MediaItem[]).sort((a, b) =>
-        b.addedAt.localeCompare(a.addedAt)
-      );
-      resolve(rows);
-    };
-    req.onerror = () => reject(req.error);
-  });
+  return siteApi.listMedia();
 }
 
 export async function getMedia(id: string): Promise<MediaItem | undefined> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).get(id);
-    req.onsuccess = () => resolve(req.result as MediaItem | undefined);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function saveMedia(item: MediaItem): Promise<void> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  const items = await siteApi.listMedia();
+  return items.find((item) => item.id === id);
 }
 
 export async function removeMedia(id: string): Promise<void> {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await siteApi.deleteMedia(id);
+}
+
+/** A data URL back into a Blob, for uploading a client-side compression. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [head, body] = dataUrl.split(",");
+  const mime = /data:([^;]+)/.exec(head)?.[1] ?? "application/octet-stream";
+  const binary = atob(body ?? "");
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/** The extension to store, taken from what the bytes actually are. */
+function extensionForMime(mime: string, fallback: string): string {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
+  return fallback;
+}
+
+/** Replace the extension on a filename without touching the rest of it. */
+function withExtension(name: string, ext: string): string {
+  const base = name.replace(/\.[^.]+$/, "");
+  return `${base}.${ext}`;
 }
 
 /** Resize/compress so the library stays usable in-browser. */
@@ -319,7 +306,6 @@ export async function compressImageToBudget(
   return best!;
 }
 
-const newId = () => `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 /**
  * Stores any supported file. Photos are resized when the browser can decode
@@ -354,18 +340,15 @@ export async function addAnyMediaFile(file: File): Promise<MediaItem> {
     dataUrl = await fileToRawDataUrl(file);
   }
 
-  const item: MediaItem = {
-    id: newId(),
-    name: file.name.replace(/\s+/g, "-"),
-    type,
-    size: file.size,
-    dataUrl,
-    addedAt: new Date().toISOString(),
-    kind,
-    ext,
-  };
-  await saveMedia(item);
-  return item;
+  // Compression happens here, in the browser, where the canvas is; what gets
+  // uploaded is the small version.
+  const upload = new File(
+    [kind === "image" ? dataUrlToBlob(dataUrl) : file],
+    file.name.replace(/\s+/g, "-"),
+    { type },
+  );
+  const item = await siteApi.uploadMedia(upload);
+  return { ...item, kind, ext };
 }
 
 /**
@@ -390,18 +373,13 @@ export async function addMediaFile(file: File, budget?: CompressBudget): Promise
   }
 
   const compressed = await compressImageToBudget(file, budget);
-  const item: MediaItem = {
-    id: newId(),
-    name: file.name.replace(/\s+/g, "-"),
-    type,
-    size: compressed.bytes,
-    dataUrl: compressed.dataUrl,
-    addedAt: new Date().toISOString(),
-    kind: "image",
-    ext,
-  };
-  await saveMedia(item);
-  return item;
+  const upload = new File(
+    [dataUrlToBlob(compressed.dataUrl)],
+    withExtension(file.name.replace(/\s+/g, "-"), extensionForMime(type, ext)),
+    { type },
+  );
+  const item = await siteApi.uploadMedia(upload);
+  return { ...item, kind: "image" };
 }
 
 export function formatBytes(n: number): string {

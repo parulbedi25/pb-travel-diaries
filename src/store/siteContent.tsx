@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { siteApi, type Account } from "../api/siteApi";
+import { describeApiError } from "../api/client";
 import { liftAll, normalizeLoaded, withChildrenOn } from "../utils/cascadeRules";
 import { setAt } from "../utils/objectPath";
 import { cascadeChild, cascadeSection } from "../admin/cascade";
@@ -1289,9 +1291,15 @@ export const DEFAULT_CONTENT: SiteContent = {
 
 /* ═══════════════════════ Merge + persistence ═══════════════════════ */
 
-const STORAGE_KEY = "pb_site_content_v1";
-const THEME_KEY = "pb_theme_v1";
-const REVISIONS_KEY = "pb_revisions_v1";
+/**
+ * Kept for the one-time import of a site edited while this app still stored
+ * things in the browser. Nothing writes these any more.
+ */
+export const LEGACY_STORAGE_KEYS = {
+  content: "pb_site_content_v1",
+  revisions: "pb_revisions_v1",
+  theme: "pb_theme_v1",
+} as const;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -1400,12 +1408,16 @@ function adoptMaintenanceStamp(draft: SiteContent, published: SiteContent): Site
   return { ...draft, sections };
 }
 
-function loadContent(): SiteContent {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_CONTENT);
-
-    const parsed = JSON.parse(raw) as SiteContent;
+/**
+ * Bring a saved site up to the shape this build expects: fill in sections
+ * added since it was saved, run the one-time content migrations, and keep the
+ * admin's own edits and ordering.
+ *
+ * Pure and synchronous — the caller decides whether the saved site came from
+ * the database (now) or the browser (the one-time import).
+ */
+export function normaliseSavedContent(parsed: SiteContent): SiteContent {
+  {
     if (parsed?.v !== 1 || !Array.isArray(parsed.sections) || !Array.isArray(parsed.nav)) {
       return structuredClone(DEFAULT_CONTENT);
     }
@@ -1797,30 +1809,27 @@ function loadContent(): SiteContent {
       sections: allSections,
       nav: migratedNav,
     });
-    const scheduled = applyMaintenanceSchedule(normalized);
-    if (scheduled !== normalized) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(scheduled));
-      } catch {
-        /* The switch still applies for this visit even if it cannot be saved. */
-      }
-    }
-    return scheduled;
-  } catch {
-    return structuredClone(DEFAULT_CONTENT);
+    // A schedule whose moment has passed still switches maintenance on for
+    // every visitor. It is persisted by the next dashboard save rather than
+    // written from a visitor's browser, which no longer holds the site.
+    return applyMaintenanceSchedule(normalized);
   }
 }
 
-function loadRevisions(): Revision[] {
-  try {
-    const raw = localStorage.getItem(REVISIONS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Revision[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+/** Server revision rows, mapped to the shape the dashboard renders. */
+function toRevisions(
+  rows: { id: string; description: string; content: SiteContent; timestamp: string }[],
+): Revision[] {
+  return rows.map((row) => ({
+    id: row.id,
+    timestamp: row.timestamp,
+    description: row.description,
+    content: row.content,
+  }));
 }
+
+/** Snapshots kept on the server; mirrors REVISION_LIMIT in server/db/mysql.js. */
+const REVISION_LIMIT = 15;
 
 function withSettingsDefaults(value: SiteContent): SiteContent {
   const { loaderLogo, loaderAnimation, brand, footer, headerButtons, themeColors, ...page } = value;
@@ -1841,7 +1850,18 @@ function sameContent(a: SiteContent, b: SiteContent): boolean {
 
 /* ═══════════════════════ Context ═══════════════════════ */
 
+/** Where the last publish got to, so the dashboard can say so. */
+export type SaveState = "idle" | "saving" | "saved" | "error";
+
 interface SiteContextValue {
+  /** True once the saved site has been read from the server. */
+  ready: boolean;
+  /** A failure while reading the site, if any. The built-in defaults are shown. */
+  loadError: string | null;
+  saveState: SaveState;
+  /** The signed-in account, or null. Replaces the old browser flag. */
+  account: Account | null;
+  setAccount: (account: Account | null) => void;
   content: SiteContent; // The published/front-facing content
   draft: SiteContent;   // The working draft content modified inside admin
   loaderDraft: string;
@@ -1896,29 +1916,91 @@ interface SiteContextValue {
 
 const SiteContext = createContext<SiteContextValue | null>(null);
 
+/* ── keeping other tabs of this browser in step ────────────────────────────
+   Publishing used to raise a `storage` event. Nothing is written to browser
+   storage now, so the tabs tell each other directly and then re-read from the
+   server. */
+
+const CHANNEL_NAME = "pb-site";
+let channel: BroadcastChannel | null = null;
+
+function channelRef(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === "undefined") return null;
+  channel ??= new BroadcastChannel(CHANNEL_NAME);
+  return channel;
+}
+
+function broadcast(message: string): void {
+  channelRef()?.postMessage(message);
+}
+
+function subscribe(callback: () => void): () => void {
+  const ch = channelRef();
+  if (!ch) return () => {};
+  const handler = () => callback();
+  ch.addEventListener("message", handler);
+  return () => ch.removeEventListener("message", handler);
+}
+
 export function SiteProvider({ children }: { children: ReactNode }) {
-  const [content, setContent] = useState<SiteContent>(loadContent);
-  const [draft, setDraft] = useState<SiteContent>(() => structuredClone(content));
-  const [revisions, setRevisions] = useState<Revision[]>(loadRevisions);
+  // The site now lives in the database, so it arrives a moment after mount.
+  // `ready` is what the shell waits for; until then it shows the loader.
+  const [content, setContent] = useState<SiteContent>(() => structuredClone(DEFAULT_CONTENT));
+  const [draft, setDraft] = useState<SiteContent>(() => structuredClone(DEFAULT_CONTENT));
+  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editedActions, setEditedActions] = useState<string[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [previewAsVisitor, setPreviewAsVisitor] = useState(false);
-  const [theme, setThemeState] = useState<Theme>(() => {
-    try {
-      const stored = localStorage.getItem(THEME_KEY);
-      return stored === "light" || stored === "dark" ? stored : "dark";
-    } catch {
-      return "dark";
-    }
-  });
+  const [theme, setThemeState] = useState<Theme>("dark");
+  const [account, setAccountState] = useState<Account | null>(null);
+
+  const setAccount = useCallback((next: Account | null) => {
+    setAccountState(next);
+    adminSession = Boolean(next);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [contentResult, revisionsResult, themeResult, statusResult] = await Promise.allSettled([
+        siteApi.loadContent(),
+        siteApi.loadRevisions(),
+        siteApi.getTheme(),
+        siteApi.status(),
+      ]);
+
+      if (cancelled) return;
+
+      if (contentResult.status === "fulfilled" && contentResult.value.content) {
+        const restored = normaliseSavedContent(contentResult.value.content);
+        setContent(restored);
+        setDraft(structuredClone(restored));
+      } else if (contentResult.status === "rejected") {
+        setLoadError(describeApiError(contentResult.reason));
+      }
+
+      if (revisionsResult.status === "fulfilled") {
+        setRevisions(toRevisions(revisionsResult.value));
+      }
+      if (themeResult.status === "fulfilled") {
+        setThemeState(themeResult.value === "light" ? "light" : "dark");
+      }
+      if (statusResult.status === "fulfilled" && statusResult.value.user) {
+        setAccountState(statusResult.value.user);
+        adminSession = true;
+      }
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      // The theme can still change when browser storage is unavailable.
-    }
   }, [theme]);
 
   // Theme colours: the saved palette for the active mode drives every token.
@@ -1970,20 +2052,29 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const hasChanges =
     hasPageChanges || hasBrandChanges || hasFooterChanges || hasSettingsChanges || loaderDraft !== (content.loaderLogo ?? "");
 
+  // Another tab of this browser may publish while this one is open. The
+  // channel only says "something changed"; the fresh copy comes from the
+  // server, so two tabs can never drift apart.
   useEffect(() => {
-    const syncSavedContent = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY || event.key === null) {
-        const next = loadContent();
-        setContent(next);
-        // Refresh another open site tab without overwriting an admin's draft.
-        setDraft((prev) => sameContent(prev, content) ? structuredClone(next) : prev);
-      }
-      if (event.key === REVISIONS_KEY || event.key === null) {
-        setRevisions(loadRevisions());
-      }
-    };
-    window.addEventListener("storage", syncSavedContent);
-    return () => window.removeEventListener("storage", syncSavedContent);
+    return subscribe(() => {
+      void (async () => {
+        try {
+          const [{ content: saved }, savedRevisions] = await Promise.all([
+            siteApi.loadContent(),
+            siteApi.loadRevisions(),
+          ]);
+          if (saved) {
+            const restored = normaliseSavedContent(saved);
+            setContent(restored);
+            // Refresh a second open tab without overwriting an unfinished draft.
+            setDraft((prev) => (sameContent(prev, content) ? structuredClone(restored) : prev));
+          }
+          setRevisions(toRevisions(savedRevisions));
+        } catch {
+          // A background refresh is best-effort; the next save reports real errors.
+        }
+      })();
+    });
   }, [content]);
 
   const logAction = useCallback((action: string) => {
@@ -2000,62 +2091,63 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     setSaveError(null);
   }, []);
 
+  /**
+   * Publish a snapshot.
+   *
+   * The screen updates immediately and the write goes to the server in the
+   * background: this function stays synchronous so every editor that calls it
+   * (there are a dozen) keeps its "did anything change" contract. If the write
+   * fails, the published view rolls back to what it was, the draft is left
+   * untouched, and `saveError` explains why.
+   */
   const commit = useCallback((
     nextContent: SiteContent,
     description: string,
   ): SiteContent | null => {
     let next: SiteContent;
     let nextRevisions: Revision[];
+    const id = `rev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     try {
       next = structuredClone(withSettingsDefaults(stampMaintenanceWindow(content, nextContent)));
-      const timestamp = new Date().toISOString();
-      const id = `rev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const previousRevisions = revisions.length ? revisions : [{
-        id: `${id}-before`,
-        timestamp,
-        description: "Before first save",
-        content: structuredClone(withSettingsDefaults(content)),
-      }];
-
-      // Full snapshots include uploaded images. Keep as many revisions as fit
-      // comfortably in browser storage rather than duplicating large data URLs
-      // fifteen times and freezing the tab on every resize release.
-      const contentJson = JSON.stringify(next);
-      const snapshotBudget = 2_000_000;
-      const maxRevisions = Math.max(
-        1,
-        Math.min(15, Math.floor((snapshotBudget - contentJson.length) / (contentJson.length + 200)))
-      );
-      nextRevisions = [{ id, timestamp, description, content: next }, ...previousRevisions]
-        .slice(0, maxRevisions);
-
-      const previousHistory = localStorage.getItem(REVISIONS_KEY);
-      for (;;) {
-        try {
-          localStorage.setItem(REVISIONS_KEY, JSON.stringify(nextRevisions));
-          localStorage.setItem(STORAGE_KEY, contentJson);
-          break;
-        } catch (error) {
-          // If storage is tight, retry with fewer *old* revisions. Never drop
-          // the new revision or silently publish a site without a history.
-          try {
-            if (previousHistory === null) localStorage.removeItem(REVISIONS_KEY);
-            else localStorage.setItem(REVISIONS_KEY, previousHistory);
-          } catch {
-            // The draft remains intact even if the browser won't restore history.
-          }
-          if (nextRevisions.length <= 1) throw error;
-          nextRevisions = nextRevisions.slice(0, Math.max(1, Math.floor(nextRevisions.length / 2)));
-        }
-      }
+      const previousRevisions = revisions.length
+        ? revisions
+        : [{
+            id: `${id}-before`,
+            timestamp: new Date().toISOString(),
+            description: "Before first save",
+            content: structuredClone(withSettingsDefaults(content)),
+          }];
+      nextRevisions = [
+        { id, timestamp: new Date().toISOString(), description, content: next },
+        ...previousRevisions,
+      ].slice(0, REVISION_LIMIT);
     } catch {
-      setSaveError("Could not save to this browser. Storage may be full or blocked. Your draft is intact; try a smaller logo or export a backup from Settings.");
+      setSaveError("That change could not be prepared. Your draft is intact.");
       return null;
     }
 
+    const previous = { content, revisions };
     setContent(next);
     setRevisions(nextRevisions);
     setSaveError(null);
+    setSaveState("saving");
+
+    void siteApi
+      .publish({ content: next, description, revisionId: id })
+      .then(({ revisions: saved }) => {
+        setRevisions(toRevisions(saved));
+        setSaveState("saved");
+        broadcast("content");
+      })
+      .catch((error) => {
+        // Put the live site back the way visitors were seeing it.
+        setContent(previous.content);
+        setRevisions(previous.revisions);
+        setSaveState("error");
+        setSaveError(`${describeApiError(error)} Your draft is intact.`);
+      });
+
     return next;
   }, [content, revisions]);
 
@@ -2101,14 +2193,13 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   }, [commit]);
 
   const deleteRevision = useCallback((id: string) => {
-    const next = revisions.filter((r) => r.id !== id);
-    try {
-      localStorage.setItem(REVISIONS_KEY, JSON.stringify(next));
-      setRevisions(next);
-      setSaveError(null);
-    } catch {
-      setSaveError("Could not update revision history. Check your browser storage settings.");
-    }
+    const previous = revisions;
+    setRevisions(previous.filter((r) => r.id !== id));
+    setSaveError(null);
+    void siteApi.deleteRevision(id).catch((error) => {
+      setRevisions(previous);
+      setSaveError(describeApiError(error));
+    });
   }, [revisions]);
 
   const resetContent = useCallback(() => {
@@ -2350,11 +2441,22 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     [logAction, updateDraft]
   );
 
-  const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    // The theme is part of the site, not of this browser, so it is saved too.
+    void siteApi.setTheme(t).catch(() => {
+      /* the screen already switched; a failed write is retried on the next change */
+    });
+  }, []);
 
   return (
     <SiteContext.Provider
       value={{
+        ready,
+        loadError,
+        saveState,
+        account,
+        setAccount,
         content,
         draft,
         loaderDraft,
@@ -2398,13 +2500,14 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** True while the admin is signed in on this browser. Same key the dashboard login uses. */
+/**
+ * Whether an admin is signed in, for code that runs outside React (the route
+ * scroll hook). The provider keeps this in step; components should read
+ * `account` from the context instead, so they re-render when it changes.
+ */
+let adminSession = false;
 export function isAdminSession(): boolean {
-  try {
-    return localStorage.getItem("pb_admin_session") === "1";
-  } catch {
-    return false;
-  }
+  return adminSession;
 }
 
 export function useSite(): SiteContextValue {

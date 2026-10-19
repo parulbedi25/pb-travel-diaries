@@ -1,6 +1,6 @@
 import { LayoutDashboard, Mail, Wrench } from "lucide-react";
 import type { MaintenanceData } from "../store/siteContent";
-import { isAdminSession, useSite } from "../store/siteContent";
+import { useSite } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
 import ThemeToggle from "./ThemeToggle";
 
@@ -10,10 +10,10 @@ import ThemeToggle from "./ThemeToggle";
  * website branding configured in Logo & brand.
  */
 export default function MaintenancePage({ data }: { data: MaintenanceData }) {
-  const { content } = useSite();
+  const { content, account } = useSite();
   // Maintenance replaces the whole site, so a signed-in admin needs a way back
   // out of it without typing the URL. Visitors never see this.
-  const admin = isAdminSession();
+  const admin = Boolean(account);
 
   return (
     <div className="relative grid min-h-dvh place-items-center overflow-hidden bg-ink-950 px-5 py-16">

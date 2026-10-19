@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -42,6 +42,8 @@ import {
   Sun,
   Trash2,
   Upload,
+  User,
+  UserPlus,
   X,
 } from "lucide-react";
 import {
@@ -67,6 +69,8 @@ import {
   type LoaderAnimation,
   LOADER_ANIMATIONS,
   LOADER_ANIMATION_LABELS,
+  LEGACY_STORAGE_KEYS,
+  normaliseSavedContent,
   resolveLoaderAnimation,
 } from "../store/siteContent";
 import BrandLogo from "../components/BrandLogo";
@@ -120,34 +124,12 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
+import { siteApi, type Account, type AuthEvent } from "../api/siteApi";
+import { describeApiError } from "../api/client";
 
-/* ═══════════════ Admin auth (client-side, static hosting) ═══════════════ */
-
-const DEFAULT_PASSWORD = "pbadmin";
-const HASH_KEY = "pb_admin_hash";
-const SESSION_KEY = "pb_admin_session";
-
-async function hashPass(pw: string): Promise<string> {
-  try {
-    if (typeof crypto !== "undefined" && crypto.subtle) {
-      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
-      return Array.from(new Uint8Array(buf))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    }
-  } catch {
-    /* fall through */
-  }
-  let h = 5381;
-  for (let i = 0; i < pw.length; i++) h = ((h << 5) + h) ^ pw.charCodeAt(i);
-  return "djb2_" + (h >>> 0).toString(16);
-}
-
-async function verifyPassword(pw: string): Promise<boolean> {
-  const stored = localStorage.getItem(HASH_KEY);
-  const target = stored ?? (await hashPass(DEFAULT_PASSWORD));
-  return (await hashPass(pw)) === target;
-}
+/* ═══════════════ Admin auth ═══════════════
+   Accounts live in the database. The browser holds nothing but an httpOnly
+   session cookie it cannot read, and every call goes to the API in server/. */
 
 /* ═══════════════ Field descriptors for the generic editor ═══════════════ */
 
@@ -797,23 +779,55 @@ export function ItemsField({
 
 /* ═══════════════ Login ═══════════════ */
 
-function Login({ onLogin }: { onLogin: () => void }) {
-  const [pw, setPw] = useState("");
+function Login({ onLogin }: { onLogin: (user: Account) => void }) {
+  const { theme, setTheme } = useSite();
+  const [checking, setChecking] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const { theme, setTheme } = useSite();
+
+  // A fresh database has no accounts, so the first screen is "create the
+  // owner account" rather than a sign-in nobody could pass.
+  useEffect(() => {
+    let alive = true;
+    siteApi
+      .status()
+      .then((status) => {
+        if (!alive) return;
+        setCreating(status.users === 0);
+        setChecking(false);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(describeApiError(err));
+        setChecking(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setError("");
-    const ok = await verifyPassword(pw);
-    setBusy(false);
-    if (ok) {
-      localStorage.setItem(SESSION_KEY, "1");
-      onLogin();
-    } else {
-      setError("Wrong password. Try again.");
+    if (creating && password !== confirm) {
+      setError("The two passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const user = creating
+        ? await siteApi.signup(username.trim(), password, email.trim() || undefined)
+        : await siteApi.login(username.trim(), password);
+      onLogin(user);
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -836,7 +850,9 @@ function Login({ onLogin }: { onLogin: () => void }) {
             </span>
             <div>
               <h1 className="font-display text-lg font-semibold text-white">PB Control</h1>
-              <p className="text-xs text-zinc-500">Admin sign in</p>
+              <p className="text-xs text-zinc-500">
+                {creating ? "Create the owner account" : "Admin sign in"}
+              </p>
             </div>
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -848,7 +864,23 @@ function Login({ onLogin }: { onLogin: () => void }) {
           </div>
 
           <form onSubmit={submit} className="mt-7 flex flex-col gap-3">
-            <label htmlFor="admin-pw" className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            <label htmlFor="admin-user" className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Username
+            </label>
+            <div className="relative">
+              <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input
+                id="admin-user"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoFocus
+                autoComplete="username"
+                placeholder="parul"
+                className={cn(inputCls, "pl-10")}
+              />
+            </div>
+
+            <label htmlFor="admin-pw" className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Password
             </label>
             <div className="relative">
@@ -856,29 +888,61 @@ function Login({ onLogin }: { onLogin: () => void }) {
               <input
                 id="admin-pw"
                 type="password"
-                value={pw}
-                onChange={(e) => setPw(e.target.value)}
-                autoFocus
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={creating ? "new-password" : "current-password"}
                 placeholder="••••••••"
                 className={cn(inputCls, "pl-10")}
               />
             </div>
+
+            {creating && (
+              <>
+                <label htmlFor="admin-pw2" className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  Repeat password
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    id="admin-pw2"
+                    type="password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    className={cn(inputCls, "pl-10")}
+                  />
+                </div>
+                <label htmlFor="admin-email" className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  Email <span className="font-normal normal-case tracking-normal text-zinc-600">(optional)</span>
+                </label>
+                <input
+                  id="admin-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className={inputCls}
+                />
+              </>
+            )}
+
             {error && <p className="text-xs font-medium text-red-400">{error}</p>}
+
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || checking}
               className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/30 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60"
             >
-              {busy ? "Checking…" : "Enter dashboard"}
+              {checking ? "Checking…" : busy ? "Working…" : creating ? "Create account" : "Sign in"}
             </button>
           </form>
 
           <p className="mt-5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[11px] leading-relaxed text-zinc-500">
-            First time? The default password is{" "}
-            <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[10px] text-saffron-300">
-              {DEFAULT_PASSWORD}
-            </code>{" "}
-            — change it in Settings right after logging in.
+            {creating
+              ? "This is the first account on this site, so it becomes the owner. Use at least 8 characters with a letter and a number."
+              : "Accounts and passwords are stored in the site's database, and every sign-in is recorded in the access history."}
           </p>
         </div>
       </div>
@@ -3250,12 +3314,271 @@ function BrandingPanel() {
   );
 }
 
+
+/* ═══════════════ Accounts & access history ═══════════════ */
+
+const EVENT_LABELS: Record<AuthEvent["event"], string> = {
+  signup: "Signed up",
+  login: "Signed in",
+  logout: "Signed out",
+  failed_login: "Failed sign-in",
+  password_change: "Password changed",
+  user_created: "Account created",
+  user_deleted: "Account deleted",
+};
+
+function whenLabel(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return at.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Anything this browser still holds from the pre-database version. */
+function legacySnapshot(): SiteContent | null {
+  try {
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEYS.content);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SiteContent;
+    return parsed?.v === 1 && Array.isArray(parsed.sections) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Accounts, sign-in history, and the one-time import of a site that was saved
+ * in this browser before the move to a database.
+ */
+function AccessPanel() {
+  const { account } = useSite();
+  const [users, setUsers] = useState<Account[]>([]);
+  const [events, setEvents] = useState<AuthEvent[]>([]);
+  const [form, setForm] = useState({ username: "", password: "", email: "" });
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [legacy, setLegacy] = useState<SiteContent | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [list, log] = await Promise.all([siteApi.listUsers(), siteApi.authEvents(50)]);
+      setUsers(list);
+      setEvents(log);
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    setLegacy(legacySnapshot());
+  }, [refresh]);
+
+  const addUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
+    setBusy(true);
+    try {
+      await siteApi.createUser(form.username.trim(), form.password, form.email.trim() || undefined);
+      setForm({ username: "", password: "", email: "" });
+      setMsg({ ok: true, text: "Account created." });
+      await refresh();
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const [pendingDelete, setPendingDelete] = useState<Account | null>(null);
+
+  const removeUser = async (user: Account) => {
+    setPendingDelete(null);
+    try {
+      await siteApi.deleteUser(user.id);
+      await refresh();
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    }
+  };
+
+  const importLegacy = async () => {
+    if (!legacy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const content = normaliseSavedContent(legacy);
+      await siteApi.publish({
+        content,
+        description: "Imported from this browser",
+        revisionId: `rev-${Date.now()}`,
+      });
+      localStorage.removeItem(LEGACY_STORAGE_KEYS.content);
+      localStorage.removeItem(LEGACY_STORAGE_KEYS.revisions);
+      setLegacy(null);
+      setMsg({ ok: true, text: "Imported. Reloading the dashboard with the database copy…" });
+      setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-6">
+      <div className="rounded-3xl glass p-6">
+        <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+          <UserPlus className="h-4 w-4 text-saffron-300" /> Accounts
+        </h3>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          Passwords are stored as bcrypt hashes in the database — never in this browser.
+        </p>
+
+        <ul className="mt-4 grid gap-2">
+          {users.map((user) => (
+            <li key={user.id} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
+              <span className="font-display text-sm font-semibold text-white">{user.username}</span>
+              <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                {user.role}
+              </span>
+              {account?.id === user.id && (
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">you</span>
+              )}
+              {user.email && <span className="truncate text-xs text-zinc-500">{user.email}</span>}
+              {user.role !== "owner" && account?.id !== user.id && (
+                <button
+                  type="button"
+                  onClick={() => setPendingDelete(user)}
+                  className="ml-auto grid h-8 w-8 place-items-center rounded-lg text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                  aria-label={`Delete ${user.username}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </li>
+          ))}
+          {users.length === 0 && <li className="text-xs text-zinc-500">No accounts yet.</li>}
+        </ul>
+
+        <form onSubmit={addUser} className="mt-4 grid gap-3 sm:grid-cols-3">
+          <input
+            value={form.username}
+            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+            placeholder="Username"
+            aria-label="New username"
+            className={inputCls}
+          />
+          <input
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            placeholder="Email (optional)"
+            aria-label="New email"
+            className={inputCls}
+          />
+          <input
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            placeholder="Password"
+            aria-label="New password"
+            className={inputCls}
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60 sm:col-span-3"
+          >
+            <Plus className="h-4 w-4" /> Add account
+          </button>
+        </form>
+        {msg && (
+          <p className={cn("mt-3 text-xs font-medium", msg.ok ? "text-emerald-300" : "text-red-400")}>{msg.text}</p>
+        )}
+      </div>
+
+      <div className="rounded-3xl glass p-6">
+        <h3 className="font-display text-base font-semibold text-white">Access history</h3>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          The last 50 sign-ups, sign-ins, sign-outs and failed attempts, with the address and browser they came from.
+        </p>
+        <div className="mt-4 max-h-72 overflow-y-auto no-scrollbar">
+          <table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-ink-950/80 text-[10px] uppercase tracking-[0.14em] text-zinc-500 backdrop-blur">
+              <tr>
+                <th className="py-2 pr-3 font-semibold">When</th>
+                <th className="py-2 pr-3 font-semibold">Event</th>
+                <th className="py-2 pr-3 font-semibold">Account</th>
+                <th className="py-2 font-semibold">From</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr key={event.id} className="border-t border-white/[0.05] text-zinc-400">
+                  <td className="whitespace-nowrap py-2 pr-3">{whenLabel(event.createdAt)}</td>
+                  <td className={cn("py-2 pr-3 font-medium", event.event === "failed_login" ? "text-red-400" : "text-white")}>
+                    {EVENT_LABELS[event.event] ?? event.event}
+                    {event.detail ? <span className="ml-1 text-zinc-600">· {event.detail}</span> : null}
+                  </td>
+                  <td className="py-2 pr-3">{event.username || "—"}</td>
+                  <td className="py-2">
+                    <span className="font-mono text-[11px]">{event.ip || "—"}</span>
+                  </td>
+                </tr>
+              ))}
+              {events.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-3 text-zinc-500">Nothing recorded yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Delete ${pendingDelete.username}?`}
+          message="They are signed out everywhere and the account is removed."
+          confirmLabel="Delete account"
+          onConfirm={() => void removeUser(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {legacy && (
+        <div className="rounded-3xl border border-saffron-300/25 bg-saffron-400/[0.06] p-6">
+          <h3 className="font-display text-base font-semibold text-white">Bring this browser's site into the database</h3>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+            This browser still holds a site saved by the old version. Import it once and the database becomes the only copy.
+            Anything already published from another device is replaced by what is here.
+          </p>
+          <button
+            type="button"
+            onClick={() => void importLegacy()}
+            disabled={busy}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/30 transition-all hover:brightness-110 active:scale-95 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" /> Import this browser's site
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPanel() {
   const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft } = useSite();
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savingPw, setSavingPw] = useState(false);
   const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -3280,24 +3603,22 @@ function SettingsPanel() {
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
-    const ok = await verifyPassword(cur);
-    if (!ok) {
-      setMsg({ ok: false, text: "Current password is wrong." });
-      return;
-    }
-    if (nw.length < 4) {
-      setMsg({ ok: false, text: "New password must be at least 4 characters." });
-      return;
-    }
     if (nw !== cf) {
       setMsg({ ok: false, text: "New passwords don't match." });
       return;
     }
-    localStorage.setItem(HASH_KEY, await hashPass(nw));
-    setCur("");
-    setNw("");
-    setCf("");
-    setMsg({ ok: true, text: "Password updated. Use it next time you sign in." });
+    setSavingPw(true);
+    try {
+      await siteApi.changePassword(cur, nw);
+      setCur("");
+      setNw("");
+      setCf("");
+      setMsg({ ok: true, text: "Password updated. Other browsers have been signed out." });
+    } catch (error) {
+      setMsg({ ok: false, text: describeApiError(error) });
+    } finally {
+      setSavingPw(false);
+    }
   };
 
   /** The editor's working copy, exactly as it would be published. */
@@ -3565,19 +3886,22 @@ function SettingsPanel() {
             )}
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950"
+              disabled={savingPw}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
             >
-              <Check className="h-4 w-4" /> Update password
+              <Check className="h-4 w-4" /> {savingPw ? "Updating…" : "Update password"}
             </button>
           </div>
         </form>
+
+        <AccessPanel />
 
         {/* export / import */}
         <div className="rounded-3xl glass p-6">
           <h3 className="font-display text-base font-semibold text-white">Backup &amp; transfer</h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            All edits live in this browser (localStorage). Export a JSON snapshot to back up your
-            content or move it to another device — import it back any time.
+            The site is stored in the database. Export a JSON snapshot for an extra copy, or to move
+            content between installations — import it back any time.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
@@ -4749,7 +5073,8 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
 
 export default function AdminPage() {
   const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions } = useSite();
-  const [authed, setAuthed] = useState(() => localStorage.getItem(SESSION_KEY) === "1");
+  const { account, setAccount } = useSite();
+  const authed = Boolean(account);
   const [tab, setTab] = useState<Tab>("sections");
   const [saveDesc, setSaveDesc] = useState("");
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -4757,14 +5082,17 @@ export default function AdminPage() {
   const [countdownSaveConflict, setCountdownSaveConflict] = useState<SectionEntry | null>(null);
 
   if (!authed) {
-    return <Login onLogin={() => setAuthed(true)} />;
+    return <Login onLogin={(user) => setAccount(user)} />;
   }
 
   const logout = () => {
-    localStorage.removeItem(SESSION_KEY);
+    // Clear the server session; the browser keeps nothing to clear.
+    void siteApi.logout().catch(() => {
+      /* the cookie expires on its own; the screen still signs out */
+    });
     // The next sign-in opens at the top, not where this session was.
     forgetDashboardScroll();
-    setAuthed(false);
+    setAccount(null);
   };
 
   const openSaveModal = (scope: "all" | "brand" = "all") => {

@@ -10,7 +10,6 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import {
-  isAdminSession,
   useSite,
   type SectionEntry,
 } from "../store/siteContent";
@@ -65,8 +64,8 @@ export default function SectionFrame({
   entry: SectionEntry;
   children: ReactNode;
 }) {
-  const { setSectionLayout, moveSection, setSectionEnabled, previewAsVisitor } = useSite();
-  const admin = isAdminSession() && !previewAsVisitor;
+  const { setSectionLayout, moveSection, setSectionEnabled, previewAsVisitor, account } = useSite();
+  const admin = Boolean(account) && !previewAsVisitor;
   const [editing, setEditing] = useState(false);
   const [dragEdge, setDragEdge] = useState<Edge | null>(null);
   const drag = useRef<{

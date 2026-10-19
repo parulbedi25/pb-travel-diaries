@@ -23,6 +23,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: true,
+    // In development the API and the uploaded files come from `npm run server`
+    // (port 4000). Proxying them keeps the browser on one origin, exactly as
+    // Express serves both in production.
+    proxy: {
+      "/api": { target: "http://127.0.0.1:4000", changeOrigin: false },
+      "/media": { target: "http://127.0.0.1:4000", changeOrigin: false },
+    },
   },
   preview: {
     host: true,
