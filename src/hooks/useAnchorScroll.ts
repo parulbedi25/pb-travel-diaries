@@ -1,17 +1,6 @@
 import { useEffect } from "react";
 import { scrollToAnchor } from "../utils/anchorScroll";
-
-/**
- * Routes on this site are hashes too (`#/shop`, `#/admin`), so not every
- * `href="#…"` is a jump — those have to be left to the router.
- */
-function isRouteHash(href: string): boolean {
-  return !href || href === "#" || href.startsWith("#/");
-}
-
-function idFromHash(hash: string): string {
-  return isRouteHash(hash) ? "" : decodeURIComponent(hash.slice(1));
-}
+import { anchorIdFromHash } from "../utils/router";
 
 /**
  * Land on an anchor that has only just been asked for.
@@ -23,7 +12,7 @@ function idFromHash(hash: string): string {
 function settle(id: string): void {
   const startedAt = performance.now();
   const tick = () => {
-    if (idFromHash(window.location.hash) !== id) return;
+    if (anchorIdFromHash(window.location.hash) !== id) return;
     if (scrollToAnchor(id)) return;
     if (performance.now() - startedAt < 1500) requestAnimationFrame(tick);
   };
@@ -49,7 +38,7 @@ export function useAnchorScroll(): void {
       if (!link || link.target === "_blank") return;
 
       const href = link.getAttribute("href") ?? "";
-      const id = idFromHash(href);
+      const id = anchorIdFromHash(href);
       if (!id) return;
 
       // Not on this page — let the hash change and the router take over; the
@@ -67,7 +56,7 @@ export function useAnchorScroll(): void {
 
     // Opened with the hash already on it, or arriving from another page.
     const onHashChange = () => {
-      const id = idFromHash(window.location.hash);
+      const id = anchorIdFromHash(window.location.hash);
       if (id) settle(id);
     };
 

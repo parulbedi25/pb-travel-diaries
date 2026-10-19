@@ -75,6 +75,7 @@ import { useCountdown, useCountdownFinished } from "../components/CountdownSecti
 import { cn } from "../utils/cn";
 import { formatMilestone, resolveOdometer, type MilestoneState } from "../utils/odometer";
 import { pointerColors } from "../utils/pointerColors";
+import { forgetDashboardScroll } from "../utils/routeScroll";
 import type { LatLng } from "../utils/routing";
 import ImageField from "./ImageField";
 import ImagesField from "./ImagesField";
@@ -4761,6 +4762,8 @@ export default function AdminPage() {
 
   const logout = () => {
     localStorage.removeItem(SESSION_KEY);
+    // The next sign-in opens at the top, not where this session was.
+    forgetDashboardScroll();
     setAuthed(false);
   };
 

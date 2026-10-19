@@ -22,6 +22,19 @@ export function getHashRoute(): string {
   return hash.startsWith("/") ? hash : "/";
 }
 
+/**
+ * Routes live in the hash as well (`#/shop`, `#/admin`), so not every `#…` is
+ * a jump to an element. Both kinds are told apart here, in one place.
+ */
+export function isRouteHash(hash: string): boolean {
+  return !hash || hash === "#" || hash.startsWith("#/");
+}
+
+/** The element id a hash points at — "" when it is a route rather than a jump. */
+export function anchorIdFromHash(hash: string): string {
+  return isRouteHash(hash) ? "" : decodeURIComponent(hash.slice(1));
+}
+
 export function useHashRoute(): string {
   const [route, setRoute] = useState<string>(getHashRoute);
   useEffect(() => {
