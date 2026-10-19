@@ -54,7 +54,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   const storyHref = status === "live" ? instagramHref : "";
 
   return (
-    <section id="live" aria-labelledby="live-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="live" aria-labelledby="live-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute -left-40 top-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-[130px]"
         aria-hidden

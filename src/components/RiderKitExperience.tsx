@@ -369,7 +369,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
   };
 
   return (
-    <section id="riderkit" aria-labelledby="riderkit-title" className="relative scroll-mt-28 overflow-hidden py-24 sm:py-32">
+    <section id="riderkit" aria-labelledby="riderkit-title" className="relative overflow-hidden py-24 sm:py-32">
       <div
         className="pointer-events-none absolute right-[-10rem] top-16 h-96 w-96 rounded-full bg-saffron-400/[0.07] blur-[130px]"
         aria-hidden="true"

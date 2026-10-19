@@ -1329,7 +1329,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   };
 
   return (
-    <section id="machine" aria-labelledby="machine-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="machine" aria-labelledby="machine-title" className="relative py-24 sm:py-32">
       <SectionHeader
         eyebrow={data.eyebrow}
         id="machine-title"

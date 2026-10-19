@@ -134,7 +134,10 @@ export function SectionHeader({
   id?: string;
 }) {
   return (
+    // data-section-anchor: the block a jump aims at. Not the section's top,
+    // which is the top of its padding — see utils/anchorScroll.ts.
     <div
+      data-section-anchor
       className={cn(
         "max-w-2xl",
         align === "center" ? "mx-auto text-center" : "text-left"

@@ -134,7 +134,7 @@ export default function BikeShowcase({ data }: { data: MachineData }) {
   const odoPct = Math.min(100, Math.round((data.km / 50000) * 100));
 
   return (
-    <section id="machine" aria-labelledby="machine-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="machine" aria-labelledby="machine-title" className="relative py-24 sm:py-32">
       <div
         className="pointer-events-none absolute right-0 top-24 h-96 w-96 rounded-full bg-saffron-400/10 blur-[130px]"
         aria-hidden

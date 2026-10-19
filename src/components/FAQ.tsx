@@ -10,7 +10,7 @@ export default function FAQ({ data }: { data: FaqData }) {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" aria-labelledby="faq-title" className="relative scroll-mt-28 py-24 sm:py-32">
+    <section id="faq" aria-labelledby="faq-title" className="relative py-24 sm:py-32">
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
         <div className="grid gap-12 lg:grid-cols-[420px_1fr] lg:gap-20">
           {/* left — sticky intro */}

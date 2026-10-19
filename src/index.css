@@ -123,6 +123,12 @@
   }
 }
 
+/* How tall the fixed header is, published by the Navbar as it changes so an
+   in-page jump knows what to clear. This is only the starting value. */
+:root {
+  --header-h: 5rem;
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
