@@ -32,6 +32,9 @@ table itself.
 which is not deployed. On cPanel, Passenger starts the Node app; you rebuild
 `dist/` and press **Restart** after a code change (step 10).
 
+The copy-paste walkthrough for every mode — including development over an SSH
+tunnel when you need it on the server — is in **[RUNNING.md](RUNNING.md)**.
+
 ---
 
 ## 1. Create the database in cPanel
@@ -151,6 +154,8 @@ inside it, so the browser never asks for `src/` or `public/`. `npm run build`
 still needs them, which is why they stay in git for the next update.
 
 ## 5. Register the Node app
+
+Step-by-step commands for this step and the first run: **[RUNNING.md](RUNNING.md#3-production-on-the-namecheap-server)**.
 
 cPanel → **Setup Node.js App** → **Create Application**
 
@@ -337,7 +342,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/srv/pb
 EnvironmentFile=-/srv/pb/.env
-ExecStart=/usr/bin/node server/index.js
+ExecStart=/usr/bin/node server/scripts/start.js
 Restart=always
 
 [Install]
@@ -385,7 +390,7 @@ sudo certbot --nginx -d pbtraveldiaries.com -d www.pbtraveldiaries.com
 | Sign-in “works” then every save says *Sign in to continue* | Cookies are not surviving. Check `TRUST_PROXY=true`, that the site is on HTTPS, and that `COOKIE_SECURE` is `auto` (or `false` while testing over plain HTTP). |
 | Uploads fail with 413 | Raise `MAX_UPLOAD_MB`, and on nginx also `client_max_body_size`. Passenger limits the body too — set it in the panel if offered. |
 | Uploads succeed but files 404 | `MEDIA_DIR` must be writable (`chmod 775 media`) and must be the same folder the server reads. |
-| Built-in art (the Himalayan photo) 404s | `dist/` is stale — run `npm run build` and restart. Uploads live in `media/`, built-in art is copied from `public/`. |
+| Built-in art (the Himalayan photo) 404s | The file is missing from `public/media/` (or `dist/media/` on an older build). Uploads live in `media/`, shipped art in `public/media/`; run `npm run build` and restart. |
 | Setup succeeds but the owner screen returns “Finish the database step first” | `data/install.json` could not be written (permissions). `chmod 775 data` and retry. |
 | App restart loses accounts/content | Expected only with `DB_DRIVER=memory`. Production must use `mysql`. |
 | Build fails on the server | Node is too old. Vite 7 needs 20.19+ or 22.12+. |

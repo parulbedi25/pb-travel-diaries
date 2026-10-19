@@ -5,7 +5,12 @@ road-tested routes and honest guides — plus a dashboard that edits the live si
 
 **Stack:** React 19 · Vite 7 · TypeScript · Tailwind CSS 4 · Express 5 ·
 MariaDB. The site is served by its own Node process, so hosting needs Node and a
-database. The step-by-step Namecheap guide is in **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+database.
+
+- **[RUNNING.md](RUNNING.md)** — step-by-step: development on your computer,
+  production locally, and production on Namecheap (plus development over SSH).
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — cPanel specifics: databases, backups,
+  HTTPS, updates.
 
 ---
 
@@ -56,6 +61,8 @@ deploying.
 ---
 
 ## Local development
+
+The full walkthrough, including the server, is in **[RUNNING.md](RUNNING.md)**.
 
 ```bash
 npm ci
