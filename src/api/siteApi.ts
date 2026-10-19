@@ -7,7 +7,36 @@ export interface Account {
   id: number;
   username: string;
   email: string | null;
-  role: "owner" | "admin";
+  /** readers can sign in and see members-only sections, nothing else. */
+  role: "owner" | "admin" | "reader";
+}
+
+/** What the first-run setup screen needs to know. */
+export interface SetupStatus {
+  installed: boolean;
+  needsOwner: boolean;
+  databaseReady: boolean;
+  users: number;
+  siteTitle: string;
+  db: { host: string; port: number; database: string; user: string; socketPath: string } | null;
+  setupLocked: boolean;
+  error?: string | null;
+  mode: "installer" | "env" | "memory";
+}
+
+export interface SetupDatabaseInput {
+  siteTitle: string;
+  host: string;
+  port: string | number;
+  database: string;
+  user: string;
+  password: string;
+  socketPath?: string;
+}
+
+export interface SiteSettings {
+  title: string;
+  allowSignup: boolean;
 }
 
 export interface AuthStatus {
@@ -113,11 +142,17 @@ export const siteApi = {
     return users;
   },
 
-  async createUser(username: string, password: string, email?: string): Promise<Account> {
+  async createUser(
+    username: string,
+    password: string,
+    email?: string,
+    role: "admin" | "reader" = "admin",
+  ): Promise<Account> {
     const { user } = await api.post<{ user: Account }>("/api/auth/users", {
       username,
       password,
       email,
+      role,
     });
     return user;
   },
@@ -145,5 +180,43 @@ export const siteApi = {
 
   async deleteMedia(id: string): Promise<void> {
     await api.delete(`/api/media/${encodeURIComponent(id)}`);
+  },
+
+  /* ── site identity ───────────────────────────────────────────────────── */
+
+  async getSiteSettings(): Promise<SiteSettings> {
+    return api.get<SiteSettings>("/api/settings/site");
+  },
+
+  async saveSiteSettings(input: Partial<SiteSettings>): Promise<SiteSettings> {
+    return api.put<SiteSettings>("/api/settings/site", input);
+  },
+
+  /* ── first-run setup ─────────────────────────────────────────────────── */
+
+  setupStatus: () => api.get<SetupStatus>("/api/setup/status"),
+
+  async testDatabase(input: SetupDatabaseInput): Promise<{ ok: boolean; serverVersion: string }> {
+    return api.post<{ ok: boolean; serverVersion: string }>("/api/setup/test", input);
+  },
+
+  async setupDatabase(input: SetupDatabaseInput): Promise<{
+    ok: boolean;
+    siteTitle: string;
+    createdDatabase: boolean;
+    users: number;
+    needsOwner: boolean;
+    next: "owner" | "login";
+  }> {
+    return api.post("/api/setup/database", input);
+  },
+
+  async setupOwner(input: {
+    username: string;
+    password: string;
+    email?: string;
+  }): Promise<Account> {
+    const { user } = await api.post<{ user: Account }>("/api/setup/owner", input);
+    return user;
   },
 };

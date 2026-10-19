@@ -41,6 +41,7 @@ import {
   ShoppingBag,
   Sun,
   Trash2,
+  Unlock,
   Upload,
   User,
   UserPlus,
@@ -2329,6 +2330,17 @@ function SectionsPanel() {
     setCountdownConflict(null);
   };
 
+  /** Visitors see a locked card; signed-in accounts see the section. */
+  const setMembersOnly = (id: string, membersOnly: boolean) => {
+    const entry = sections.find((s) => s.id === id);
+    if (!entry) return;
+    logAction(`${membersOnly ? "Members only" : "Public"}: ${entry.label}`);
+    updateDraft((c) => ({
+      ...c,
+      sections: c.sections.map((s) => (s.id === id ? { ...s, membersOnly } : s)),
+    }));
+  };
+
   const setEnabled = (id: string, enabled: boolean) => {
     const s = sections.find((x) => x.id === id);
     if (s?.type === "countdown" && enabled) {
@@ -2576,6 +2588,7 @@ function SectionsPanel() {
                       revealIds.includes(entry.id) &&
                       " · opens when countdown ends"}
                     {!entry.enabled && " · hidden"}
+                    {entry.membersOnly && " · members only"}
                   </p>
                 </div>
                 <Switch
@@ -2600,6 +2613,21 @@ function SectionsPanel() {
                   className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMembersOnly(entry.id, !entry.membersOnly)}
+                  aria-label={`${entry.membersOnly ? "Make public" : "Make members only"}: ${entry.label}`}
+                  title={entry.membersOnly ? "Members only — click to make public" : "Make this section members only"}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                    entry.membersOnly
+                      ? "bg-saffron-400/15 text-saffron-300 hover:bg-saffron-400/25"
+                      : "bg-white/[0.05] text-zinc-400 hover:bg-white/[0.12] hover:text-white"
+                  )}
+                >
+                  {entry.membersOnly ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                  {entry.membersOnly ? "Members" : "Public"}
                 </button>
                 <button
                   onClick={() => setSelectedId(selectedId === entry.id ? null : entry.id)}
@@ -3359,7 +3387,12 @@ function AccessPanel() {
   const { account } = useSite();
   const [users, setUsers] = useState<Account[]>([]);
   const [events, setEvents] = useState<AuthEvent[]>([]);
-  const [form, setForm] = useState({ username: "", password: "", email: "" });
+  const [form, setForm] = useState({
+    username: "",
+    password: "",
+    email: "",
+    role: "admin" as "admin" | "reader",
+  });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [legacy, setLegacy] = useState<SiteContent | null>(null);
@@ -3384,8 +3417,13 @@ function AccessPanel() {
     setMsg(null);
     setBusy(true);
     try {
-      await siteApi.createUser(form.username.trim(), form.password, form.email.trim() || undefined);
-      setForm({ username: "", password: "", email: "" });
+      await siteApi.createUser(
+        form.username.trim(),
+        form.password,
+        form.email.trim() || undefined,
+        form.role,
+      );
+      setForm({ username: "", password: "", email: "", role: form.role });
       setMsg({ ok: true, text: "Account created." });
       await refresh();
     } catch (error) {
@@ -3437,7 +3475,9 @@ function AccessPanel() {
           <UserPlus className="h-4 w-4 text-saffron-300" /> Accounts
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-          Passwords are stored as bcrypt hashes in the database — never in this browser.
+          Accounts created here can edit the site (admin) or only read the members-only sections
+          (reader). Public sign-up creates readers. Passwords are bcrypt hashes in the database —
+          never in this browser.
         </p>
 
         <ul className="mt-4 grid gap-2">
@@ -3466,7 +3506,7 @@ function AccessPanel() {
           {users.length === 0 && <li className="text-xs text-zinc-500">No accounts yet.</li>}
         </ul>
 
-        <form onSubmit={addUser} className="mt-4 grid gap-3 sm:grid-cols-3">
+        <form onSubmit={addUser} className="mt-4 grid gap-3 sm:grid-cols-2">
           <input
             value={form.username}
             onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
@@ -3489,10 +3529,19 @@ function AccessPanel() {
             aria-label="New password"
             className={inputCls}
           />
+          <select
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as "admin" | "reader" }))}
+            aria-label="New account role"
+            className={cn(inputCls, "[&>option]:bg-ink-950")}
+          >
+            <option value="admin">Admin — can edit the site</option>
+            <option value="reader">Reader — members-only access</option>
+          </select>
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60 sm:col-span-3"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60 sm:col-span-2"
           >
             <Plus className="h-4 w-4" /> Add account
           </button>
@@ -3573,7 +3622,7 @@ function AccessPanel() {
 }
 
 function SettingsPanel() {
-  const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft } = useSite();
+  const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft, setSiteTitle } = useSite();
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
@@ -3582,12 +3631,46 @@ function SettingsPanel() {
   const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [site, setSite] = useState<{ title: string; allowSignup: boolean } | null>(null);
+  const [siteMsg, setSiteMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savingSite, setSavingSite] = useState(false);
 
   // The loader animation lives on the draft, so it publishes with Save Changes.
   const loaderAnimation = resolveLoaderAnimation(draft.loaderAnimation);
   const setLoaderAnimation = (next: LoaderAnimation) => {
     logAction(`Changed loader animation to ${LOADER_ANIMATION_LABELS[next].label}`);
     updateDraft((c) => ({ ...c, loaderAnimation: next }));
+  };
+
+  useEffect(() => {
+    let alive = true;
+    siteApi
+      .getSiteSettings()
+      .then((next) => alive && setSite(next))
+      .catch(() => {
+        /* the card simply stays hidden until the API answers */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const saveSite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!site) return;
+    setSavingSite(true);
+    setSiteMsg(null);
+    try {
+      const saved = await siteApi.saveSiteSettings(site);
+      setSite(saved);
+      setSiteTitle(saved.title);
+      document.title = saved.title;
+      setSiteMsg({ ok: true, text: "Saved. The browser tab and sign-in screens use this title." });
+    } catch (error) {
+      setSiteMsg({ ok: false, text: describeApiError(error) });
+    } finally {
+      setSavingSite(false);
+    }
   };
 
   // Esc closes the loader preview.
@@ -3694,6 +3777,53 @@ function SettingsPanel() {
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_370px]">
       <div className="max-w-2xl">
         <div className="flex flex-col gap-5">
+        {/* site identity + sign-up */}
+        {site && (
+          <form onSubmit={saveSite} className="rounded-3xl glass p-6">
+            <h3 className="font-display text-base font-semibold text-white">Site &amp; sign-up</h3>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+              The title appears in the browser tab and on the sign-in screens. Public sign-up lets
+              anybody create a read-only account from the members page.
+            </p>
+            <label htmlFor="site-title" className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Website title
+            </label>
+            <input
+              id="site-title"
+              value={site.title}
+              onChange={(e) => setSite((v) => (v ? { ...v, title: e.target.value } : v))}
+              maxLength={120}
+              className={cn(inputCls, "mt-1.5")}
+            />
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
+              <Switch
+                on={site.allowSignup}
+                onChange={(allowSignup) => setSite((v) => (v ? { ...v, allowSignup } : v))}
+                label="Allow public sign-up"
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">Allow public sign-up</p>
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  New accounts get read-only access. Off means the owner adds everybody from this
+                  panel.
+                </p>
+              </div>
+            </div>
+            {siteMsg && (
+              <p className={cn("mt-3 text-xs font-medium", siteMsg.ok ? "text-emerald-300" : "text-red-400")}>
+                {siteMsg.text}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={savingSite}
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
+            >
+              <Save className="h-4 w-4" /> {savingSite ? "Saving…" : "Save site settings"}
+            </button>
+          </form>
+        )}
+
         {/* theme */}
         <div className="rounded-3xl glass p-6">
           <h3 className="font-display text-base font-semibold text-white">Theme</h3>
@@ -5083,6 +5213,45 @@ export default function AdminPage() {
 
   if (!authed) {
     return <Login onLogin={(user) => setAccount(user)} />;
+  }
+
+  // Read-only accounts sign in through the members page. They may never reach
+  // the editor, even by typing #/admin themselves.
+  if (account?.role === "reader") {
+    const leave = () => {
+      void siteApi.logout().catch(() => undefined);
+      setAccount(null);
+      window.location.hash = "#/members";
+    };
+    return (
+      <div className="grid min-h-screen place-items-center bg-ink-950 px-5 text-white">
+        <div className="w-full max-w-md rounded-3xl glass p-8 text-center">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.06] text-saffron-300">
+            <Lock className="h-5 w-5" />
+          </span>
+          <h1 className="mt-5 font-display text-xl font-semibold">Read-only account</h1>
+          <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+            This account can read the members-only sections of the site, but it cannot edit
+            anything. Ask the owner if you need editor access.
+          </p>
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <a
+              href="#/"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 text-sm font-semibold text-on-gold transition-all duration-300 hover:brightness-110"
+            >
+              Back to the site
+            </a>
+            <button
+              type="button"
+              onClick={leave}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/12 px-5 py-3 text-sm font-semibold text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+            >
+              <LogOut className="h-4 w-4" /> Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const logout = () => {

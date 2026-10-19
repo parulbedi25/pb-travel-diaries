@@ -27,6 +27,10 @@ export function createMemoryRepo() {
 
     async ping() {},
     async close() {},
+    /** Nothing to migrate in memory; kept so both drivers share one shape. */
+    async migrate() {
+      return { version: 0, upgradedFrom: 0 };
+    },
 
     async getContent() {
       return state.content ? clone(state.content) : null;

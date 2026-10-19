@@ -51,6 +51,13 @@ export interface SectionEntry {
   type: SectionType;
   label: string;
   enabled: boolean;
+  /**
+   * Only signed-in accounts see this section's content. Visitors get a locked
+   * card with the label, and the server never sends them the data.
+   */
+  membersOnly?: boolean;
+  /** Set by the server on the anonymous copy of a members-only section. */
+  locked?: boolean;
   data: Record<string, unknown>;
   /** Frame geometry set by an admin resizing the section on the live site. */
   layout?: {
@@ -1862,6 +1869,9 @@ interface SiteContextValue {
   /** The signed-in account, or null. Replaces the old browser flag. */
   account: Account | null;
   setAccount: (account: Account | null) => void;
+  /** The site's title, from the database. Drives the browser tab's name. */
+  siteTitle: string;
+  setSiteTitle: (title: string) => void;
   content: SiteContent; // The published/front-facing content
   draft: SiteContent;   // The working draft content modified inside admin
   loaderDraft: string;
@@ -1956,21 +1966,35 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const [previewAsVisitor, setPreviewAsVisitor] = useState(false);
   const [theme, setThemeState] = useState<Theme>("dark");
   const [account, setAccountState] = useState<Account | null>(null);
+  const [siteTitle, setSiteTitle] = useState("PB Travel Diaries");
 
   const setAccount = useCallback((next: Account | null) => {
     setAccountState(next);
-    adminSession = Boolean(next);
+    adminSession = canEditSite(next);
+    // Signing in through the dashboard happens after boot, when the anonymous
+    // page skipped the editor-only history. Fetch it now; signing out drops it.
+    if (canEditSite(next)) {
+      void siteApi
+        .loadRevisions()
+        .then((rows) => setRevisions(toRevisions(rows)))
+        .catch(() => undefined);
+    } else {
+      setRevisions([]);
+    }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [contentResult, revisionsResult, themeResult, statusResult] = await Promise.allSettled([
-        siteApi.loadContent(),
-        siteApi.loadRevisions(),
-        siteApi.getTheme(),
-        siteApi.status(),
-      ]);
+      // Revisions are editor-only, so they are fetched after the session is
+      // known. A visitor never asks for an endpoint that would only 403.
+      const [contentResult, themeResult, statusResult, settingsResult] =
+        await Promise.allSettled([
+          siteApi.loadContent(),
+          siteApi.getTheme(),
+          siteApi.status(),
+          siteApi.getSiteSettings(),
+        ]);
 
       if (cancelled) return;
 
@@ -1982,15 +2006,21 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         setLoadError(describeApiError(contentResult.reason));
       }
 
-      if (revisionsResult.status === "fulfilled") {
-        setRevisions(toRevisions(revisionsResult.value));
-      }
       if (themeResult.status === "fulfilled") {
         setThemeState(themeResult.value === "light" ? "light" : "dark");
       }
       if (statusResult.status === "fulfilled" && statusResult.value.user) {
         setAccountState(statusResult.value.user);
-        adminSession = true;
+        adminSession = canEditSite(statusResult.value.user);
+        try {
+          setRevisions(toRevisions(await siteApi.loadRevisions()));
+        } catch {
+          /* the dashboard still opens; history is empty until the next publish */
+        }
+      }
+      if (settingsResult.status === "fulfilled" && settingsResult.value.title) {
+        setSiteTitle(settingsResult.value.title);
+        document.title = settingsResult.value.title;
       }
       setReady(true);
     })();
@@ -2002,6 +2032,10 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (siteTitle) document.title = siteTitle;
+  }, [siteTitle]);
 
   // Theme colours: the saved palette for the active mode drives every token.
   const activeTokens = useMemo(
@@ -2061,7 +2095,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         try {
           const [{ content: saved }, savedRevisions] = await Promise.all([
             siteApi.loadContent(),
-            siteApi.loadRevisions(),
+            isAdminSession() ? siteApi.loadRevisions() : Promise.resolve([]),
           ]);
           if (saved) {
             const restored = normaliseSavedContent(saved);
@@ -2457,6 +2491,8 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         saveState,
         account,
         setAccount,
+        siteTitle,
+        setSiteTitle,
         content,
         draft,
         loaderDraft,
@@ -2508,6 +2544,15 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 let adminSession = false;
 export function isAdminSession(): boolean {
   return adminSession;
+}
+
+/**
+ * Whether an account may change the site. Readers sign in only to see the
+ * members-only sections, so every editing affordance checks this rather than
+ * merely "somebody is signed in".
+ */
+export function canEditSite(account: Account | null | undefined): boolean {
+  return Boolean(account && (account.role === "owner" || account.role === "admin"));
 }
 
 export function useSite(): SiteContextValue {

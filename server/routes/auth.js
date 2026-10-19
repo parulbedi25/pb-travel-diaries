@@ -1,5 +1,4 @@
 import express from "express";
-import { config } from "../config.js";
 import { getRepo } from "../db/index.js";
 import {
   clearAttempts,
@@ -11,7 +10,9 @@ import {
   noteFailedAttempt,
   passwordProblem,
   recordEvent,
+  requireEditor,
   requireUser,
+  signupAllowed,
   startSession,
   tooManyAttempts,
   usernameProblem,
@@ -37,7 +38,8 @@ authRouter.get("/status", async (req, res, next) => {
       users,
       signedIn: Boolean(user),
       user: user ? publicUser(user) : null,
-      allowSignup: users === 0 || config.allowSignup,
+      // The owner can switch public sign-up off from the dashboard.
+      allowSignup: users === 0 || (await signupAllowed(repo)),
     });
   } catch (error) {
     next(error);
@@ -72,7 +74,7 @@ authRouter.post("/signup", async (req, res, next) => {
     if (passwordError) return res.status(400).json({ error: passwordError });
 
     const existing = await repo.countUsers();
-    if (existing > 0 && !config.allowSignup) {
+    if (existing > 0 && !(await signupAllowed(repo))) {
       return res.status(403).json({
         error: "Signup is closed. Ask an admin to create your account in the dashboard.",
       });
@@ -85,7 +87,9 @@ authRouter.post("/signup", async (req, res, next) => {
       username,
       email,
       passwordHash: await hashPassword(password),
-      role: existing === 0 ? "owner" : "admin",
+      // First account runs the site; everybody who signs up afterwards gets
+      // read-only access to the members-only parts of the frontend.
+      role: existing === 0 ? "owner" : "reader",
     });
     const user = await repo.findUserById(id);
     await recordEvent(req, { userId: id, username, event: "signup", detail: "Account created" });
@@ -175,7 +179,7 @@ authRouter.post("/password", requireUser, async (req, res, next) => {
 
 /* ── account management, admin only ─────────────────────────────────────── */
 
-authRouter.get("/users", requireUser, async (req, res, next) => {
+authRouter.get("/users", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     res.json({ users: await repo.listUsers() });
@@ -184,12 +188,15 @@ authRouter.get("/users", requireUser, async (req, res, next) => {
   }
 });
 
-authRouter.post("/users", requireUser, async (req, res, next) => {
+authRouter.post("/users", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const username = normaliseUsername(req.body?.username);
     const password = String(req.body?.password ?? "");
     const email = String(req.body?.email ?? "").trim() || null;
+    // Admins added from the dashboard edit the site; readers may only sign in
+    // and browse the members-only sections.
+    const role = req.body?.role === "reader" ? "reader" : "admin";
 
     const usernameError = usernameProblem(username);
     if (usernameError) return res.status(400).json({ error: usernameError });
@@ -203,7 +210,7 @@ authRouter.post("/users", requireUser, async (req, res, next) => {
       username,
       email,
       passwordHash: await hashPassword(password),
-      role: "admin",
+      role,
     });
     await recordEvent(req, {
       userId: id,
@@ -217,7 +224,7 @@ authRouter.post("/users", requireUser, async (req, res, next) => {
   }
 });
 
-authRouter.delete("/users/:id", requireUser, async (req, res, next) => {
+authRouter.delete("/users/:id", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const id = Number(req.params.id);
@@ -242,7 +249,7 @@ authRouter.delete("/users/:id", requireUser, async (req, res, next) => {
   }
 });
 
-authRouter.get("/events", requireUser, async (req, res, next) => {
+authRouter.get("/events", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     res.json({ events: await repo.listAuthEvents(Number(req.query.limit) || 100) });

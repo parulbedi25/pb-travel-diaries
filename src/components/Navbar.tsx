@@ -6,8 +6,8 @@ import {
   useSpring,
   useMotionValueEvent,
 } from "framer-motion";
-import { Menu, X, ArrowUpRight, SlidersHorizontal, Eye, EyeOff } from "lucide-react";
-import { resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
+import { Menu, X, ArrowUpRight, SlidersHorizontal, Eye, EyeOff, UserRound, LogIn } from "lucide-react";
+import { canEditSite, resolveHeaderButtons, useSite, type HeaderButton } from "../store/siteContent";
 import BrandLogo from "./BrandLogo";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
@@ -61,7 +61,7 @@ function HeaderCta({
 
 export default function Navbar() {
   const { content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
-  const isAdmin = Boolean(account);
+  const isAdmin = canEditSite(account);
   const nav = content.nav.filter((l) => l.enabled);
   const ctas = resolveHeaderButtons(content.headerButtons)
     .filter((b) => b.enabled && b.label.trim())
@@ -193,6 +193,22 @@ export default function Navbar() {
               </button>
             )}
             <ThemeToggle />
+            {/* Members sign in here; visitors get the same entry so the
+                members-only sections are not a dead end. */}
+            <a
+              href="#/members"
+              aria-label={account ? "Your account" : "Sign in"}
+              title={
+                account
+                  ? account.role === "reader"
+                    ? "Your account"
+                    : "PB Control account"
+                  : "Sign in or create a read-only account"
+              }
+              className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:text-white"
+            >
+              {account ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            </a>
             <a
               href="#/admin"
               aria-label="Admin dashboard"
@@ -297,11 +313,22 @@ export default function Navbar() {
                 </motion.button>
               )}
               <motion.a
+                href="#/members"
+                onClick={() => setOpen(false)}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.46, duration: 0.5 }}
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-full glass px-6 py-3.5 text-sm font-semibold text-zinc-300"
+              >
+                <UserRound className="h-4 w-4" />
+                {account ? "Your account" : "Sign in / Create account"}
+              </motion.a>
+              <motion.a
                 href="#/admin"
                 onClick={() => setOpen(false)}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.48, duration: 0.5 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
                 className="mt-3 inline-flex items-center justify-center gap-2 rounded-full glass px-6 py-3.5 text-sm font-semibold text-zinc-300"
               >
                 <SlidersHorizontal className="h-4 w-4" />

@@ -12,8 +12,19 @@ import path from "node:path";
 import test, { after, before } from "node:test";
 
 const mediaDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-media-"));
+// A stand-in build folder: built-in art lives in public/ and is copied to
+// dist/media by `npm run build`, where Express must serve it even though
+// /media is also the uploads route.
+const distDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-dist-"));
+await fs.mkdir(path.join(distDir, "media"), { recursive: true });
+const builtInArt = Buffer.from(
+  "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001",
+  "hex",
+);
+await fs.writeFile(path.join(distDir, "media", "dist-only.png"), builtInArt);
 process.env.DB_DRIVER = "memory";
 process.env.MEDIA_DIR = mediaDir;
+process.env.DIST_DIR = distDir;
 process.env.NODE_ENV = "test";
 process.env.RATE_LIMIT_PER_MINUTE = "0"; // the suite would otherwise trip it
 process.env.BCRYPT_ROUNDS = "4"; // fast hashes; production uses 10
@@ -34,6 +45,7 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await fs.rm(mediaDir, { recursive: true, force: true });
+  await fs.rm(distDir, { recursive: true, force: true });
 });
 
 /** A tiny client that keeps the session cookie, like a browser would. */
@@ -308,4 +320,126 @@ test("unknown endpoints answer JSON, not the app", async () => {
   const res = await call("GET", "/api/nope");
   assert.equal(res.status, 404);
   assert.equal(res.json.error, "Unknown endpoint.");
+});
+
+test("shipped art and the build's media are served, and a missing file is a 404", async () => {
+  // public/media is served directly, so it works before a build and in dev.
+  const art = await fetch(base + "/media/himalayan-450.png");
+  assert.equal(art.status, 200, "the static photo is not shadowed by the uploads folder");
+  assert.match(art.headers.get("content-type") ?? "", /image\/png/);
+  assert.ok((await art.arrayBuffer()).byteLength > 0);
+
+  // dist/media is what a built deployment serves.
+  const fromBuild = await fetch(base + "/media/dist-only.png");
+  assert.equal(fromBuild.status, 200);
+  assert.equal((await fromBuild.arrayBuffer()).byteLength, builtInArt.length);
+
+  const missing = await fetch(base + "/media/does-not-exist.png");
+  assert.equal(missing.status, 404);
+  assert.match(missing.headers.get("content-type") ?? "", /application\/json/);
+});
+
+test("the owner can open public sign-up, and signup creates a reader", async () => {
+  const saved = cookies.session;
+  const settings = await call("PUT", "/api/settings/site", {
+    title: "PB Travel Diaries",
+    allowSignup: true,
+  });
+  assert.equal(settings.status, 200);
+  assert.equal(settings.json.allowSignup, true);
+
+  delete cookies.session;
+  const signup = await call("POST", "/api/auth/signup", {
+    username: "reader1",
+    password: "readonly9",
+  });
+  assert.equal(signup.status, 201);
+  assert.equal(signup.json.user.role, "reader", "public signup never creates an editor");
+
+  const status = await call("GET", "/api/auth/status");
+  assert.equal(status.json.allowSignup, true);
+
+  // A reader cannot do anything that changes the site.
+  assert.equal(
+    (await call("PUT", "/api/content", { content: sampleContent })).status,
+    403,
+  );
+  assert.equal((await call("GET", "/api/revisions")).status, 403);
+  assert.equal((await call("GET", "/api/auth/users")).status, 403);
+  assert.equal((await call("GET", "/api/media")).status, 403);
+  const form = new FormData();
+  form.append("file", new Blob(["x"], { type: "image/png" }), "x.png");
+  assert.equal((await call("POST", "/api/media", undefined, { form })).status, 403);
+
+  // Leave the owner's session for the rest of the suite.
+  cookies.session = saved;
+});
+
+test("members-only sections are stripped for visitors, not for readers", async () => {
+  const gated = {
+    v: 1,
+    sections: [
+      { id: "sec-hero", type: "hero", enabled: true, data: { headline: "For everyone" } },
+      {
+        id: "sec-journey",
+        type: "journey",
+        enabled: true,
+        label: "Journey Showcase",
+        membersOnly: true,
+        data: { headline: "Only for the tribe" },
+      },
+    ],
+    nav: [],
+  };
+
+  const owner = cookies.session;
+  const published = await call("PUT", "/api/content", {
+    content: gated,
+    description: "Members-only test",
+    revisionId: "rev-gated",
+  });
+  assert.equal(published.status, 200);
+
+  // The owner sees everything.
+  const asOwner = (await call("GET", "/api/content")).json.content;
+  assert.deepEqual(asOwner.sections[1].data, { headline: "Only for the tribe" });
+
+  // A visitor's response has the label and anchor but not the content.
+  delete cookies.session;
+  const anonymous = (await call("GET", "/api/content")).json.content;
+  assert.equal(anonymous.sections[0].locked, undefined);
+  assert.equal(anonymous.sections[1].locked, true);
+  assert.deepEqual(anonymous.sections[1].data, {});
+  assert.equal(anonymous.sections[1].label, "Journey Showcase");
+
+  // Signing in as the reader returns the full section.
+  const login = await call("POST", "/api/auth/login", {
+    username: "reader1",
+    password: "readonly9",
+  });
+  assert.equal(login.status, 200);
+  const asReader = (await call("GET", "/api/content")).json.content;
+  assert.deepEqual(asReader.sections[1].data, { headline: "Only for the tribe" });
+
+  // Restore the owner for any later test.
+  delete cookies.session;
+  cookies.session = owner;
+});
+
+test("the site title is public and only an editor can change it", async () => {
+  const publicSettings = await call("GET", "/api/settings/site");
+  assert.equal(publicSettings.status, 200);
+  assert.equal(publicSettings.json.title, "PB Travel Diaries");
+
+  const saved = cookies.session;
+  delete cookies.session;
+  assert.equal((await call("PUT", "/api/settings/site", { title: "Nope" })).status, 401);
+  cookies.session = saved;
+
+  const changed = await call("PUT", "/api/settings/site", { title: "Trails & Tales" });
+  assert.equal(changed.status, 200);
+  assert.equal(changed.json.title, "Trails & Tales");
+  assert.equal((await call("GET", "/api/settings/site")).json.title, "Trails & Tales");
+
+  assert.equal((await call("PUT", "/api/settings/site", { title: "" })).status, 400);
 });

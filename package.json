@@ -4,14 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/scripts/dev.js",
+    "dev:web": "vite",
     "dev:api": "node --watch server/index.js",
     "server": "node server/index.js",
-    "start": "node server/index.js",
+    "start": "node server/scripts/start.js",
     "build": "vite build",
+    "prod": "npm run build && node server/scripts/start.js",
     "preview": "vite preview",
     "db:init": "node server/scripts/init-db.js",
-    "test:server": "node --test server/tests/*.test.js"
+    "test:server": "node --test server/tests/*.test.js",
+    "schema:sql": "node server/scripts/write-schema.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
