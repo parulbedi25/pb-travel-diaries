@@ -246,7 +246,7 @@ function LandingPage() {
 
 function Shell() {
   const route = useHashRoute();
-  const { content } = useSite();
+  const { content, ready, loadError } = useSite();
   const [loading, setLoading] = useState(true);
 
   // Every in-page link on every page: land the section's name under the
@@ -262,6 +262,11 @@ function Shell() {
     const t = setTimeout(() => setLoading(false), 450);
     return () => clearTimeout(t);
   }, []);
+
+  // The saved site now comes from the database, so the first paint waits for
+  // it. Showing the built-in defaults for a moment and then swapping would
+  // flash the wrong content at every visitor.
+  if (!ready) return <Loader logo={content.loaderLogo} animation={content.loaderAnimation} />;
 
   if (route === LIVE_MAP_PATH) {
     return (
@@ -283,6 +288,14 @@ function Shell() {
 
   return (
     <>
+      {loadError && (
+        <div
+          role="status"
+          className="fixed inset-x-0 bottom-0 z-[95] bg-red-500/90 px-4 py-2 text-center text-xs font-medium text-white"
+        >
+          Could not load the saved site ({loadError}). Showing the built-in content.
+        </div>
+      )}
       {loading && <Loader logo={content.loaderLogo} animation={content.loaderAnimation} />}
       <LandingPage />
     </>

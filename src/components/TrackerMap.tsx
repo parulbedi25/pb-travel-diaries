@@ -81,6 +81,10 @@ function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
       return;
     }
 
+    // This is the one thing still kept in the browser, deliberately: a
+    // disposable cache of a third-party road route, worth a network request
+    // but not worth a database round-trip. It never holds site content,
+    // accounts or history — those live in MariaDB.
     const key = roadKey(stops);
     try {
       const cached = window.localStorage.getItem(key);
