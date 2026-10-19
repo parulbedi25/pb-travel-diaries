@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 export const LIVE_MAP_PATH = "/live-map";
 export const SHOP_PATH = "/shop";
 export const ADMIN_PATH = "/admin";
+export const MEMBERS_PATH = "/members";
 
 /**
  * Every route that opens PB Control. Maintenance mode replaces the whole site,

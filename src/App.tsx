@@ -56,8 +56,13 @@ import CountdownSection, {
 import { EASE } from "./components/ui/motion";
 import { useAnchorScroll } from "./hooks/useAnchorScroll";
 import { useRouteScroll } from "./hooks/useRouteScroll";
-import { ADMIN_PATHS, LIVE_MAP_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
 import ShopPage from "./components/ShopPage";
+import LockedSection from "./components/LockedSection";
+import MembersPage from "./members/MembersPage";
+import SetupWizard from "./setup/SetupWizard";
+import { siteApi, type SetupStatus } from "./api/siteApi";
+import { describeApiError } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -83,6 +88,9 @@ function dataOf<T>(entry: SectionEntry, revealed: boolean): T {
 }
 
 function Section({ entry, revealed = false }: { entry: SectionEntry; revealed?: boolean }) {
+  // Members-only sections arrive without their data for visitors. This is the
+  // lock card, not an overlay over the real thing.
+  if (entry.locked) return <LockedSection entry={entry} />;
   switch (entry.type) {
     case "hero":
       return <Hero data={dataOf<HeroData>(entry, revealed)} />;
@@ -278,6 +286,9 @@ function Shell() {
   if (route === SHOP_PATH) {
     return <ShopPage />;
   }
+  if (route === MEMBERS_PATH || route.startsWith(`${MEMBERS_PATH}?`)) {
+    return <MembersPage />;
+  }
   if (ADMIN_PATHS.has(route)) {
     return (
       <Suspense fallback={<RouteFallback />}>
@@ -302,10 +313,111 @@ function Shell() {
   );
 }
 
-export default function App() {
+/** Installed, but MariaDB did not answer. */
+function DatabaseProblem({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-ink-950 px-6 text-white">
+      <div className="w-full max-w-md rounded-3xl glass p-8 text-center">
+        <h1 className="font-display text-xl font-semibold">The database is not answering</h1>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-400">{message}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-6 rounded-xl bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Boot gate.
+ *
+ * A freshly deployed copy has no database and no owner yet. The setup screen
+ * has to open before anything that expects a database — including the site
+ * loader — so this asks the server first and only then mounts the app.
+ */
+function SetupGate() {
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setError(null);
+    siteApi
+      .setupStatus()
+      .then((next) => alive && setStatus(next))
+      .catch((err) => alive && setError(describeApiError(err)));
+    return () => {
+      alive = false;
+    };
+  }, [attempt]);
+
+  if (error) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-ink-950 px-6 text-white">
+        <div className="w-full max-w-md rounded-3xl glass p-8 text-center">
+          <h1 className="font-display text-xl font-semibold">Cannot reach the server</h1>
+          <p className="mt-2 text-sm leading-relaxed text-zinc-400">{error}</p>
+          <button
+            type="button"
+            onClick={() => setAttempt((n) => n + 1)}
+            className="mt-6 rounded-xl bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!status) return <Loader />;
+
+  const retry = () => {
+    setStatus(null);
+    setAttempt((n) => n + 1);
+  };
+
+  // This copy keeps its credentials in the environment (or the hosting panel),
+  // so the setup screen must not offer to rewrite them. If the database is
+  // down, say so and point at the environment.
+  if (!status.installed && status.mode === "env") {
+    return (
+      <DatabaseProblem
+        message={
+          status.error ||
+          "The database settings in the environment did not work. Check DB_HOST, DB_NAME, DB_USER and DB_PASSWORD, then try again."
+        }
+        onRetry={retry}
+      />
+    );
+  }
+
+  if (!status.installed || status.needsOwner) {
+    return <SetupWizard status={status} onDone={() => window.location.reload()} />;
+  }
+
+  // Installed but the database did not answer. Showing the dashboard would
+  // only produce a load-error banner; say what happened instead.
+  if (!status.databaseReady) {
+    return (
+      <DatabaseProblem
+        message={status.error || "Check that MariaDB is running, then try again."}
+        onRetry={retry}
+      />
+    );
+  }
+
   return (
     <SiteProvider>
       <Shell />
     </SiteProvider>
   );
+}
+
+export default function App() {
+  return <SetupGate />;
 }

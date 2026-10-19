@@ -10,6 +10,7 @@
  */
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
+import { applySchema } from "./schema.js";
 
 /** How many published snapshots to keep. Older ones are trimmed on save. */
 export const REVISION_LIMIT = 15;
@@ -57,6 +58,14 @@ export async function createMysqlRepo() {
 
     async close() {
       await pool.end();
+    },
+
+    /**
+     * Create missing tables and apply pending migrations. Called at boot and
+     * by `npm run db:init`; safe to run repeatedly.
+     */
+    async migrate() {
+      return applySchema(pool);
     },
 
     /* ── site content ─────────────────────────────────────────────────── */

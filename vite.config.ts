@@ -8,6 +8,9 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// `npm run dev` passes the API's port; without it, the server's default.
+const apiPort = process.env.API_PORT || "4000";
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
@@ -27,8 +30,8 @@ export default defineConfig({
     // (port 4000). Proxying them keeps the browser on one origin, exactly as
     // Express serves both in production.
     proxy: {
-      "/api": { target: "http://127.0.0.1:4000", changeOrigin: false },
-      "/media": { target: "http://127.0.0.1:4000", changeOrigin: false },
+      "/api": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false },
+      "/media": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false },
     },
   },
   preview: {

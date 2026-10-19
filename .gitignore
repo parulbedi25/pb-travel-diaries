@@ -49,3 +49,6 @@ media/*
 
 # Local scratch (test harnesses, PR bodies)
 /.s/
+
+# First-run installer answers (database password lives here)
+/data/

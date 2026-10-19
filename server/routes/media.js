@@ -5,7 +5,7 @@ import express from "express";
 import multer from "multer";
 import { config } from "../config.js";
 import { getRepo } from "../db/index.js";
-import { requireUser } from "../lib/auth.js";
+import { requireEditor } from "../lib/auth.js";
 
 export const mediaRouter = express.Router();
 
@@ -67,7 +67,7 @@ const toItem = (row) => ({
   ext: row.ext,
 });
 
-mediaRouter.get("/media", async (req, res, next) => {
+mediaRouter.get("/media", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const rows = await repo.listMedia();
@@ -77,7 +77,7 @@ mediaRouter.get("/media", async (req, res, next) => {
   }
 });
 
-mediaRouter.post("/media", requireUser, upload.single("file"), async (req, res, next) => {
+mediaRouter.post("/media", requireEditor, upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file arrived." });
 
@@ -111,7 +111,7 @@ mediaRouter.post("/media", requireUser, upload.single("file"), async (req, res, 
   }
 });
 
-mediaRouter.delete("/media/:id", requireUser, async (req, res, next) => {
+mediaRouter.delete("/media/:id", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const row = await repo.findMedia(String(req.params.id));

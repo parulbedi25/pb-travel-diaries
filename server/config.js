@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { readInstall } from "./lib/installFile.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -16,6 +17,20 @@ const bool = (value, fallback) => {
   if (value === undefined) return fallback;
   return /^(1|true|yes|on)$/i.test(String(value).trim());
 };
+
+/**
+ * The setup screen saves its answers in `data/install.json`. Read once at
+ * boot; `applyInstall` updates this object after a setup completes so the
+ * running process starts using the new database without a restart.
+ *
+ * Environment variables win over the file: a hosting panel that sets DB_* is
+ * the operator speaking more recently than a file the installer wrote.
+ */
+const savedInstall = readInstall();
+const envSaysDatabase = ["DB_HOST", "DB_NAME", "DB_USER"].some(
+  (key) => process.env[key] !== undefined,
+);
+const driver = process.env.DB_DRIVER || "mysql";
 
 /**
  * Everything the server reads from the environment.
@@ -36,16 +51,21 @@ export const config = {
    */
   mediaDir: path.resolve(root, process.env.MEDIA_DIR || "media"),
   /** Set to "memory" for tests — no database needed. */
-  dbDriver: process.env.DB_DRIVER || "mysql",
+  dbDriver: driver,
+  /** False until either the installer or the environment supplies a database. */
+  hasDatabase: driver === "memory" || Boolean(savedInstall?.db) || envSaysDatabase,
+  /** Shown on the setup screen and in the page title before the DB exists. */
+  siteTitle:
+    String(process.env.SITE_TITLE ?? "").trim() || savedInstall?.siteTitle || "PB Travel Diaries",
   db: {
-    host: process.env.DB_HOST || "127.0.0.1",
-    port: int(process.env.DB_PORT, 3306),
-    user: process.env.DB_USER || "pb",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "pb_travel_diaries",
+    host: process.env.DB_HOST || savedInstall?.db?.host || "127.0.0.1",
+    port: int(process.env.DB_PORT || savedInstall?.db?.port, 3306),
+    user: process.env.DB_USER || savedInstall?.db?.user || "pb",
+    password: process.env.DB_PASSWORD ?? savedInstall?.db?.password ?? "",
+    database: process.env.DB_NAME || savedInstall?.db?.database || "pb_travel_diaries",
     connectionLimit: int(process.env.DB_POOL_SIZE, 5),
     /** Namecheap/cPanel databases often need this on shared plans. */
-    socketPath: process.env.DB_SOCKET || undefined,
+    socketPath: process.env.DB_SOCKET || savedInstall?.db?.socketPath || undefined,
   },
   session: {
     cookie: process.env.SESSION_COOKIE || "pb_session",
@@ -66,8 +86,28 @@ export const config = {
   /** Requests per minute per IP across the whole API. 0 turns it off. */
   rateLimitPerMinute: int(process.env.RATE_LIMIT_PER_MINUTE, 240),
   /**
-   * Usernames allowed to sign up after the first account exists. Empty means
-   * "nobody" — new accounts are then created from the dashboard instead.
+   * Usernames allowed to sign up after the first account exists. This is only
+   * the fallback: the dashboard's "Allow public sign-up" setting, stored in
+   * the database, is what actually decides once the site is installed.
    */
   allowSignup: bool(process.env.ALLOW_PUBLIC_SIGNUP, false),
 };
+
+/**
+ * Adopt the answers the setup screen just saved. Mutates the live config, so
+ * the repository (reset by the caller) opens against the new database.
+ */
+export function applyInstall(answers) {
+  if (!answers) return config;
+  if (answers.siteTitle) config.siteTitle = answers.siteTitle;
+  if (answers.db) {
+    config.db.host = answers.db.host;
+    config.db.port = int(answers.db.port, 3306);
+    config.db.user = answers.db.user;
+    config.db.password = answers.db.password ?? "";
+    config.db.database = answers.db.database;
+    config.db.socketPath = answers.db.socketPath || undefined;
+    config.hasDatabase = true;
+  }
+  return config;
+}

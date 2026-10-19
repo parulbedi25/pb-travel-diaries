@@ -17,9 +17,29 @@ export function getRepo() {
   return repoPromise;
 }
 
-export async function closeRepo() {
+/**
+ * Drop the current repository so the next call builds one from the current
+ * config. Used after the setup screen adopts a new database.
+ */
+export async function resetRepo() {
   if (!repoPromise) return;
-  const repo = await repoPromise;
-  await repo.close();
+  let repo = null;
+  try {
+    // The memory driver is returned synchronously; MySQL returns a promise.
+    repo = await repoPromise;
+  } catch {
+    repo = null;
+  }
   repoPromise = null;
+  if (repo) {
+    try {
+      await repo.close();
+    } catch {
+      /* the old pool is being discarded either way */
+    }
+  }
+}
+
+export async function closeRepo() {
+  await resetRepo();
 }

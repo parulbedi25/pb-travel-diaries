@@ -1,26 +1,30 @@
 /**
- * Applies server/schema.sql to the configured database.
+ * Applies the schema to the database named in `.env` (or in the answers the
+ * setup screen saved).
  *
  *   npm run db:init
  *
- * Safe to run repeatedly: every statement is CREATE TABLE IF NOT EXISTS or
- * INSERT IGNORE. It creates the database itself if the user is allowed to.
+ * The first-run setup screen does the same thing from the browser, so this is
+ * only for command-line installs and for upgrades. Safe to run repeatedly: the
+ * schema module creates what is missing and applies pending migrations.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
-
-const schemaPath = path.join(config.root, "server", "schema.sql");
+import { applySchema } from "../db/schema.js";
 
 async function main() {
-  const sql = await fs.readFile(schemaPath, "utf8");
   const { database, host, port, user, password, socketPath } = config.db;
   // Plain connection options: pool-only keys (connectionLimit) belong to the
   // server, not to this one-off script.
-  const connection = { host, port, user, password, ...(socketPath ? { socketPath } : {}) };
+  const connection = {
+    host,
+    port,
+    user,
+    password,
+    ...(socketPath ? { socketPath } : {}),
+  };
 
-  console.log(`[db:init] host ${host}:${port} as ${user}`);
+  console.log(`[db:init] host ${socketPath || `${host}:${port}`} as ${user}`);
   const admin = await mysql.createConnection(connection);
   try {
     await admin.query(
@@ -36,10 +40,13 @@ async function main() {
     await admin.end();
   }
 
-  const conn = await mysql.createConnection({ ...connection, database, multipleStatements: true });
+  const conn = await mysql.createConnection({ ...connection, database });
   try {
-    await conn.query(sql);
-    console.log("[db:init] schema applied");
+    const result = await applySchema(conn);
+    console.log(
+      `[db:init] schema v${result.version} applied` +
+        (result.upgradedFrom ? ` (upgraded from v${result.upgradedFrom})` : ""),
+    );
     const [tables] = await conn.query("SHOW TABLES");
     console.log("[db:init] tables:", Object.values(tables).map((r) => Object.values(r)[0]).join(", "));
   } finally {
@@ -51,6 +58,9 @@ main().catch((error) => {
   console.error("[db:init] failed:", error.message);
   if (error.code === "ER_ACCESS_DENIED_ERROR") {
     console.error("Check DB_USER / DB_PASSWORD in .env (or the panel's environment variables).");
+  }
+  if (error.code === "ER_BAD_DB_ERROR") {
+    console.error("The database does not exist. Create it in cPanel → MySQL® Databases first.");
   }
   if (error.code === "ECONNREFUSED") {
     console.error("Nothing is listening on that host/port. On shared hosting try DB_SOCKET.");

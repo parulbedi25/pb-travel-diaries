@@ -8,6 +8,7 @@ import { pruneAttempts } from "./lib/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { contentRouter, settingsRouter } from "./routes/content.js";
 import { mediaRouter } from "./routes/media.js";
+import { setupRouter } from "./routes/setup.js";
 
 /**
  * Builds the Express app without starting a listener, so tests can drive the
@@ -76,6 +77,9 @@ export function createApp() {
     }
   });
 
+  // Setup answers before any database-backed route: it must work when there
+  // is no database at all.
+  api.use(setupRouter);
   api.use("/auth", authRouter);
   api.use(contentRouter);
   api.use(settingsRouter);
@@ -98,7 +102,20 @@ export function createApp() {
       setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
     }),
   );
-  app.use("/media", (req, res) => res.status(404).json({ error: "No such file." }));
+
+  // Art that ships with the code (`public/media/*`) is copied into dist/ by
+  // the build, but serving it here too means the same URL works before the
+  // first build — and in `npm run dev`, where Vite proxies /media to this
+  // server. Uploads above still win: a random upload name never collides.
+  app.use(
+    "/media",
+    express.static(path.join(config.root, "public", "media"), {
+      index: false,
+      dotfiles: "deny",
+      fallthrough: true,
+      setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+    }),
+  );
 
   /* ── the built site ─────────────────────────────────────────────────── */
 
@@ -121,7 +138,7 @@ export function createApp() {
     // Every route is a hash route, so any other GET is still the app.
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next();
-      if (req.path.startsWith("/api/")) return next();
+      if (req.path.startsWith("/api/") || req.path.startsWith("/media/")) return next();
       if (!fs.existsSync(indexFile)) return next();
       res.setHeader("Cache-Control", "no-cache");
       res.sendFile(indexFile);
@@ -134,6 +151,12 @@ export function createApp() {
         .send("The site has not been built yet. Run `npm run build` and restart the server."),
     );
   }
+
+  // Uploads (media/), shipped art (public/media/) and the build (dist/) have
+  // all had their turn; anything left under /media is a real 404, not the
+  // app's HTML pretending to be an image. This runs whether or not dist/
+  // exists, so `npm run dev` and a first boot behave the same way.
+  app.use("/media", (req, res) => res.status(404).json({ error: "No such file." }));
 
   /* ── errors ─────────────────────────────────────────────────────────── */
 

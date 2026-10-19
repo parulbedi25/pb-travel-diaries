@@ -116,6 +116,45 @@ export async function requireUser(req, res, next) {
   }
 }
 
+/** True for the accounts that may change the site. Readers may not. */
+export function isEditor(user) {
+  return Boolean(user) && (user.role === "owner" || user.role === "admin");
+}
+
+/**
+ * 401 unless signed in, 403 for read-only accounts. Every write and every
+ * account-management call uses this; readers keep only what they signed up
+ * for — the members-only parts of the public site.
+ */
+export async function requireEditor(req, res, next) {
+  try {
+    const user = await currentUser(req);
+    if (!user) return res.status(401).json({ error: "Sign in to continue." });
+    if (!isEditor(user)) {
+      return res.status(403).json({ error: "This account has read-only access." });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Whether the public sign-up page is open. The dashboard setting wins; the
+ * environment variable is the fallback for a database created before the
+ * setting existed.
+ */
+export async function signupAllowed(repo) {
+  const raw = await repo.getSetting("allow_signup");
+  if (raw == null) return config.allowSignup;
+  try {
+    return JSON.parse(raw) !== false;
+  } catch {
+    return config.allowSignup;
+  }
+}
+
 /* ─────────────────────────── request context ─────────────────────────── */
 
 /**

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { CustomData, SectionEntry } from "../store/siteContent";
-import { useSite } from "../store/siteContent";
+import { useSite, canEditSite } from "../store/siteContent";
 import type { SectionBlock } from "../blocks/types";
 import BlockCanvas from "./blocks/BlockCanvas";
 import { Reveal } from "./ui/motion";
@@ -37,7 +37,7 @@ function ComposedSection({
   blocks: SectionBlock[];
 }) {
   const { draft, updateSectionField, saveDraft, previewAsVisitor, account } = useSite();
-  const admin = Boolean(account) && !previewAsVisitor;
+  const admin = canEditSite(account) && !previewAsVisitor;
 
   // While building, show the working copy so an edit appears the moment it is
   // typed. `updateSectionField` only writes the draft, and the published

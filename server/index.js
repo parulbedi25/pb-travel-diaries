@@ -1,8 +1,10 @@
 /**
  * Entry point.
  *
- * Local:      npm run server      → http://localhost:4000
- * Hosting:    cPanel/Plesk "Node.js App" → startup file server/index.js
+ * Local dev:  npm run dev         → API :4000, Vite :5173 (hot reload)
+ * Production: npm start           → http://localhost:4000
+ *             npm run prod        → build, then the same
+ * Hosting:    cPanel/Plesk "Node.js App" → startup file server/scripts/start.js
  *
  * Under Passenger (cPanel) the panel supplies PORT, and it can be a socket
  * path rather than a number — `listen` accepts both.
@@ -14,13 +16,19 @@ import { closeRepo, getRepo } from "./db/index.js";
 const app = createApp();
 
 // Prove the database answers before accepting traffic, but do not refuse to
-// start if it is down: the health endpoint is more useful than a crash loop.
-try {
-  const repo = await getRepo();
-  await repo.ping();
-  console.log(`[db] connected (${repo.kind})`);
-} catch (error) {
-  console.error(`[db] not reachable yet: ${error.message}`);
+// start if it is down: the health endpoint is more useful than a crash loop,
+// and the setup screen has to open even when nothing is configured.
+if (config.hasDatabase) {
+  try {
+    const repo = await getRepo();
+    await repo.ping();
+    const schema = await repo.migrate();
+    console.log(`[db] connected (${repo.kind}), schema v${schema.version}`);
+  } catch (error) {
+    console.error(`[db] not reachable yet: ${error.message}`);
+  }
+} else {
+  console.log("[setup] no database configured yet — open /#/setup");
 }
 
 const server = app.listen(config.port, () => {
