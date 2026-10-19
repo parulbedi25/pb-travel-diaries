@@ -1,11 +1,13 @@
 /**
  * Turn the answers from the setup screen into a working database.
  *
- * The user supplies the MariaDB host, database, user and password they created
- * in cPanel. This module connects, creates the database when their account is
- * allowed to, creates every table (idempotently), seeds the deployment
- * settings, and only then writes the credential file. A failure at any point
- * leaves the site still "not installed", so the screen can simply be retried.
+ * The database and its user are created in the hosting panel (or by a
+ * database administrator) before this screen is used — no app running over
+ * the web should be the thing that creates accounts. This module connects,
+ * creates the database only when that user is allowed to, creates every table
+ * (idempotently), seeds the deployment settings, and only then writes the
+ * credential file. A failure at any point leaves the site still "not
+ * installed", so the screen can simply be retried.
  */
 import mysql from "mysql2/promise";
 import { applyInstall } from "../config.js";
@@ -21,7 +23,10 @@ export class SetupError extends Error {
   }
 }
 
-/** cPanel prefixes database and user names, so keep the accepted set wide. */
+/**
+ * Hosting panels often prefix database and user names with the account name,
+ * so keep the accepted set wide and do not "correct" what the panel issued.
+ */
 const NAME_PATTERN = /^[A-Za-z0-9_$-]{1,64}$/;
 const HOST_PATTERN = /^[A-Za-z0-9._:-]{1,255}$/;
 
@@ -41,13 +46,13 @@ export function validateSetupInput(input = {}) {
   }
 
   const database = String(input.database ?? "").trim();
-  if (!database) throw new SetupError("Enter the database name from cPanel.");
+  if (!database) throw new SetupError("Enter the database name.");
   if (!NAME_PATTERN.test(database)) {
     throw new SetupError("Database names can use letters, numbers, underscore, dash and $ only.");
   }
 
   const user = String(input.user ?? "").trim();
-  if (!user) throw new SetupError("Enter the database username from cPanel.");
+  if (!user) throw new SetupError("Enter the database username.");
   if (!NAME_PATTERN.test(user)) {
     throw new SetupError("Database usernames can use letters, numbers, underscore, dash and $ only.");
   }
@@ -83,22 +88,24 @@ function optionsFor(db, { withDatabase }) {
 
 /**
  * Explain the common failures in terms of what the person can do next.
- * Never echoes the password back.
+ * Deliberately host-agnostic: the same words fit any panel, a managed
+ * database and a VPS. Never echoes the password back.
  */
 export function friendlyDatabaseError(error, db) {
   const code = error?.code ?? "";
   const where = db.socketPath ? db.socketPath : `${db.host}:${db.port}`;
   switch (code) {
     case "ER_ACCESS_DENIED_ERROR":
-      return "MariaDB rejected that username or password. Check the database user's password in cPanel's MySQL Databases page.";
+    case "ER_ACCESS_DENIED_NO_PASSWORD_ERROR":
+      return `The user “${db.user}” could not sign in. Create that database user in your hosting panel with this exact password, add it to “${db.database}” with all privileges, then enter the same details here.`;
     case "ER_BAD_DB_ERROR":
-      return `The database “${db.database}” does not exist. Create it in cPanel → MySQL® Databases, then try again.`;
+      return `The database “${db.database}” does not exist. Create it first in your hosting panel (MySQL / MariaDB → Databases), add the user “${db.user}” to it with all privileges, then enter those details here.`;
     case "ER_DBACCESS_DENIED_ERROR":
-      return `The user “${db.user}” is not allowed to open “${db.database}”. Add the user to that database in cPanel and give it ALL PRIVILEGES.`;
+      return `The database “${db.database}” exists, but the user “${db.user}” is not allowed to open it. Add the user to that database with all privileges in your hosting panel, then try again.`;
     case "ECONNREFUSED":
-      return `Nothing accepted a connection at ${where}. On cPanel the host is usually “localhost”.`;
+      return `Nothing accepted a connection at ${where}. Check the database host and port shown in your hosting panel — on most setups the host is “localhost”.`;
     case "ENOTFOUND":
-      return `The host “${db.host}” could not be found. On cPanel use “localhost”.`;
+      return `The host “${db.host}” could not be found. Use the database host from your hosting panel — usually “localhost”.`;
     case "ETIMEDOUT":
       return `Connecting to ${where} timed out. Check the host and port, and whether your host allows remote database connections.`;
     case "ER_NOT_SUPPORTED_AUTH_MODE":
@@ -111,8 +118,26 @@ export function friendlyDatabaseError(error, db) {
   }
 }
 
+/** What to do when the database itself has not been created yet. */
+function missingDatabaseMessage(db) {
+  return (
+    `The database “${db.database}” does not exist yet. Create it in your hosting panel ` +
+    `(MySQL / MariaDB → Databases), add the user “${db.user}” to it with all privileges, ` +
+    "then enter those same details here."
+  );
+}
+
 /**
  * Check the credentials without changing anything.
+ *
+ * Returns a report rather than throwing for the ordinary "not created yet"
+ * cases, so the setup screen can show what is missing instead of a red error
+ * with no way forward:
+ *
+ *   { ok: true,  serverVersion, databaseExists: true,  message }
+ *   { ok: false, serverVersion, databaseExists: false, message }
+ *
+ * A server that cannot be reached at all still throws a SetupError.
  * `connect` is injectable so the tests can run the whole flow without MariaDB.
  */
 export async function testConnection(input, { connect = mysql.createConnection } = {}) {
@@ -122,10 +147,15 @@ export async function testConnection(input, { connect = mysql.createConnection }
     const connection = await connect(optionsFor(db, { withDatabase: true }));
     try {
       const [rows] = await connection.query("SELECT VERSION() AS version, DATABASE() AS current");
+      const serverVersion = String(rows?.[0]?.version ?? "");
       return {
         ok: true,
+        serverVersion,
         database: db.database,
-        serverVersion: String(rows?.[0]?.version ?? ""),
+        databaseExists: true,
+        message:
+          `Connected to MariaDB ${serverVersion}`.trim() +
+          ` — “${db.database}” exists and “${db.user}” can open it.`,
       };
     } finally {
       await connection.end();
@@ -134,15 +164,23 @@ export async function testConnection(input, { connect = mysql.createConnection }
     if (error?.code !== "ER_BAD_DB_ERROR") {
       throw new SetupError(friendlyDatabaseError(error, db), 400);
     }
-    // The database is missing — say whether the server itself is reachable,
-    // because that changes which cPanel page to open.
+
+    // The password was accepted but the database is missing. Confirm the
+    // server itself answers, then say exactly what to create first.
     try {
       const connection = await connect(optionsFor(db, { withDatabase: false }));
-      await connection.end();
-      throw new SetupError(
-        `MariaDB answered, but the database “${db.database}” does not exist yet. Create it in cPanel → MySQL® Databases, or let this screen create it.`,
-        400,
-      );
+      try {
+        const [rows] = await connection.query("SELECT VERSION() AS version");
+        return {
+          ok: false,
+          serverVersion: String(rows?.[0]?.version ?? ""),
+          database: db.database,
+          databaseExists: false,
+          message: missingDatabaseMessage(db),
+        };
+      } finally {
+        await connection.end();
+      }
     } catch (inner) {
       if (inner instanceof SetupError) throw inner;
       throw new SetupError(friendlyDatabaseError(inner, db), 400);
@@ -160,10 +198,13 @@ export async function installDatabase(input, options = {}) {
   const { siteTitle, db } = validateSetupInput(input);
 
   let createdDatabase = false;
+  // The database is missing and this user may not create it; the connection
+  // attempt below decides whether it is absent or merely not granted.
+  let createDenied = false;
   const counts = { users: 0 };
 
   // Connecting without a database works even when the user has no global
-  // privileges, and lets a cPanel-style "database already exists" pass.
+  // privileges, and lets "the database already exists" pass.
   let admin;
   try {
     admin = await connect(optionsFor(db, { withDatabase: false }));
@@ -171,7 +212,7 @@ export async function installDatabase(input, options = {}) {
     throw new SetupError(friendlyDatabaseError(error, db), 400);
   }
   try {
-    // Does the database already exist? A cPanel account usually creates it
+    // Does the database already exist? On most hosting the database is made
     // in the panel first, in which case `createdDatabase` should say so.
     let exists = false;
     try {
@@ -192,11 +233,21 @@ export async function installDatabase(input, options = {}) {
         );
         createdDatabase = true;
       } catch (error) {
-        // cPanel users usually cannot create databases — that is fine, the
-        // database is created in the panel and just has to exist.
-        if (!["ER_DBACCESS_DENIED_ERROR", "ER_ACCESS_DENIED_ERROR", "ER_SPECIFIC_ACCESS_DENIED_ERROR"].includes(error?.code)) {
+        // Shared hosting almost never lets an application create databases;
+        // the panel does that. Whether the database is missing, or present but
+        // not granted to this user, is only clear once we try to open it — the
+        // connection below says which of the two it is.
+        const denied = [
+          "ER_DBACCESS_DENIED_ERROR",
+          "ER_ACCESS_DENIED_ERROR",
+          "ER_ACCESS_DENIED_NO_PASSWORD_ERROR",
+          "ER_SPECIFIC_ACCESS_DENIED_ERROR",
+          "ER_CANT_CREATE_DB",
+        ];
+        if (!denied.includes(error?.code)) {
           throw new SetupError(friendlyDatabaseError(error, db), 400);
         }
+        createDenied = true;
       }
     }
   } finally {
@@ -207,6 +258,9 @@ export async function installDatabase(input, options = {}) {
   try {
     connection = await connect(optionsFor(db, { withDatabase: true }));
   } catch (error) {
+    if (createDenied && error?.code === "ER_BAD_DB_ERROR") {
+      throw new SetupError(missingDatabaseMessage(db), 400);
+    }
     throw new SetupError(friendlyDatabaseError(error, db), 400);
   }
 
@@ -232,6 +286,14 @@ export async function installDatabase(input, options = {}) {
     const [rows] = await connection.query("SELECT COUNT(*) AS n FROM users");
     counts.users = Number(rows?.[0]?.n ?? 0);
   } catch (error) {
+    // The connection can be lazy: a driver may only discover that the
+    // database is missing or not granted when the first statement runs.
+    if (error?.code === "ER_BAD_DB_ERROR") {
+      throw new SetupError(missingDatabaseMessage(db), 400);
+    }
+    if (error?.code === "ER_DBACCESS_DENIED_ERROR" || error?.code === "ER_ACCESS_DENIED_ERROR") {
+      throw new SetupError(friendlyDatabaseError(error, db), 400);
+    }
     throw new SetupError(`The tables could not be created: ${error?.message ?? "unknown error"}`, 400);
   } finally {
     await connection.end();

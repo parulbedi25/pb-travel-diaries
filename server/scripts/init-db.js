@@ -34,7 +34,7 @@ async function main() {
     console.log(`[db:init] database "${database}" ready`);
   } catch (error) {
     // Shared hosting usually refuses CREATE DATABASE; the database is then made
-    // in cPanel first. Continue and let the schema import speak for itself.
+    // outside the app. Continue and let the schema import speak for itself.
     console.log(`[db:init] could not create the database (${error.code}); assuming it exists`);
   } finally {
     await admin.end();
@@ -60,7 +60,7 @@ main().catch((error) => {
     console.error("Check DB_USER / DB_PASSWORD in .env (or the panel's environment variables).");
   }
   if (error.code === "ER_BAD_DB_ERROR") {
-    console.error("The database does not exist. Create it in cPanel → MySQL® Databases first.");
+    console.error("The database does not exist. Create it in your hosting panel (MySQL / MariaDB → Databases) first.");
   }
   if (error.code === "ECONNREFUSED") {
     console.error("Nothing is listening on that host/port. On shared hosting try DB_SOCKET.");

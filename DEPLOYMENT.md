@@ -1,255 +1,270 @@
-# Hosting PB Travel Diaries on Namecheap (Node.js + MariaDB)
+# Deploying PB Travel Diaries
 
-The site ships a small Node server that serves the built app, the API and the
-uploaded media, and stores everything else in MariaDB.
+One Node.js process serves the built site, the API and the uploaded media, and
+stores everything else in MariaDB. Any host that can run a long-lived Node
+process and gives you a MySQL/MariaDB database will run it — a shared panel
+(Passenger, Plesk, DirectAdmin), a managed Node host, Docker, or a VPS.
 
 ```
-browser ──► Express (server/index.js) ──► MariaDB   (content, accounts, sessions, history, media index)
-                    │
-                    ├──► dist/    the built site (`npm run build`)
-                    ├──► media/   uploaded files (back this up)
-                    └──► data/    install.json — the installer's answers (back this up)
+browser ──► Node (server/index.js) ──► MariaDB   content, accounts, sessions, history, media index
+                  │
+                  ├──► dist/    the built site (`npm run build`)
+                  ├──► media/   uploaded files (back this up)
+                  ├──► public/  art that ships with the code, served at /media
+                  └──► data/    install.json — the installer's answers (back this up)
 ```
-
-Two things must be true on the host: **it can run Node.js**, and it gives you a
-**MySQL/MariaDB database**. On Namecheap that means a cPanel plan with *Setup
-Node.js App* (Stellar / Stellar Plus and above). If your plan does not have that
-icon in cPanel, use the VPS route at the end.
 
 **You do not import any SQL file.** The first time you open the site, a setup
 screen asks for the database details and the owner account, then creates every
 table itself.
 
-### Which command runs what
-
-| Where | Command | What happens |
-| --- | --- | --- |
-| Your computer, editing | `npm run dev` | Express on :4000 and Vite on :5173 with hot reload — development only |
-| Your computer, before deploying | `npm run prod` | Builds `dist/`, then serves it on :4000 exactly as cPanel will |
-| cPanel / Passenger | *startup file* `server/scripts/start.js` | The same Node server; Passenger starts it and keeps it alive |
-
-`npm run dev` is **not** the hosting command: it runs Vite's development server,
-which is not deployed. On cPanel, Passenger starts the Node app; you rebuild
-`dist/` and press **Restart** after a code change (step 10).
-
-The copy-paste walkthrough for every mode — including development over an SSH
-tunnel when you need it on the server — is in **[RUNNING.md](RUNNING.md)**.
+> **Vite is a build tool, not a runtime.** It compiles the React/TypeScript
+> source into `dist/` on your computer (or once on the server). The deployed app
+> is plain Node.js and `dist/`; nothing from Vite is installed or executed when
+> visitors use the site.
 
 ---
 
-## 1. Create the database in cPanel
+## Which command runs what
 
-cPanel → **MySQL® Databases**
+| Where | Command | What happens |
+| --- | --- | --- |
+| Your computer, editing | `npm run dev` | Express on :4000 + Vite on :5173 with hot reload — development only |
+| Your computer, checking a deploy | `npm run prod` | Builds `dist/`, then serves it on :4000 exactly as the host will |
+| Your computer, making an upload | `npm run package` | Builds and writes `release/pb-travel-diaries/` — the runtime-only folder |
+| The server | `node server/scripts/start.js` | The app itself; your process manager keeps it alive |
+| The server, after a code change | `npm run build` + restart | Rebuild `dist/`; no Vite process is left running |
 
-1. **Create New Database** — e.g. `travel`. cPanel prefixes it with your account
-   name, giving something like `pbuser_travel`. Write down the full name.
-2. **Add New User** — e.g. `pb`, with a strong password. Write down the full
-   username (`pbuser_pb`) and the password.
-3. **Add User To Database** → select the database → grant **ALL PRIVILEGES**.
+`npm run dev` is **not** a hosting command: it runs Vite's development server,
+which is not deployed.
 
-That is all the database work you need. The setup screen creates the tables.
-(Shared hosting almost never lets an account run `CREATE DATABASE`, which is
-why this step stays in cPanel.)
+The copy-paste walkthrough is in **[RUNNING.md](RUNNING.md)**. This file covers
+the parts that depend on the host.
 
-## 2. Upload the project
+---
 
-cPanel → **File Manager** (or SSH, if your plan includes it):
+## 1. What the host must provide
 
-1. Upload the project as a ZIP into your home directory and extract it, so you
-   have `~/pb-travel-diaries/` containing `server/`, `src/`, `package.json`.
-2. Do **not** upload `node_modules/` — it is installed in step 4.
+| Requirement | Why | Where it usually lives |
+| --- | --- | --- |
+| Node.js **20.19+** or **22.12+** | Vite 7 needs it *to build*; the runtime works on the same versions | Panel's Node.js selector, or `node -v` over SSH |
+| MySQL 5.7+ / MariaDB 10.3+ | content, accounts, sessions, history | Panel → MySQL/MariaDB databases, or install `mariadb-server` |
+| A long-lived Node process | the API and the site | Passenger, Plesk's Node.js app, systemd, Docker, a Node host |
+| Two writable folders | `data/` (installer answers) and `media/` (uploads) | your app folder |
+| HTTPS | session cookies are marked `Secure` | the panel's AutoSSL / Let's Encrypt, or a reverse proxy |
 
-If you have SSH:
+It does **not** need Vite, TypeScript, React or a build step at runtime.
+
+---
+
+## 2. Create the database and its user first
+
+The setup screen can create the *tables*, but it cannot be the thing that
+creates database accounts — no public web form should be able to do that. Create
+these before opening the site:
+
+1. **A database** — any empty MySQL/MariaDB database. Note its exact name;
+   panels often prefix it (`pbuser_travel`).
+2. **A database user** — with a strong password. Note the exact username;
+   panels prefix this too (`pbuser_pb`).
+3. **Attach the user to the database** with **all privileges**.
+
+How to find it:
+
+| Host | Where |
+| --- | --- |
+| cPanel | **MySQL® Databases** → Create New Database → Add New User → Add User To Database → ALL PRIVILEGES |
+| Plesk | **Databases** → Add Database; the same screen creates/attaches the user |
+| DirectAdmin | **MySQL Management** → Create Database; add the user and grant access |
+| VPS / local | `mysql -u root -p` and the SQL below |
+
+```sql
+CREATE DATABASE pb_travel_diaries CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'pb'@'localhost' IDENTIFIED BY 'change-me';
+GRANT ALL PRIVILEGES ON pb_travel_diaries.* TO 'pb'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Some managed hosts give you a connection URL instead of separate values —
+split it into host, port, database, user and password.
+
+**If the database or user is missing, the setup screen says so.** Its connection
+test distinguishes “the server answered but this database does not exist yet”
+(create it and attach the user) from “that user or password was rejected”
+(create the user or correct the password). It never guesses.
+
+---
+
+## 3. Put the code on the server
+
+### Option A — upload the runtime folder (no build tools on the server)
+
+On your computer:
 
 ```bash
-cd ~
-git clone https://github.com/parulbedi25/pb-travel-diaries.git
+npm ci
+npm run package     # builds dist/ and writes release/pb-travel-diaries/
+```
+
+Upload **`release/pb-travel-diaries/`** to the server (ZIP it in File Manager, or
+`scp -r`). It contains `server/`, `dist/`, `public/`, the package files and a
+`START-HERE.txt`. On the server:
+
+```bash
 cd pb-travel-diaries
-```
-
-## 3. `.env` is optional
-
-You can skip this file entirely and type the database details into the setup
-screen in step 6. The installer saves them to `data/install.json` (permissions
-`0600`) so they survive a restart.
-
-If you prefer the command line, or your hosting panel sets environment
-variables, copy `.env.example` to `.env` and fill in the values:
-
-```env
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=pbuser_pb
-DB_PASSWORD=the-password-from-cpanel
-DB_NAME=pbuser_travel
-
-NODE_ENV=production
-SESSION_DAYS=7
-COOKIE_SECURE=auto
-TRUST_PROXY=true
-
-MEDIA_DIR=./media
-DIST_DIR=./dist
-```
-
-**Precedence:** real environment variables (hosting panel) win over `.env`,
-which wins over `data/install.json`. Pick one route and stay with it.
-
-If a `.env`/panel already supplies `DB_*`, the setup screen skips the database
-step and comes straight to the owner account. If those credentials do not work,
-the site says so instead of letting you overwrite them from the browser.
-
-## 4. Install and build
-
-Use cPanel's terminal, or the **Run NPM Install** button in step 5, then build:
-
-```bash
-cd ~/pb-travel-diaries
-npm ci              # dev dependencies are needed to build
-npm run build       # → dist/
-npm prune --omit=dev
-```
-
-That pair of commands is all a deploy needs: `npm run build` writes `dist/`,
-and `npm prune --omit=dev` drops Vite and the other build-only packages. If you
-prefer one command, `npm run prod` does `npm run build` and then starts the
-server — useful to check the deployed behaviour on your own machine.
-
-The app writes to two folders, so they must be writable by the app:
-
-```bash
+npm ci --omit=dev   # only express, mysql2, bcryptjs, dotenv, multer, cookie-parser
 mkdir -p data media
 chmod 775 data media
 ```
 
-`dist/` is generated; `media/` holds uploads; `data/` holds the installer's
-answers (including the database password). None of the three belongs in git.
+This is the leanest route: the server installs ~9 MB of runtime packages and
+never needs `src/`, Vite or TypeScript.
 
-### Optional: build on your computer and upload only what runs
-
-Shared hosting can be slow to build, and the runtime never needs `src/`, Vite
-or TypeScript. If you would rather not build on cPanel:
+### Option B — clone the source and build on the server
 
 ```bash
-# on your computer, in the project folder
-npm ci
-npm run build
+cd ~
+git clone <your-repository-url> pb-travel-diaries
+cd pb-travel-diaries
+npm ci              # build tools are needed here once
+npm run build       # → dist/
+npm prune --omit=dev
+mkdir -p data media
+chmod 775 data media
 ```
 
-Upload these to `~/pb-travel-diaries/` (File Manager → ZIP):
+Build on the server only if it has enough memory for Vite; a small shared plan
+may prefer Option A.
 
+Either way: `dist/` is generated, `media/` holds uploads, `data/` holds the
+installer's answers (including the database password). None of the three
+belongs in git.
+
+---
+
+## 4. Start the app
+
+The start command is always the same:
+
+```bash
+node server/scripts/start.js
 ```
-server/            the Node app
-dist/              the built site (includes public/media/)
-package.json
-package-lock.json
-```
 
-Then create the writable folders (below) and, in *Setup Node.js App*, press
-**Run NPM Install** (or run `npm ci --omit=dev` from the terminal). The startup
-file, database setup and everything else are unchanged.
+It sets `NODE_ENV=production` when the environment did not, then runs
+`server/index.js`. Most panels call this the **Application startup file**.
 
-`dist/` is self-contained: the JavaScript, CSS, fonts and shipped art are
-inside it, so the browser never asks for `src/` or `public/`. `npm run build`
-still needs them, which is why they stay in git for the next update.
-
-## 5. Register the Node app
-
-Step-by-step commands for this step and the first run: **[RUNNING.md](RUNNING.md#3-production-on-the-namecheap-server)**.
-
-cPanel → **Setup Node.js App** → **Create Application**
-
-| Field | Value |
+| Host | Where to set it |
 | --- | --- |
-| Node.js version | **20** or **22** (not 18 — Vite 7 needs ≥ 20.19) |
-| Application mode | Production |
-| Application root | `pb-travel-diaries` |
-| Application URL | your domain, e.g. `pbtraveldiaries.com` |
-| Application startup file | `server/scripts/start.js` |
+| cPanel (Passenger) | **Setup Node.js App** → Create Application: Node 20/22, Production, root = the app folder, startup file `server/scripts/start.js` |
+| Plesk | **Node.js** → Application root, Application startup file `server/scripts/start.js`, then *Restart* |
+| Docker | `CMD ["node", "server/scripts/start.js"]` |
+| VPS / systemd | unit below |
 
-Then **Run NPM Install** (if not already done), **Restart**, and open
-`https://yourdomain.com/api/health`. It should answer:
+The panel supplies `PORT` (sometimes a socket path) and keeps the process
+alive. Do not set `PORT` yourself unless you are running it by hand.
 
-```json
-{ "ok": true, "database": "mysql", "time": "…" }
-```
+### Environment variables
 
-Before setup, a different answer is expected and fine:
+The setup screen writes `data/install.json`; you can skip every `DB_*` variable
+if you use it. Real environment variables win over `.env`, which wins over the
+install file.
 
-```json
-{ "ok": false, "error": "Database unreachable." }
-```
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | — | MariaDB connection; skips the database step of the installer |
+| `DB_SOCKET` | — | Alternative to host/port on some shared plans |
+| `DB_DRIVER` | `mysql` | `memory` is for local work and tests only |
+| `MEDIA_DIR` | `./media` | Where uploads are written |
+| `DIST_DIR` | `./dist` | Where the built site is |
+| `INSTALL_FILE` | `./data/install.json` | Where the installer saves its answers |
+| `SESSION_DAYS` | `7` | How long a sign-in lasts |
+| `COOKIE_SECURE` | `auto` | Marks the cookie `Secure` over HTTPS |
+| `TRUST_PROXY` | `true` | Required behind Passenger/nginx for real IPs and HTTPS detection |
+| `BCRYPT_ROUNDS` | `10` | Password hashing cost |
+| `MAX_UPLOAD_MB` | `25` | Upload ceiling |
+| `ALLOW_PUBLIC_SIGNUP` | `false` | Fallback only; the dashboard setting wins once installed |
 
-If it says `"database": "memory"`, `DB_DRIVER=memory` is set somewhere — remove
-it. Production must use `mysql`.
+If the panel already supplies `DB_*`, the setup screen skips the database step
+and comes straight to the owner account. If those credentials do not work, the
+site says so instead of letting you overwrite them from the browser.
 
-> **Passenger supplies `PORT` itself**, sometimes as a socket path. The server
-> reads `process.env.PORT`, so do not set `PORT` manually in the panel.
+---
 
-`server/scripts/start.js` is a two-line wrapper: it sets `NODE_ENV=production`
-(so error responses never include internals) and then runs `server/index.js`.
-Using `server/index.js` as the startup file works too, as long as
-`NODE_ENV=production` is set in the panel's environment variables or `.env`.
+## 5. Run the one-time setup
 
-## 6. Run the one-time setup
+Open the site. Until a database and an owner exist, every address shows the
+setup screen:
 
-Open `https://yourdomain.com/`.
-
-1. **Step 1 — Database.** Enter the website title and the four database values
-   from step 1. “Test connection” checks them without changing anything. Then
-   **Create tables & continue**: the app creates every table, the schema-version
-   row and the deployment settings. There is no SQL file to import.
-2. **Step 2 — Super admin.** Choose the owner's username, password and
-   (optionally) email. This account can never be deleted and is the only one the
-   installer creates.
+1. **Step 1 — Website title + database.** Enter the three values from step 2.
+   **Test connection** checks them without changing anything and tells you if
+   the database or user is missing. **Create tables & continue** creates every
+   table, the schema-version row and the deployment settings.
+2. **Step 2 — Super admin.** The owner's username, password and optionally
+   email. This account can never be deleted and is the only one the installer
+   creates.
 3. The site opens signed in as the owner.
 
-If the connection fails, the message tells you what to fix — for example
-“MariaDB rejected that username or password”, “The database … does not exist”,
-or “Nothing accepted a connection at localhost:3306”.
+Once step 1 succeeds the setup endpoints lock: a visitor can no longer repoint
+the site at another database. Do this immediately after the first deploy.
 
-Once step 1 succeeds the setup endpoints lock themselves: a visitor can no
-longer repoint the site at another database. Complete the setup immediately
-after the first deploy, before sharing the URL.
+If `data/` is not writable the screen tells you: `chmod 775 data` and retry.
 
-The app opens the setup screen automatically on every address — including
-`#/setup` — until the install is complete.
+### The host's own health check
 
-## 7. HTTPS
+```bash
+curl -s https://yourdomain.com/api/health
+```
 
-cPanel → **SSL/TLS Status** → **Run AutoSSL** (or install Let's Encrypt).
-`COOKIE_SECURE=auto` marks the session cookie `Secure` as soon as requests
-arrive over HTTPS, and `TRUST_PROXY=true` is what lets the app see that.
+| Answer | Meaning |
+| --- | --- |
+| `{"ok":true,"database":"mysql",…}` | App and database are ready |
+| `{"ok":false,"error":"Database unreachable."}` | Not configured yet, or the DB is down — open the site to see which |
+| `"database":"memory"` | `DB_DRIVER=memory` is set somewhere; remove it |
 
-## 8. Accounts, readers and members-only sections
+---
+
+## 6. HTTPS
+
+Put the site behind TLS before sharing it: the session cookie is marked
+`Secure` whenever the request arrives over HTTPS (`COOKIE_SECURE=auto`), and
+`TRUST_PROXY=true` is what lets the app see that.
+
+- **cPanel**: SSL/TLS Status → Run AutoSSL
+- **Plesk**: SSL/TLS Certificates → Let's Encrypt
+- **VPS**: `certbot --nginx`, or terminate TLS at nginx and keep Node on :4000
+
+---
+
+## 7. Accounts, readers and members-only sections
 
 The owner signs in at `#/admin` (aliases `#/pb-control`, `#/login`).
 
 - **Settings → Accounts** adds accounts. Choose **Admin** for somebody who edits
   the site, or **Reader** for somebody who may only read it.
 - **Settings → Site & sign-up** sets the website title and whether strangers may
-  create accounts from the public sign-up page (`#/members`).
+  create accounts from the public page (`#/members`).
 - Public sign-up always creates a **reader**. Readers can sign in, unlock the
   members-only sections and nothing else — no publishing, no uploads, no account
   management. The API enforces this; hiding the buttons is not the protection.
-- **Sections** shows a **Public / Members** switch on every section. “Members”
-  means visitors see a locked card with the section's name, while signed-in
-  accounts see the real content. The server strips the content from the
-  anonymous response, so it is not sitting in the page source.
+- **Sections** has a **Public / Members** switch on every section. Visitors see a
+  locked card with the section's name; the server strips the content from the
+  anonymous response, so it is not in the page source.
 - Every sign-up, sign-in, sign-out, failed attempt, password change and account
   creation is stored in `auth_events` with the address and browser.
 
-## 9. Backups
+---
+
+## 8. Backups
 
 Three things, together:
 
 | What | Where | How |
 | --- | --- | --- |
-| Database | MariaDB | cPanel → phpMyAdmin → **Export** → SQL, or the cron job below |
-| Uploads | `~/pb-travel-diaries/media/` | File Manager → **Compress** → download |
-| Installer answers | `~/pb-travel-diaries/data/install.json` | include it in the media tar, or copy it separately |
+| Database | MariaDB | panel export / `mysqldump` |
+| Uploads | `media/` | compress and download |
+| Installer answers | `data/install.json` | include it with the uploads |
 
-A cron job that does all of it nightly:
+A nightly script for a VPS or any host with cron:
 
 ```bash
 #!/bin/sh
@@ -258,7 +273,7 @@ set -e
 cd "$HOME/pb-travel-diaries"
 mkdir -p "$HOME/pb-backups"
 STAMP=$(date +%F)
-mysqldump --single-transaction -u pbuser_pb -p'THE_PASSWORD' pbuser_travel > "$HOME/pb-backups/db-$STAMP.sql"
+mysqldump --single-transaction -u pb -p'THE_PASSWORD' pb_travel_diaries > "$HOME/pb-backups/db-$STAMP.sql"
 tar -czf "$HOME/pb-backups/uploads-$STAMP.tar.gz" media data
 find "$HOME/pb-backups" -mtime +14 -delete
 ```
@@ -266,71 +281,44 @@ find "$HOME/pb-backups" -mtime +14 -delete
 Restoring is the pair: import the `.sql`, unpack `media/` and `data/`, restart
 the app.
 
-> Uploaded files are **not** in git, on purpose: they are content. `public/` is
-> for assets that ship with the code; `media/` is everything uploaded from the
-> dashboard.
+---
 
-## 10. Updating the site
+## 9. Updating
+
+**Option A upload (no build tools on the server):**
+
+1. On your computer: `git pull && npm ci && npm run package`.
+2. Upload the new `release/pb-travel-diaries/` over the old files. Keep `data/`
+   and `media/` — they are not part of the package.
+3. On the server: `npm ci --omit=dev`, then restart the app.
+
+**Option B build on the server:**
 
 ```bash
-cd ~/pb-travel-diaries
+cd pb-travel-diaries
 git pull
 npm ci
 npm run build
 npm prune --omit=dev
 ```
 
-Then cPanel → Setup Node.js App → **Restart**. A restart is required: the server
-loads the built `dist/` at boot, and applies any pending database migration
-(`CREATE TABLE IF NOT EXISTS` plus the versioned changes) before taking traffic.
-`data/` and `media/` are untouched.
+Then restart the process (panel button, or `systemctl restart pb`). A restart is
+required: the server loads `dist/` at boot and applies any pending database
+migration — `CREATE TABLE IF NOT EXISTS` plus the versioned changes — before
+taking traffic. `data/` and `media/` are untouched.
+
+### Upgrading from the `.env`-only version
+
+A deployment that keeps its credentials in the environment keeps working:
+`/api/setup/status` detects them, the setup screen is skipped, and the owner
+signs in at `#/admin` as before. On the first boot the server adds the `reader`
+role to the `users` table and writes the schema version. Nothing to import.
 
 ---
 
-## Already running the previous version?
+## 10. Process manager examples
 
-A deployment that keeps its database credentials in `.env` keeps working:
-`/api/setup/status` detects the environment settings, the setup screen is
-skipped, and the owner signs in at `#/admin` as before. On the first boot after
-updating, the server adds the `reader` role to the `users` table and writes the
-schema version. To do it manually instead:
-
-```bash
-npm run db:init
-```
-
-`server/schema.sql` is still generated for people who prefer phpMyAdmin
-(`npm run schema:sql`), but importing it is never required.
-
----
-
-## If your plan has no Node.js app
-
-Then the site cannot run on that plan. Either upgrade to a cPanel plan with
-*Setup Node.js App*, or use a VPS (Namecheap VPS or any other) and run it with
-systemd behind nginx:
-
-```bash
-# On Ubuntu/Debian
-sudo apt install nodejs npm mariadb-server nginx
-sudo mysql -e "CREATE DATABASE pb_travel_diaries CHARACTER SET utf8mb4;"
-sudo mysql -e "CREATE USER 'pb'@'localhost' IDENTIFIED BY 'change-me';"
-sudo mysql -e "GRANT ALL ON pb_travel_diaries.* TO 'pb'@'localhost';"
-
-git clone https://github.com/parulbedi25/pb-travel-diaries.git /srv/pb
-cd /srv/pb && npm ci && npm run build && npm prune --omit=dev
-mkdir -p data media
-```
-
-Start the app without a `.env` and use the setup screen for the database and
-owner, or copy `.env.example` to `.env`, edit it, and run:
-
-```bash
-cp .env.example .env
-npm run db:init
-```
-
-`/etc/systemd/system/pb.service`:
+**systemd** (`/etc/systemd/system/pb.service`):
 
 ```ini
 [Unit]
@@ -342,6 +330,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/srv/pb
 EnvironmentFile=-/srv/pb/.env
+Environment=NODE_ENV=production
 ExecStart=/usr/bin/node server/scripts/start.js
 Restart=always
 
@@ -349,12 +338,12 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-nginx site:
+**nginx** in front:
 
 ```nginx
 server {
     listen 80;
-    server_name pbtraveldiaries.com www.pbtraveldiaries.com;
+    server_name example.com www.example.com;
     client_max_body_size 30m;          # matches MAX_UPLOAD_MB
 
     location / {
@@ -369,8 +358,27 @@ server {
 ```bash
 sudo chown -R www-data:www-data /srv/pb/data /srv/pb/media
 sudo systemctl enable --now pb
-sudo certbot --nginx -d pbtraveldiaries.com -d www.pbtraveldiaries.com
 ```
+
+**Docker** (short form):
+
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY server ./server
+COPY dist ./dist
+COPY public ./public
+RUN mkdir -p data media
+ENV NODE_ENV=production MEDIA_DIR=/app/media
+VOLUME ["/app/media", "/app/data"]
+EXPOSE 4000
+CMD ["node", "server/scripts/start.js"]
+```
+
+Mount `/app/data` and `/app/media` so a redeploy keeps the installer answers and
+the uploads.
 
 ---
 
@@ -378,19 +386,19 @@ sudo certbot --nginx -d pbtraveldiaries.com -d www.pbtraveldiaries.com
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Setup asks for the database although `.env` exists | The variables are not visible to the app process. Set them in the cPanel Node.js App panel or correct `.env`; restart. |
-| `ER_ACCESS_DENIED_ERROR` / “rejected that username or password” | Username/password mismatch — cPanel prefixes both with your account name. Recheck the database user's password. |
-| “The database … does not exist” | Create it in cPanel → MySQL® Databases; the app cannot create databases on shared hosting. |
-| “The user … is not allowed to open …” | Add the user to the database and grant ALL PRIVILEGES. |
-| “Nothing accepted a connection at localhost:3306” | On cPanel the host is usually `localhost`. If it still fails, ask the host for the MySQL socket and use the socket field. |
-| The setup screen says “This site already has a database configured” | `data/install.json`, `.env` or the panel already has credentials. Use them (or remove them deliberately) instead of re-running the installer. |
-| The site shows “The database is not answering” | The saved credentials stopped working (password changed, DB deleted, server down). Fix in cPanel; if using `data/install.json`, edit it or remove it and reload to re-run setup. |
-| `/api/health` → 503 `Database unreachable` | Same as above. Check the database user is attached to the database. |
+| Setup asks for the database although `DB_*` is set | The app cannot see those variables. Set them in the panel's environment or in `.env`; restart. |
+| “The user … could not sign in” | The database user is missing or the password differs. Create the user in the panel, attach it to the database with all privileges. |
+| “The database … does not exist” | Create it first, then add the user to it. |
+| “The database … exists, but the user … is not allowed to open it” | Grant the user access to that database (all privileges). |
+| “Nothing accepted a connection at localhost:3306” | The host/port is wrong for this server. Most panels use `localhost`; on some plans it is a socket or a remote host name. |
+| The setup screen says “This site already has a database configured” | `data/install.json`, `.env` or the panel already has credentials. Use them, or remove them deliberately instead of re-running the installer. |
+| The site shows “The database is not answering” | The saved credentials stopped working (password changed, DB removed, server down). Fix them in the panel; with `data/install.json`, edit or remove it and reload. |
+| `/api/health` → 503 `Database unreachable` | Same as above; check the user is attached to the database. |
 | `/api/health` says `"database": "memory"` | `DB_DRIVER=memory` is set. Production must use `mysql`. |
-| Sign-in “works” then every save says *Sign in to continue* | Cookies are not surviving. Check `TRUST_PROXY=true`, that the site is on HTTPS, and that `COOKIE_SECURE` is `auto` (or `false` while testing over plain HTTP). |
-| Uploads fail with 413 | Raise `MAX_UPLOAD_MB`, and on nginx also `client_max_body_size`. Passenger limits the body too — set it in the panel if offered. |
-| Uploads succeed but files 404 | `MEDIA_DIR` must be writable (`chmod 775 media`) and must be the same folder the server reads. |
-| Built-in art (the Himalayan photo) 404s | The file is missing from `public/media/` (or `dist/media/` on an older build). Uploads live in `media/`, shipped art in `public/media/`; run `npm run build` and restart. |
-| Setup succeeds but the owner screen returns “Finish the database step first” | `data/install.json` could not be written (permissions). `chmod 775 data` and retry. |
+| Sign-in “works” then every save says *Sign in to continue* | Cookies are not surviving. Check `TRUST_PROXY=true`, that the site is on HTTPS, and `COOKIE_SECURE=auto` (or `false` while testing over plain HTTP). |
+| Uploads fail with 413 | Raise `MAX_UPLOAD_MB`; nginx also needs `client_max_body_size`. Passenger limits the body too — set it in the panel if offered. |
+| Uploads succeed but files 404 | `MEDIA_DIR` must be writable (`chmod 775 media`) and be the folder the server reads. |
+| The Himalayan photo / shipped art 404s | The file is missing from `public/media/` (or `dist/media/` on an old build). Rebuild or upload the folder again. |
+| Setup succeeds but the owner screen says “Finish the database step first” | `data/install.json` could not be written. `chmod 775 data` and retry. |
 | App restart loses accounts/content | Expected only with `DB_DRIVER=memory`. Production must use `mysql`. |
-| Build fails on the server | Node is too old. Vite 7 needs 20.19+ or 22.12+. |
+| Build fails on the server | Node is too old (Vite 7 needs 20.19+ or 22.12+), or the plan is short on memory. Build elsewhere with `npm run package` and upload that folder. |

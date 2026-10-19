@@ -7,10 +7,15 @@ road-tested routes and honest guides — plus a dashboard that edits the live si
 MariaDB. The site is served by its own Node process, so hosting needs Node and a
 database.
 
+Vite is a **build tool only**: it compiles the React/TypeScript source into
+`dist/`. The deployed app is plain Node.js serving that folder, the API and the
+media — no Vite, React or TypeScript on the server. `npm run package` produces
+exactly that runtime-only folder.
+
 - **[RUNNING.md](RUNNING.md)** — step-by-step: development on your computer,
-  production locally, and production on Namecheap (plus development over SSH).
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** — cPanel specifics: databases, backups,
-  HTTPS, updates.
+  production locally, packaging an upload, and production on a server.
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — hosting requirements, databases,
+  backups, HTTPS, updates, process-manager examples.
 
 ---
 
@@ -89,8 +94,19 @@ setup screen.
 npm run prod              # build dist/, then serve it on :4000
 ```
 
-That is the same Node server cPanel runs: no Vite, no separate API. Open
+That is the same Node server the host runs: no Vite, no separate API. Open
 `http://localhost:4000/`.
+
+### Build the folder you upload
+
+```bash
+npm run package           # dist/ + release/pb-travel-diaries/
+```
+
+`release/pb-travel-diaries/` contains only what runs — `server/`, `dist/`,
+`public/`, the package files and the three guides. Copy it to the server and
+run `npm ci --omit=dev` there; no build tools are installed or needed. See
+[RUNNING.md §2.4](RUNNING.md#24-make-the-folder-you-upload-npm-run-package).
 
 | Command | What it does |
 | --- | --- |
@@ -100,6 +116,7 @@ That is the same Node server cPanel runs: no Vite, no separate API. Open
 | `npm run server` | Serve the existing `dist/` (no rebuild) |
 | `npm run build` | Production build into `dist/` |
 | `npm run prod` | Build, then serve exactly as hosting does (production mode) |
+| `npm run package` | Build, then write the runtime-only upload folder (`release/`) |
 | `npm start` | Serve the existing build in production mode |
 | `npm run db:init` | Apply the schema using `.env` (optional; the installer does this) |
 | `npm run schema:sql` | Regenerate `server/schema.sql` from `server/db/schema.js` |
@@ -107,8 +124,9 @@ That is the same Node server cPanel runs: no Vite, no separate API. Open
 | `npm run preview` | Vite's static preview of `dist/` on :4173 (no API; use `npm run prod` to test the real thing) |
 
 Vite and React are **build tools only**. At runtime the site is one Node
-process (`server/index.js`) serving `dist/`, the API and `/media`; cPanel never
-needs to run Vite.
+process (`server/index.js`) serving `dist/`, the API and `/media`; the host never
+needs to run Vite. The six runtime packages are `express`, `mysql2`, `bcryptjs`,
+`dotenv`, `multer` and `cookie-parser`.
 
 ---
 
@@ -193,7 +211,7 @@ The dashboard is at `#/admin` (aliases: `#/pb-control`, `#/login`).
 | Symptom | Cause |
 | --- | --- |
 | The setup screen appears although `.env` is filled in | The app cannot see those variables — set them in the hosting panel or fix `.env`, then restart. |
-| “The database is not answering” | The saved credentials stopped working, or MariaDB is down. Fix them in cPanel; for `data/install.json`, edit or remove it and reload. |
+| “The database is not answering” | The saved credentials stopped working, or MariaDB is down. Fix them in your hosting panel; for `data/install.json`, edit or remove it and reload. |
 | `/api/health` says `"database":"memory"` | `DB_DRIVER=memory` is set; production must be `mysql`. |
 | Site shows built-in content | Nothing published yet — sign in and press Save Changes. |
 | Saves say “Sign in to continue” | The session cookie is not surviving: check `TRUST_PROXY=true` and HTTPS. |

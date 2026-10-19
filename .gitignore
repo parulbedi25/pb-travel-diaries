@@ -52,3 +52,6 @@ media/*
 
 # First-run installer answers (database password lives here)
 /data/
+
+# The deployable folder produced by `npm run package`
+/release/

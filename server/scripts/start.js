@@ -3,7 +3,7 @@
  *
  *   npm start        → this file
  *   npm run prod     → build, then this file
- *   cPanel / Passenger → startup file `server/scripts/start.js`
+ *   Node host / Passenger → startup file `server/scripts/start.js`
  *
  * It is deliberately tiny: the app itself is `server/index.js`. The only thing
  * that has to happen first is NODE_ENV. A hosting panel does not always set it,

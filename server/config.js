@@ -35,7 +35,7 @@ const driver = process.env.DB_DRIVER || "mysql";
 /**
  * Everything the server reads from the environment.
  *
- * Hosting panels (cPanel/Passenger, Plesk, Docker) usually want these set in
+ * Hosting panels (Passenger, Plesk, Docker, systemd) usually want these set in
  * their own UI rather than a .env file — both work, the panel wins because it
  * sets real environment variables.
  */
@@ -64,7 +64,7 @@ export const config = {
     password: process.env.DB_PASSWORD ?? savedInstall?.db?.password ?? "",
     database: process.env.DB_NAME || savedInstall?.db?.database || "pb_travel_diaries",
     connectionLimit: int(process.env.DB_POOL_SIZE, 5),
-    /** Namecheap/cPanel databases often need this on shared plans. */
+    /** Some shared plans expose a socket instead of a host and port. */
     socketPath: process.env.DB_SOCKET || savedInstall?.db?.socketPath || undefined,
   },
   session: {

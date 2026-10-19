@@ -41,6 +41,14 @@ function StepDot({ n, active, done }: { n: number; active: boolean; done: boolea
 }
 
 /**
+ * "The database or user is not there yet" is guidance, not a crash: show it in
+ * the amber box with the create-these-first list above it. Anything else (the
+ * server is down, bad credentials for an existing database) is a real error.
+ */
+const isGuidance = (message: string) =>
+  /does not exist yet|could not sign in|is not allowed to open/i.test(message);
+
+/**
  * First-run installer.
  *
  * Step 1 collects the site title and MariaDB details, then creates the
@@ -62,6 +70,8 @@ export default function SetupWizard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Amber advice for "the server answers, but the database is not there yet".
+  const [warning, setWarning] = useState("");
 
   /* Step 1 — the database */
   const [siteTitle, setSiteTitle] = useState(status.siteTitle || "PB Travel Diaries");
@@ -95,12 +105,17 @@ export default function SetupWizard({
   const testConnection = async () => {
     setError("");
     setNotice("");
+    setWarning("");
     setBusy(true);
     try {
       const result = await siteApi.testDatabase(dbInput);
-      setNotice(
-        `Connected to MariaDB ${result.serverVersion || ""} — “${dbInput.database}” is reachable.`.trim(),
-      );
+      if (result.ok) {
+        setNotice(result.message || `Connected to MariaDB ${result.serverVersion}.`);
+      } else {
+        // The password is right and MariaDB answered, but the database (or
+        // the user's access to it) is not set up yet. Points at the panel.
+        setWarning(result.message);
+      }
     } catch (err) {
       setError(describeApiError(err));
     } finally {
@@ -112,6 +127,7 @@ export default function SetupWizard({
     e.preventDefault();
     setError("");
     setNotice("");
+    setWarning("");
     setBusy(true);
     try {
       const result = await siteApi.setupDatabase(dbInput);
@@ -129,7 +145,9 @@ export default function SetupWizard({
       setNotice("The database and every table are ready.");
       setStep(2);
     } catch (err) {
-      setError(describeApiError(err));
+      const message = describeApiError(err);
+      if (isGuidance(message)) setWarning(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -225,10 +243,37 @@ export default function SetupWizard({
                   <Database className="h-4 w-4 text-saffron-300" /> MariaDB database
                 </h2>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                  In cPanel open <span className="text-zinc-300">MySQL® Databases</span>, create a
-                  database and a user, then add the user to the database with{" "}
-                  <span className="text-zinc-300">ALL PRIVILEGES</span>. Paste those details here;
-                  this screen creates every table for you, so there is no SQL file to import.
+                  The database and its user have to exist before this screen can use them. In your
+                  hosting panel (or with your database administrator):
+                </p>
+                <ol id="setup-prereq" className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-relaxed text-zinc-400">
+                  <li className="flex gap-2.5">
+                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">1</span>
+                    <span>
+                      Create an empty <span className="text-zinc-200">database</span> (MySQL or MariaDB).
+                      Note its exact name — panels sometimes prefix it with your account name.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">2</span>
+                    <span>
+                      Create a <span className="text-zinc-200">database user</span> with a strong
+                      password, and note the exact username.
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">3</span>
+                    <span>
+                      Add that user to that database with{" "}
+                      <span className="text-zinc-200">all privileges</span>, then enter the three
+                      values below.
+                    </span>
+                  </li>
+                </ol>
+                <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+                  One extra thing to grant if your panel offers it: on MySQL 8 / MariaDB 10.5+ the
+                  user also needs <span className="text-zinc-400">CREATE</span> to make the tables.
+                  This screen does the rest — there is no SQL file to import.
                 </p>
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_120px]">
@@ -247,7 +292,9 @@ export default function SetupWizard({
                         autoComplete="off"
                       />
                     </div>
-                    <p className="mt-1 text-[10px] text-zinc-600">On cPanel this is usually “localhost”.</p>
+                    <p className="mt-1 text-[10px] text-zinc-600">
+                      Usually “localhost”. Your panel's database page shows the exact value.
+                    </p>
                   </div>
                   <div>
                     <label htmlFor="setup-port" className={labelCls}>
@@ -274,7 +321,7 @@ export default function SetupWizard({
                       id="setup-db"
                       value={database}
                       onChange={(e) => setDatabase(e.target.value)}
-                      placeholder="cpuser_pbtravel"
+                      placeholder="your_database"
                       className={cn(inputCls, "mt-1.5")}
                       autoComplete="off"
                     />
@@ -287,7 +334,7 @@ export default function SetupWizard({
                       id="setup-user"
                       value={user}
                       onChange={(e) => setUser(e.target.value)}
-                      placeholder="cpuser_pb"
+                      placeholder="your_database_user"
                       className={cn(inputCls, "mt-1.5")}
                       autoComplete="off"
                     />
@@ -353,6 +400,11 @@ export default function SetupWizard({
               {notice && (
                 <p className="flex items-start gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-xs font-medium leading-relaxed text-emerald-300">
                   <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {notice}
+                </p>
+              )}
+              {warning && (
+                <p role="status" className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs font-medium leading-relaxed text-amber-200">
+                  <Database className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {warning}
                 </p>
               )}
 
