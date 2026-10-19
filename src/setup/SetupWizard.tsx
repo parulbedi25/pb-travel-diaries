@@ -2,20 +2,23 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  ArchiveRestore,
   Check,
   CheckCircle2,
   Database,
   Eye,
   EyeOff,
+  FileArchive,
   Loader2,
   Lock,
   Server,
   ShieldCheck,
+  Upload,
   User,
   Wand2,
 } from "lucide-react";
 import { describeApiError } from "../api/client";
-import { siteApi, type SetupStatus } from "../api/siteApi";
+import { siteApi, type RestorePreview, type SetupStatus } from "../api/siteApi";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -73,6 +76,12 @@ export default function SetupWizard({
   // Amber advice for "the server answers, but the database is not there yet".
   const [warning, setWarning] = useState("");
 
+  /* Step 1 — new installation, or a backup to restore */
+  const [mode, setMode] = useState<"new" | "restore">("new");
+  const [restorePreview, setRestorePreview] = useState<RestorePreview | null>(null);
+  const [restoreReplace, setRestoreReplace] = useState(false);
+  const [reading, setReading] = useState(false);
+
   /* Step 1 — the database */
   const [siteTitle, setSiteTitle] = useState(status.siteTitle || "PB Travel Diaries");
   const [host, setHost] = useState(status.db?.host || "localhost");
@@ -118,6 +127,69 @@ export default function SetupWizard({
       }
     } catch (err) {
       setError(describeApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Read a backup without writing anything: the server parks the zip, opens
+   * pb-restore.json and reports what is inside, including the database it came
+   * from so those fields can be filled in (and corrected if this server's
+   * database is named differently).
+   */
+  const readBackup = async (file: File) => {
+    setError("");
+    setNotice("");
+    setWarning("");
+    setRestorePreview(null);
+    setReading(true);
+    try {
+      const preview = await siteApi.inspectBackup(file);
+      setRestorePreview(preview);
+      if (preview.siteTitle) setSiteTitle(preview.siteTitle);
+      if (preview.database) {
+        setHost(preview.database.host || "localhost");
+        setPort(String(preview.database.port ?? 3306));
+        setDatabase(preview.database.database || "");
+        setUser(preview.database.user || "");
+        setPassword(preview.database.password || "");
+        setSocketPath(preview.database.socketPath || "");
+      }
+    } catch (err) {
+      setError(describeApiError(err));
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const restore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setNotice("");
+    setWarning("");
+    if (!restorePreview) {
+      setWarning("Choose the backup zip first — it is read before anything is written.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await siteApi.restoreBackup({
+        uploadId: restorePreview.uploadId,
+        ...dbInput,
+        replace: restoreReplace,
+      });
+      setDatabaseSaved(true);
+      setNotice(
+        `Restored ${result.users} account(s), ${result.mediaFiles} file(s) and every setting ` +
+          `from the backup of ${result.restoredFrom ? new Date(result.restoredFrom).toLocaleDateString() : "this site"}. ` +
+          "Opening the sign-in screen…",
+      );
+      setTimeout(onDone, 1800);
+    } catch (err) {
+      const message = describeApiError(err);
+      if (isGuidance(message)) setWarning(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -214,37 +286,154 @@ export default function SetupWizard({
         </div>
 
         <div className="rounded-3xl glass p-6 sm:p-8">
+          {step === 1 && status.restoreAllowed && (
+            <div className="mb-6 grid gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-1.5 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("new");
+                  setError("");
+                  setNotice("");
+                  setWarning("");
+                }}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-colors",
+                  mode === "new"
+                    ? "bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/20"
+                    : "text-zinc-400 hover:text-white",
+                )}
+              >
+                <Wand2 className="h-3.5 w-3.5" /> Start fresh
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("restore");
+                  setError("");
+                  setNotice("");
+                  setWarning("");
+                }}
+                className={cn(
+                  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-colors",
+                  mode === "restore"
+                    ? "bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/20"
+                    : "text-zinc-400 hover:text-white",
+                )}
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" /> Restore a backup
+              </button>
+            </div>
+          )}
+
           {step === 1 && (
-            <form onSubmit={createTables} className="grid gap-5">
-              <div>
-                <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
-                  <Wand2 className="h-4 w-4 text-saffron-300" /> Your website
-                </h2>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                  This becomes the browser tab's title and the name shown on the sign-in screens. You
-                  can change it later in the dashboard.
-                </p>
-                <label htmlFor="setup-title" className={cn(labelCls, "mt-4 block")}>
-                  Website title
-                </label>
-                <input
-                  id="setup-title"
-                  value={siteTitle}
-                  onChange={(e) => setSiteTitle(e.target.value)}
-                  autoFocus
-                  maxLength={120}
-                  placeholder="PB Travel Diaries"
-                  className={cn(inputCls, "mt-1.5")}
-                />
-              </div>
+            <form onSubmit={mode === "restore" ? restore : createTables} className="grid gap-5">
+              {mode === "restore" ? (
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+                    <FileArchive className="h-4 w-4 text-saffron-300" /> Your backup
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                    Upload the zip the daily backup wrote. Every account, password, image and
+                    setting comes back — nothing needs importing through phpMyAdmin.
+                  </p>
+
+                  <label
+                    htmlFor="setup-backup"
+                    className={cn(
+                      "mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-7 text-center transition-colors",
+                      restorePreview
+                        ? "border-emerald-400/35 bg-emerald-400/[0.05]"
+                        : "border-white/15 bg-white/[0.02] hover:border-saffron-300/40 hover:bg-white/[0.04]",
+                    )}
+                  >
+                    {reading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-saffron-300" />
+                    ) : restorePreview ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+                    ) : (
+                      <Upload className="h-5 w-5 text-zinc-400" />
+                    )}
+                    <span className="text-xs font-semibold text-white">
+                      {reading
+                        ? "Reading the backup…"
+                        : restorePreview
+                          ? restorePreview.fileName
+                          : "Choose the backup zip"}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">
+                      {restorePreview
+                        ? "Choose another file to replace it"
+                        : "pb-backup-….zip — the one from the backup folder on the old server"}
+                    </span>
+                    <input
+                      id="setup-backup"
+                      type="file"
+                      accept=".zip,application/zip"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void readBackup(file);
+                      }}
+                    />
+                  </label>
+
+                  {restorePreview && (
+                    <dl className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-[11px] sm:grid-cols-4">
+                      {[
+                        ["Accounts", String(restorePreview.users)],
+                        ["Photos", String(restorePreview.mediaFiles)],
+                        ["Revisions", String(restorePreview.revisions)],
+                        ["Saved", restorePreview.createdAt
+                          ? new Date(restorePreview.createdAt).toLocaleDateString()
+                          : "—"],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <dt className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">{label}</dt>
+                          <dd className="mt-0.5 font-display text-sm font-semibold text-white">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+
+                  <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+                    This backup was made by schema version {restorePreview?.schemaVersion || "—"}.
+                    {restorePreview?.database
+                      ? " Its database details are filled in below — change them if this server uses a different name, user or password."
+                      : " It carries no database details, so enter them below."}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+                    <Wand2 className="h-4 w-4 text-saffron-300" /> Your website
+                  </h2>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                    This becomes the browser tab's title and the name shown on the sign-in screens. You
+                    can change it later in the dashboard.
+                  </p>
+                  <label htmlFor="setup-title" className={cn(labelCls, "mt-4 block")}>
+                    Website title
+                  </label>
+                  <input
+                    id="setup-title"
+                    value={siteTitle}
+                    onChange={(e) => setSiteTitle(e.target.value)}
+                    autoFocus
+                    maxLength={120}
+                    placeholder="PB Travel Diaries"
+                    className={cn(inputCls, "mt-1.5")}
+                  />
+                </div>
+              )}
 
               <div className="border-t border-white/[0.07] pt-5">
                 <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
                   <Database className="h-4 w-4 text-saffron-300" /> MariaDB database
                 </h2>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                  The database and its user have to exist before this screen can use them. In your
-                  hosting panel (or with your database administrator):
+                  {mode === "restore"
+                    ? "Where the restored data should live. These were read from the backup — change anything that is different on this server, then restore."
+                    : "The database and its user have to exist before this screen can use them. In your hosting panel (or with your database administrator):"}
                 </p>
                 <ol id="setup-prereq" className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-relaxed text-zinc-400">
                   <li className="flex gap-2.5">
@@ -408,6 +597,22 @@ export default function SetupWizard({
                 </p>
               )}
 
+              {mode === "restore" && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.09] bg-white/[0.03] px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={restoreReplace}
+                    onChange={(e) => setRestoreReplace(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-saffron-400"
+                  />
+                  <span className="text-[11px] leading-relaxed text-zinc-400">
+                    <span className="font-semibold text-zinc-200">Replace what is in that database.</span>{" "}
+                    Leave this off if the database is empty. If it already holds accounts, the restore
+                    stops rather than merging two sites together.
+                  </span>
+                </label>
+              )}
+
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
                 <button
                   type="button"
@@ -420,10 +625,14 @@ export default function SetupWizard({
                 </button>
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || (mode === "restore" && !restorePreview)}
                   className="ml-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-saffron-400 px-6 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60 sm:w-auto"
                 >
-                  {busy ? "Working…" : "Create tables & continue"}
+                  {busy
+                    ? "Working…"
+                    : mode === "restore"
+                      ? "Restore everything"
+                      : "Create tables & continue"}
                   {!busy && <ArrowRight className="h-4 w-4" />}
                 </button>
               </div>
@@ -562,7 +771,9 @@ export default function SetupWizard({
 
         <p className="mt-5 text-center text-[11px] leading-relaxed text-zinc-600">
           {step === 1
-            ? "The app creates the tables itself — importing server/schema.sql is not needed."
+            ? mode === "restore"
+              ? "A restore creates the tables it needs, writes every row back, and unpacks the media folder. Nothing is imported by hand."
+              : "The app creates the tables itself — importing server/schema.sql is not needed."
             : "Afterwards, people can create their own read-only accounts from the sign-up page, or you can add accounts in the dashboard."}
         </p>
       </div>

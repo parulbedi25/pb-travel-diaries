@@ -38,7 +38,15 @@ export function validateSetupInput(input = {}) {
   const siteTitle = String(input.siteTitle ?? "").trim();
   if (siteTitle.length < 1) throw new SetupError("Give the website a title.");
   if (siteTitle.length > 120) throw new SetupError("Keep the website title under 120 characters.");
+  return { siteTitle, db: validateDatabase(input) };
+}
 
+/**
+ * The database half of a form, validated on its own. The restore screen uses
+ * this too: it has no website title to ask for, but the names, the port and
+ * the password rules are identical.
+ */
+export function validateDatabase(input = {}) {
   const host = String(input.host ?? "").trim() || "127.0.0.1";
   const socketPath = String(input.socketPath ?? "").trim();
   if (!socketPath && !HOST_PATTERN.test(host)) {
@@ -66,10 +74,11 @@ export function validateSetupInput(input = {}) {
   const password = String(input.password ?? "");
   if (password.length > 400) throw new SetupError("That database password is too long.");
 
-  return { siteTitle, db: { host, port, user, password, database, socketPath: socketPath || undefined } };
+  return { host, port, user, password, database, socketPath: socketPath || undefined };
 }
 
-function optionsFor(db, { withDatabase }) {
+/** Connection options for a database, from validated fields. */
+export function connectionOptions(db, { withDatabase } = {}) {
   const options = {
     user: db.user,
     password: db.password,
@@ -144,7 +153,7 @@ export async function testConnection(input, { connect = mysql.createConnection }
   const { db } = validateSetupInput(input);
 
   try {
-    const connection = await connect(optionsFor(db, { withDatabase: true }));
+    const connection = await connect(connectionOptions(db, { withDatabase: true }));
     try {
       const [rows] = await connection.query("SELECT VERSION() AS version, DATABASE() AS current");
       const serverVersion = String(rows?.[0]?.version ?? "");
@@ -168,7 +177,7 @@ export async function testConnection(input, { connect = mysql.createConnection }
     // The password was accepted but the database is missing. Confirm the
     // server itself answers, then say exactly what to create first.
     try {
-      const connection = await connect(optionsFor(db, { withDatabase: false }));
+      const connection = await connect(connectionOptions(db, { withDatabase: false }));
       try {
         const [rows] = await connection.query("SELECT VERSION() AS version");
         return {
@@ -207,7 +216,7 @@ export async function installDatabase(input, options = {}) {
   // privileges, and lets "the database already exists" pass.
   let admin;
   try {
-    admin = await connect(optionsFor(db, { withDatabase: false }));
+    admin = await connect(connectionOptions(db, { withDatabase: false }));
   } catch (error) {
     throw new SetupError(friendlyDatabaseError(error, db), 400);
   }
@@ -256,7 +265,7 @@ export async function installDatabase(input, options = {}) {
 
   let connection;
   try {
-    connection = await connect(optionsFor(db, { withDatabase: true }));
+    connection = await connect(connectionOptions(db, { withDatabase: true }));
   } catch (error) {
     if (createDenied && error?.code === "ER_BAD_DB_ERROR") {
       throw new SetupError(missingDatabaseMessage(db), 400);

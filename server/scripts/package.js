@@ -86,10 +86,11 @@ Run it
 
      npm ci --omit=dev
 
-3. Create the two writable folders:
+3. Create the writable folders (backup/ appears by itself on the first
+   scheduled run, but creating it now proves the folder is writable):
 
-     mkdir -p data media
-     chmod 775 data media
+     mkdir -p data media backup
+     chmod 775 data media backup
 
 4. Point the host's "Node.js app" at the startup file:
 
@@ -98,7 +99,9 @@ Run it
    (Any process manager works; Passenger, Plesk and systemd all accept it.)
 
 5. Open the site. The first visit shows the setup screen: website title,
-   database details, then the owner account.
+   database details, then the owner account. Moving an existing site instead?
+   Choose "Restore a backup" on that same screen and upload one of the zips
+   from the old server's backup/ folder.
 
 You need a database that already exists, and a database user attached to it
 with all privileges. The setup screen creates every table itself.
@@ -132,4 +135,5 @@ const relative = path.relative(root, target);
 
 console.log(`[package] ${relative} — ${files.length} files, ${mb(sizeOf(target))}`);
 console.log("[package] contains: server/, dist/, public/, package files, docs");
+console.log("[package] backups go to <install>/backup/ — separate from this folder");
 console.log("[package] on the server: npm ci --omit=dev, then start server/scripts/start.js");

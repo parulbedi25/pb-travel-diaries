@@ -23,7 +23,7 @@ const describe = (error: unknown): string => {
 };
 
 async function request<T>(
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   url: string,
   body?: unknown,
 ): Promise<T> {
@@ -68,6 +68,7 @@ export const api = {
   get: <T>(url: string) => request<T>("GET", url),
   post: <T>(url: string, body?: unknown) => request<T>("POST", url, body),
   put: <T>(url: string, body?: unknown) => request<T>("PUT", url, body),
+  patch: <T>(url: string, body?: unknown) => request<T>("PATCH", url, body),
   delete: <T>(url: string) => request<T>("DELETE", url),
 
   /** Uploads use multipart, so they bypass the JSON helper above. */

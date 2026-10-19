@@ -12,6 +12,7 @@
 import { config } from "./config.js";
 import { createApp } from "./app.js";
 import { closeRepo, getRepo } from "./db/index.js";
+import { startBackupScheduler, stopBackupScheduler } from "./lib/backup.js";
 
 const app = createApp();
 
@@ -36,11 +37,22 @@ const server = app.listen(config.port, () => {
   console.log(`[server] ${config.nodeEnv} listening on ${where}`);
   console.log(`[server] media folder: ${config.mediaDir}`);
   console.log(`[server] serving site: ${config.distDir}`);
+  if (config.backup.enabled) {
+    console.log(
+      `[server] backups: daily at ${String(config.backup.hour).padStart(2, "0")}:00, ` +
+        `keeping ${config.backup.keep}, in ${config.backup.dir}`,
+    );
+  }
 });
+
+// The daily zip. It checks every quarter of an hour and writes once a day, so
+// a server that was asleep at the appointed hour still gets its backup.
+startBackupScheduler();
 
 /** Finish in-flight work before exiting, so a deploy never truncates a save. */
 async function shutdown(signal) {
   console.log(`[server] ${signal} — closing`);
+  stopBackupScheduler();
   server.close(async () => {
     await closeRepo();
     process.exit(0);

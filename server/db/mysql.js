@@ -148,7 +148,8 @@ export async function createMysqlRepo() {
     async findUserByUsername(username) {
       const [rows] = await pool.execute(
         `SELECT id, username, email, password_hash AS passwordHash, role, disabled,
-                created_at AS createdAt, last_login_at AS lastLoginAt
+                disabled_at AS disabledAt, created_at AS createdAt,
+                last_login_at AS lastLoginAt
            FROM users WHERE username = ? LIMIT 1`,
         [username],
       );
@@ -158,7 +159,8 @@ export async function createMysqlRepo() {
     async findUserById(id) {
       const [rows] = await pool.execute(
         `SELECT id, username, email, password_hash AS passwordHash, role, disabled,
-                created_at AS createdAt, last_login_at AS lastLoginAt
+                disabled_at AS disabledAt, created_at AS createdAt,
+                last_login_at AS lastLoginAt
            FROM users WHERE id = ? LIMIT 1`,
         [id],
       );
@@ -168,7 +170,8 @@ export async function createMysqlRepo() {
     async listUsers() {
       const [rows] = await pool.execute(
         `SELECT id, username, email, role, disabled,
-                created_at AS createdAt, last_login_at AS lastLoginAt
+                disabled_at AS disabledAt, created_at AS createdAt,
+                last_login_at AS lastLoginAt
            FROM users ORDER BY id ASC`,
       );
       return rows;
@@ -188,6 +191,22 @@ export async function createMysqlRepo() {
 
     async touchLastLogin(id) {
       await pool.execute("UPDATE users SET last_login_at = NOW() WHERE id = ?", [id]);
+    },
+
+    /**
+     * Switch an account off (or back on). Disabling also drops every live
+     * session, so the person is signed out on their very next request instead
+     * of keeping the members-only half of the site until the cookie expires.
+     */
+    async setUserDisabled(id, disabled) {
+      return transaction(async (conn) => {
+        await conn.execute(
+          "UPDATE users SET disabled = ?, disabled_at = ? WHERE id = ?",
+          [disabled ? 1 : 0, disabled ? new Date() : null, id],
+        );
+        if (disabled) await conn.execute("DELETE FROM sessions WHERE user_id = ?", [id]);
+        return true;
+      });
     },
 
     async deleteUser(id) {
@@ -292,6 +311,49 @@ export async function createMysqlRepo() {
     async deleteMedia(id) {
       const [result] = await pool.execute("DELETE FROM media WHERE id = ?", [id]);
       return result.affectedRows > 0;
+    },
+
+    /* ── whole-database export ────────────────────────────────────────── */
+
+    /**
+     * Everything a backup needs, in one call: accounts (with their password
+     * hashes, or a restore could not sign anybody in), the published site and
+     * its history, the media index, every setting, and the access log.
+     *
+     * Sessions are deliberately absent — a backup is not a set of live logins.
+     */
+    async exportAll() {
+      const [users] = await pool.query(
+        `SELECT id, username, email, password_hash AS passwordHash, role, disabled,
+                disabled_at AS disabledAt, created_at AS createdAt,
+                last_login_at AS lastLoginAt
+           FROM users ORDER BY id ASC`,
+      );
+      const [settings] = await pool.query(
+        "SELECT setting_key AS settingKey, value FROM settings ORDER BY setting_key",
+      );
+      const [media] = await pool.query(
+        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext,
+                created_at AS createdAt, created_by AS createdBy
+           FROM media ORDER BY id ASC`,
+      );
+      const [authEvents] = await pool.query(
+        `SELECT id, user_id AS userId, username, event, ip, user_agent AS userAgent,
+                detail, created_at AS createdAt
+           FROM auth_events ORDER BY id ASC`,
+      );
+      const [revisions] = await pool.query(
+        `SELECT id, description, content, created_at AS createdAt, created_by AS createdBy
+           FROM revisions ORDER BY created_at ASC, id ASC`,
+      );
+      return {
+        users,
+        settings,
+        media,
+        authEvents,
+        revisions,
+        content: await this.getContent(),
+      };
     },
 
     /* ── settings ─────────────────────────────────────────────────────── */

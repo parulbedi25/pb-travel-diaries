@@ -10,7 +10,18 @@
  * Written to work on MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no
  * CHECK constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in
  * the application.
+ *
+ * ── Changing the schema later ──────────────────────────────────────────────
+ * These statements are the tables as they looked at version 1 and must not
+ * grow. Anything new — a column, an index, a table, a backfilled row — goes in
+ * `migrations.js` as the next version, so an installation that has been live
+ * for a year upgrades exactly like a brand-new one. See migrations.js for the
+ * shape of an entry.
  */
+
+// Re-exported so everything that only cares about "the current version" can keep
+// importing it from the schema module.
+export { LATEST_VERSION } from "./migrations.js";
 
 /** Tables every installation needs. `IF NOT EXISTS` makes this idempotent. */
 export const BASE_STATEMENTS = [
@@ -96,29 +107,27 @@ export const BASE_STATEMENTS = [
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (setting_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  // The ledger: one row per migration this database has run. It is created
+  // here rather than by a migration because a migration cannot record itself
+  // before the table that records it exists.
+  `CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INT UNSIGNED NOT NULL,
+    name        VARCHAR(160) NOT NULL DEFAULT '',
+    applied_at  DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (version)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
-/**
- * Changes applied to databases created by earlier versions. Version 1 is the
- * base schema itself; a database with no `schema_version` row is treated as
- * version 0 and upgraded.
- */
-export const MIGRATIONS = [
-  { version: 1, statements: [] },
-  {
-    version: 2,
-    statements: [
-      // PR #17 shipped only owner/admin. Readers join them without touching
-      // the rows that already exist.
-      "ALTER TABLE users MODIFY role ENUM('owner','admin','reader') NOT NULL DEFAULT 'reader'",
-    ],
-  },
-];
-
-export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
-
-/** Read the installed schema version. Returns 0 on a database from before it. */
-async function currentVersion(executor) {
+/** Read how far this database has been migrated. 0 when nothing has run yet. */
+export async function currentVersion(executor) {
+  try {
+    const [rows] = await executor.query("SELECT MAX(version) AS version FROM schema_migrations");
+    const fromLedger = Number(rows?.[0]?.version);
+    if (Number.isFinite(fromLedger) && fromLedger > 0) return fromLedger;
+  } catch {
+    // A database from before the ledger existed. Fall through to the setting.
+  }
   try {
     const [rows] = await executor.query(
       "SELECT value FROM settings WHERE setting_key = 'schema_version' LIMIT 1",
@@ -130,29 +139,75 @@ async function currentVersion(executor) {
 }
 
 /**
+ * Databases installed before `schema_migrations` existed recorded their version
+ * in `settings.schema_version`. When the ledger is empty but that setting says
+ * the site is at version N, record 1..N as already applied — otherwise the
+ * upgrade would replay `ALTER TABLE` statements that have already run.
+ */
+async function adoptLegacyVersions(executor, migrations) {
+  const [rows] = await executor.query("SELECT COUNT(*) AS n FROM schema_migrations");
+  if (Number(rows?.[0]?.n ?? 0) > 0) return;
+
+  let legacy = 0;
+  try {
+    const [setting] = await executor.query(
+      "SELECT value FROM settings WHERE setting_key = 'schema_version' LIMIT 1",
+    );
+    legacy = Number(setting?.[0]?.value) || 0;
+  } catch {
+    legacy = 0;
+  }
+  if (legacy <= 0) return;
+
+  for (const migration of migrations) {
+    if (migration.version > legacy) break;
+    await executor.query(
+      "INSERT IGNORE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, NOW(3))",
+      [migration.version, `${migration.name} (adopted)`],
+    );
+  }
+}
+
+/**
  * Create every table that is missing and apply pending migrations.
  *
  * `executor` is anything with `query(sql, params?)`: a mysql2 pool, a single
- * connection, or the fake used by the tests. Safe to run on every boot.
+ * connection, or the fake used by the tests. Safe to run on every boot: a
+ * version that the ledger already holds is skipped, so only genuinely new work
+ * happens.
  */
-export async function applySchema(executor) {
+export async function applySchema(executor, { migrations, upTo = Infinity } = {}) {
+  const all = migrations ?? (await import("./migrations.js")).MIGRATIONS;
+  // `upTo` stops partway: a restore has to build the tables as the backup
+  // remembers them, load the rows, and only then run anything newer — so a
+  // migration that backfills existing data sees the restored rows.
+  const list = all.filter((migration) => migration.version <= upTo);
+
   for (const statement of BASE_STATEMENTS) {
     await executor.query(statement);
   }
 
+  await adoptLegacyVersions(executor, list);
+
   const from = await currentVersion(executor);
-  for (const migration of MIGRATIONS) {
+  const applied = [];
+  for (const migration of list) {
     if (migration.version <= from) continue;
-    for (const statement of migration.statements) {
-      await executor.query(statement);
-    }
+    await migration.up(executor);
+    await executor.query("INSERT INTO schema_migrations (version, name) VALUES (?, ?)", [
+      migration.version,
+      migration.name,
+    ]);
+    applied.push(migration.version);
   }
 
-  if (from < LATEST_VERSION) {
+  // Kept in step for older tooling and for anyone reading the settings table.
+  const latest = list[list.length - 1]?.version ?? 0;
+  if (applied.length > 0 || from < latest) {
     await executor.query(
       `INSERT INTO settings (setting_key, value) VALUES ('schema_version', ?)
        ON DUPLICATE KEY UPDATE value = VALUES(value)`,
-      [String(LATEST_VERSION)],
+      [String(latest)],
     );
   }
 
@@ -161,5 +216,22 @@ export async function applySchema(executor) {
     `INSERT IGNORE INTO settings (setting_key, value) VALUES ('theme', '"dark"')`,
   );
 
-  return { version: LATEST_VERSION, upgradedFrom: from };
+  return { version: latest, upgradedFrom: from, applied };
+}
+
+/** What `npm run db:status` prints: installed, latest, and what is waiting. */
+export async function migrationStatus(executor, { migrations } = {}) {
+  const list = migrations ?? (await import("./migrations.js")).MIGRATIONS;
+  let installed = 0;
+  try {
+    installed = await currentVersion(executor);
+  } catch {
+    installed = 0;
+  }
+  const latest = list[list.length - 1]?.version ?? 0;
+  return {
+    installed,
+    latest,
+    pending: list.filter((m) => m.version > installed),
+  };
 }

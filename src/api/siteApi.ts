@@ -9,6 +9,9 @@ export interface Account {
   email: string | null;
   /** readers can sign in and see members-only sections, nothing else. */
   role: "owner" | "admin" | "reader";
+  /** Switched off by the owner: cannot sign in, cannot read the gated parts. */
+  disabled?: boolean;
+  disabledAt?: string | null;
 }
 
 /** What the first-run setup screen needs to know. */
@@ -20,6 +23,8 @@ export interface SetupStatus {
   siteTitle: string;
   db: { host: string; port: number; database: string; user: string; socketPath: string } | null;
   setupLocked: boolean;
+  /** The "Restore a backup" tab: only while the site has no database yet. */
+  restoreAllowed?: boolean;
   error?: string | null;
   mode: "installer" | "env" | "memory";
 }
@@ -43,6 +48,61 @@ export interface SetupTestResult {
   databaseExists: boolean;
   /** A sentence to show as-is: what worked, or what to create first. */
   message: string;
+}
+
+/** What the restore screen learns from an uploaded backup, before restoring. */
+export interface RestorePreview {
+  uploadId: string;
+  fileName: string;
+  siteTitle: string;
+  createdAt: string | null;
+  reason: string;
+  schemaVersion: number;
+  database: {
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+    password: string;
+    socketPath?: string;
+  } | null;
+  users: number;
+  revisions: number;
+  mediaFiles: number;
+  mediaBytes: number;
+  hasApp: boolean;
+  hasContent: boolean;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  siteTitle: string;
+  users: number;
+  revisions: number;
+  mediaRecords: number;
+  mediaFiles: number;
+  authEvents: number;
+  settings: number;
+  schemaVersion: number;
+  restoredFrom: string | null;
+}
+
+/** One zip in the backup folder. */
+export interface BackupEntry {
+  name: string;
+  bytes: number;
+  createdAt: string;
+}
+
+export interface BackupState {
+  enabled: boolean;
+  hour: number;
+  keep: number;
+  dir: string;
+  includeApp: boolean;
+  lastBackupAt: string | null;
+  nextRunAt: string | null;
+  backups: BackupEntry[];
 }
 
 export interface SiteSettings {
@@ -172,6 +232,23 @@ export const siteApi = {
     await api.delete(`/api/auth/users/${id}`);
   },
 
+  /** Switch an account off (or back on). Disabling drops its sessions. */
+  async setUserDisabled(id: number, disabled: boolean): Promise<Account> {
+    const { user } = await api.patch<{ user: Account }>(`/api/auth/users/${id}`, { disabled });
+    return user;
+  },
+
+  /* ── backups ─────────────────────────────────────────────────────────── */
+
+  async listBackups(): Promise<BackupState> {
+    return api.get<BackupState>("/api/backups");
+  },
+
+  async createBackup(): Promise<BackupEntry> {
+    const { backup } = await api.post<{ backup: BackupEntry }>("/api/backups");
+    return backup;
+  },
+
   async authEvents(limit = 100): Promise<AuthEvent[]> {
     const { events } = await api.get<{ events: AuthEvent[] }>(`/api/auth/events?limit=${limit}`);
     return events;
@@ -220,6 +297,24 @@ export const siteApi = {
     next: "owner" | "login";
   }> {
     return api.post("/api/setup/database", input);
+  },
+
+  /** Upload a backup and read it, without changing anything. */
+  async inspectBackup(file: File): Promise<RestorePreview> {
+    return api.upload<RestorePreview>("/api/setup/restore/inspect", file);
+  },
+
+  async restoreBackup(input: {
+    uploadId: string;
+    host: string;
+    port: string | number;
+    database: string;
+    user: string;
+    password: string;
+    socketPath?: string;
+    replace: boolean;
+  }): Promise<RestoreResult> {
+    return api.post<RestoreResult>("/api/setup/restore", input);
   },
 
   async setupOwner(input: {

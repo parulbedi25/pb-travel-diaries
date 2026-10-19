@@ -119,7 +119,7 @@ authRouter.post("/login", async (req, res, next) => {
     const user = await repo.findUserByUsername(username);
     // Same message and roughly the same work whether the account exists or the
     // password is wrong, so the form cannot be used to enumerate usernames.
-    const ok = user && !user.disabled ? await verifyPassword(password, user.passwordHash) : false;
+    const ok = user ? await verifyPassword(password, user.passwordHash) : false;
     if (!ok) {
       noteFailedAttempt(key);
       await recordEvent(req, {
@@ -129,6 +129,26 @@ authRouter.post("/login", async (req, res, next) => {
         detail: user ? "Wrong password" : "Unknown username",
       });
       return res.status(401).json({ error: "Incorrect username or password." });
+    }
+
+    // The password was right, so this is the account holder asking, not
+    // somebody guessing usernames. Say plainly that the account is switched
+    // off — "wrong password" here would send them round in circles — and give
+    // no session, so the members-only sections stay locked.
+    if (user.disabled) {
+      noteFailedAttempt(key);
+      await recordEvent(req, {
+        userId: user.id,
+        username,
+        event: "failed_login",
+        detail: "Account disabled",
+      });
+      return res.status(403).json({
+        error:
+          "This account is disabled. Ask the site owner to enable it again — " +
+          "everything that is public can still be read without signing in.",
+        code: "account_disabled",
+      });
     }
 
     clearAttempts(key);
@@ -219,6 +239,53 @@ authRouter.post("/users", requireEditor, async (req, res, next) => {
       detail: `Created ${username}`,
     });
     res.status(201).json({ user: publicUser(await repo.findUserById(id)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Switch an account off or back on.
+ *
+ * A disabled account can still read the public site, but it cannot sign in and
+ * every one of its sessions is dropped, so the members-only sections close on
+ * the next request — including when the flag was set straight in the database,
+ * because a session is looked up through `users.disabled` on every call.
+ */
+authRouter.patch("/users/:id", requireEditor, async (req, res, next) => {
+  try {
+    const repo = await getRepo();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "No such account." });
+
+    const target = await repo.findUserById(id);
+    if (!target) return res.status(404).json({ error: "No such account." });
+    if (typeof req.body?.disabled !== "boolean") {
+      return res.status(400).json({ error: "Say whether the account should be disabled." });
+    }
+    if (target.username === req.user.username) {
+      return res.status(400).json({ error: "You cannot disable the account you are signed in with." });
+    }
+    if (target.role === "owner") {
+      return res.status(400).json({ error: "The owner account cannot be disabled." });
+    }
+
+    await repo.setUserDisabled(id, req.body.disabled);
+    await recordEvent(req, {
+      userId: id,
+      username: req.user.username,
+      event: req.body.disabled ? "user_disabled" : "user_enabled",
+      detail: `${req.body.disabled ? "Disabled" : "Enabled"} ${target.username}`,
+    });
+
+    const fresh = await repo.findUserById(id);
+    res.json({
+      user: {
+        ...publicUser(fresh),
+        disabled: Boolean(fresh.disabled),
+        disabledAt: fresh.disabledAt ?? null,
+      },
+    });
   } catch (error) {
     next(error);
   }

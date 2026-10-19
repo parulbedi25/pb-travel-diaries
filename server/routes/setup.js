@@ -28,6 +28,7 @@ import {
   testConnection,
 } from "../lib/installer.js";
 import { publicInstall, readInstall } from "../lib/installFile.js";
+import { restoreAllowed } from "./restore.js";
 
 export const setupRouter = express.Router();
 
@@ -55,6 +56,7 @@ setupRouter.get("/setup/status", async (req, res) => {
       siteTitle: config.siteTitle,
       db: null,
       setupLocked: true,
+      restoreAllowed: false,
       mode: "memory",
     });
   }
@@ -96,6 +98,8 @@ setupRouter.get("/setup/status", async (req, res) => {
     // installed; before that it would just hand a stranger the layout.
     db: installed ? publicInstall(saved) : null,
     setupLocked: Boolean(saved?.installed) || config.hasDatabase || isMemory(),
+    // The "Restore a backup" tab is shown only while the site is uninstalled.
+    restoreAllowed: restoreAllowed(),
     error,
     mode: envConfigured ? "env" : "installer",
   });

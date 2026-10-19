@@ -182,6 +182,13 @@ install file.
 | `TRUST_PROXY` | `true` | Required behind Passenger/nginx for real IPs and HTTPS detection |
 | `BCRYPT_ROUNDS` | `10` | Password hashing cost |
 | `MAX_UPLOAD_MB` | `25` | Upload ceiling |
+| `MAX_RESTORE_MB` | `2048` | Largest backup the restore screen accepts |
+| `BACKUP_ENABLED` | `true` | The daily backup |
+| `BACKUP_HOUR` | `2` | Local hour of the daily run |
+| `BACKUP_KEEP` | `10` | How many zips to keep |
+| `BACKUP_DIR` | `./backup` | Where they are written (created if missing) |
+| `BACKUP_INCLUDE_APP` | `true` | Put the application's own files in the zip |
+| `ALLOW_SITE_RESTORE` | — | `1` lets the restore screen run over an already-installed database |
 | `ALLOW_PUBLIC_SIGNUP` | `false` | Fallback only; the dashboard setting wins once installed |
 
 If the panel already supplies `DB_*`, the setup screen skips the database step
@@ -256,26 +263,73 @@ The owner signs in at `#/admin` (aliases `#/pb-control`, `#/login`).
 
 ## 8. Backups
 
-Three things, together:
+The app backs itself up. Once a day it writes one zip into **`backup/`** at the
+root of the installation, creating the folder the first time, and keeps the
+newest **ten**. Nothing needs installing and there is no cron entry to write.
 
-| What | Where | How |
-| --- | --- | --- |
-| Database | MariaDB | panel export / `mysqldump` |
-| Uploads | `media/` | compress and download |
-| Installer answers | `data/install.json` | include it with the uploads |
+```
+backup/
+  pb-backup-2026-10-20_02-00-07.zip
+  pb-backup-2026-10-19_02-00-04.zip
+  … nine more
+```
 
-A nightly script for a VPS or any host with cron:
+Each archive contains:
+
+| Inside | What it is |
+| --- | --- |
+| `pb-restore.json` | The entire database as plain JSON — every account with its bcrypt hash, the published site and its revision history, the media index, every setting, the access log — plus the database details this installation was using |
+| `media/` | Every uploaded photograph and document, byte for byte |
+| `app/` | The application itself: `server/`, `src/`, `public/`, `dist/`, the package files and the docs |
+| `RESTORE-README.txt` | The same instructions, inside the zip |
+
+The schedule, the count and the folder are `BACKUP_HOUR`, `BACKUP_KEEP` and
+`BACKUP_DIR`. Turn it off with `BACKUP_ENABLED=false`, or leave the code out of
+the archive with `BACKUP_INCLUDE_APP=false`.
+
+**Taking one now:** **PB Control → Backups → Back up now**, or
+`npm run backup:now` on the server. The dashboard also lists the archives and
+downloads them; both need an editor session, because a backup is the most
+sensitive file the app produces (`backup/` is never served by Express and is in
+`.gitignore`).
+
+> **Copy them somewhere else.** A backup on the same disk as the site does not
+> survive the disk. Download the newest zip now and then, or sync `backup/` to
+> another machine.
+
+### Restoring onto a new server
+
+1. Deploy the code as usual — **without** the old `data/` folder. Do not create
+   the tables: the restore does that.
+2. Open the site. The setup screen now offers **Start fresh** and **Restore a
+   backup**.
+3. Choose **Restore a backup** and upload the zip. The screen reads
+   `pb-restore.json` and shows how many accounts, photos and revisions are
+   inside.
+4. The database details fill themselves in from the file. If the new server
+   uses a different database name, user or password, type them in now — that is
+   the whole point of the file being standalone. (You can equally edit the
+   `database` block in `pb-restore.json` with a text editor and re-zip it.)
+5. Press **Restore everything**. The tables are created, every row is written
+   back, `media/` is unpacked into the uploads folder, and `data/install.json`
+   is saved. Sign in with the password you already had.
+
+A restore refuses to run over a database that already has accounts unless you
+tick **Replace what is in that database**, so two sites cannot be merged by
+accident. A backup made by a newer version of the app is refused with the
+version it needs rather than half-imported.
+
+Setting `ALLOW_SITE_RESTORE=1` opens the same screen on an installation that
+already has a database, for the case where you must recover in place.
+
+### Doing it by hand instead
+
+If you would rather keep your own dumps, the three things that matter are the
+database, `media/` and `data/install.json`:
 
 ```bash
-#!/bin/sh
-# ~/backup-pb.sh — add with: crontab -e  →  15 2 * * * /bin/sh ~/backup-pb.sh
-set -e
-cd "$HOME/pb-travel-diaries"
-mkdir -p "$HOME/pb-backups"
-STAMP=$(date +%F)
-mysqldump --single-transaction -u pb -p'THE_PASSWORD' pb_travel_diaries > "$HOME/pb-backups/db-$STAMP.sql"
-tar -czf "$HOME/pb-backups/uploads-$STAMP.tar.gz" media data
-find "$HOME/pb-backups" -mtime +14 -delete
+mysqldump --single-transaction -u pb -p'THE_PASSWORD' pb_travel_diaries > db.sql
+tar -czf uploads.tgz media data
 ```
 
 Restoring is the pair: import the `.sql`, unpack `media/` and `data/`, restart
@@ -283,7 +337,54 @@ the app.
 
 ---
 
-## 9. Updating
+## 9. Changing the database later
+
+Adding a feature that needs a column, a table or a backfilled row is one entry
+in **`server/db/migrations.js`**:
+
+```js
+{
+  version: 4,
+  name: "add the rides table",
+  up: sql(
+    `CREATE TABLE IF NOT EXISTS rides (...)`,
+    `ALTER TABLE users ADD COLUMN rides_seen INT NOT NULL DEFAULT 0`,
+  ),
+}
+```
+
+`up` receives the connection, so it is not limited to SQL: a migration can read
+old rows and write new ones (a data migration), in whatever order the change
+needs. The next boot — or `npm run db:migrate` — applies it.
+
+- **Each version runs once.** `schema_migrations` records what ran; the server
+  skips everything already in the ledger.
+- **Never edit a migration that has shipped.** Some installation has already run
+  it. Add the next version instead.
+- **Never add a column to `BASE_STATEMENTS`.** Those are the tables as they
+  looked at version 1. A brand-new install creates them and then replays every
+  migration, so a fresh site and a three-year-old one end up in the same shape.
+- **Existing deployments catch up automatically.** A database that predates the
+  ledger (it only has `settings.schema_version`) is adopted at that version, so
+  the older `ALTER`s are not attempted again.
+
+Useful commands:
+
+| Command | What it does |
+| --- | --- |
+| `npm run db:status` | Prints the installed version and every migration waiting |
+| `npm run db:migrate` | Applies the waiting ones and says which |
+| `npm run schema:sql` | Regenerates `server/schema.sql` for phpMyAdmin users |
+| `npm run db:init` | Creates the database and tables from scratch |
+
+A restore replays migrations in two stages on purpose: it builds the tables at
+the backup's own version, loads the rows, and only then applies anything newer —
+so a migration that backfills data sees the restored rows rather than an empty
+table.
+
+---
+
+## 10. Updating
 
 **Option A upload (no build tools on the server):**
 
@@ -304,8 +405,9 @@ npm prune --omit=dev
 
 Then restart the process (panel button, or `systemctl restart pb`). A restart is
 required: the server loads `dist/` at boot and applies any pending database
-migration — `CREATE TABLE IF NOT EXISTS` plus the versioned changes — before
-taking traffic. `data/` and `media/` are untouched.
+migration — the base tables plus everything in the ledger that has not run yet —
+before taking traffic. `data/`, `media/` and `backup/` are untouched. Run
+`npm run db:status` first if you want to see what the restart will change.
 
 ### Upgrading from the `.env`-only version
 
@@ -316,7 +418,7 @@ role to the `users` table and writes the schema version. Nothing to import.
 
 ---
 
-## 10. Process manager examples
+## 11. Process manager examples
 
 **systemd** (`/etc/systemd/system/pb.service`):
 
@@ -397,6 +499,11 @@ the uploads.
 | `/api/health` says `"database": "memory"` | `DB_DRIVER=memory` is set. Production must use `mysql`. |
 | Sign-in “works” then every save says *Sign in to continue* | Cookies are not surviving. Check `TRUST_PROXY=true`, that the site is on HTTPS, and `COOKIE_SECURE=auto` (or `false` while testing over plain HTTP). |
 | Uploads fail with 413 | Raise `MAX_UPLOAD_MB`; nginx also needs `client_max_body_size`. Passenger limits the body too — set it in the panel if offered. |
+| A backup restore says the upload “has expired” | The setup screen parks the zip for an hour. Upload it again. |
+| A restore stops with “already holds N account(s)” | The database is not empty. Tick **Replace what is in that database** — after checking it is the right database. |
+| The restore screen is not offered | A database is already configured. Deploy without `data/`, or set `ALLOW_SITE_RESTORE=1`. |
+| `backup/` is empty after a day | `BACKUP_ENABLED=false`, or the process is restarted so often it never reaches `BACKUP_HOUR`. Run `npm run backup:now` from cron instead. |
+| A backup fails with `EACCES` | The app cannot write `backup/`. Create it and make it writable by the app's user (`chmod 700`, owned by that user). |
 | Uploads succeed but files 404 | `MEDIA_DIR` must be writable (`chmod 775 media`) and be the folder the server reads. |
 | The Himalayan photo / shipped art 404s | The file is missing from `public/media/` (or `dist/media/` on an old build). Rebuild or upload the folder again. |
 | Setup succeeds but the owner screen says “Finish the database step first” | `data/install.json` could not be written. `chmod 775 data` and retry. |
