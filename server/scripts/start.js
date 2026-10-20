@@ -2,7 +2,7 @@
  * The production entry point.
  *
  *   npm start        → this file
- *   npm run prod     → build, then this file
+ *   npm run prod     → app.cjs (no build step)
  *   Node host / Passenger → startup file `server/scripts/start.js`
  *
  * It is deliberately tiny: the app itself is `server/index.js`. The only thing

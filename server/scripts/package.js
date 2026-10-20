@@ -51,14 +51,17 @@ function copy(from, to, { skip = [] } = {}) {
   });
 }
 
-copy("server", "server", { skip: ["server/tests"] });
+copy("server", "server", { skip: [
+  "server/tests",
+  "server/scripts/dev.js",
+  "server/scripts/package.js",
+  "server/scripts/write-schema.js",
+] });
 copy("dist", "dist");
 copy("public", "public");
 copy("app.cjs", "app.cjs");
 
 for (const file of [
-  "package.json",
-  "package-lock.json",
   "README.md",
   "RUNNING.md",
   "DEPLOYMENT.md",
@@ -79,7 +82,6 @@ delete manifest.devDependencies;
 fs.writeFileSync(path.join(target, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
 // Keep resolved versions/integrities while removing development-only packages.
 const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
-lock.packages[""].scripts = undefined;
 delete lock.packages[""].devDependencies;
 for (const [name, pkg] of Object.entries(lock.packages)) {
   if (name && pkg.dev === true) delete lock.packages[name];

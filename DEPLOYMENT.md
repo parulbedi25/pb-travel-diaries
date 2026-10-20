@@ -30,7 +30,7 @@ table itself.
 | Where | Command | What happens |
 | --- | --- | --- |
 | Your computer, editing | `npm run dev` | Express on :4000 + Vite on :5173 with hot reload — development only |
-| Your computer, checking a deploy | `npm run prod` | Builds `dist/`, then serves it on :4000 exactly as the host will |
+| Your computer, checking a deploy | `npm run build && npm run prod` | Builds locally, then serves the resulting site on :4000 |
 | Your computer, making an upload | `npm run package` | Builds and writes `release/pb-travel-diaries/` — the runtime-only folder |
 | The server | `node server/scripts/start.js` | The app itself; your process manager keeps it alive |
 | The server, after a code change | `npm run build` + restart | Rebuild `dist/`; no Vite process is left running |

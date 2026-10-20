@@ -8,7 +8,7 @@ the production one belongs on a server.
 | Where | Mode | Command | Open |
 | --- | --- | --- | --- |
 | Your computer | Development | `npm run dev` | <http://localhost:5173> |
-| Your computer | Production, exactly like hosting | `npm run prod` | <http://localhost:4000> |
+| Your computer | Production, exactly like hosting | `npm run build && npm start` | <http://localhost:4000> |
 | Your computer | Build an upload folder | `npm run package` | `release/pb-travel-diaries/` |
 | The server | Production | `node server/scripts/start.js` | your domain |
 | The server (optional) | Development over SSH | `npm run dev` | <http://localhost:5173> |
@@ -108,7 +108,7 @@ Stop everything with **Ctrl+C** — one press stops both halves.
 | `EADDRINUSE :5173` | Another dev server is running. `pkill -f "server/scripts/dev.js"` then retry. |
 | `Vite is not installed` | Run `npm ci` first. |
 | Port 4000 already in use | `npm run dev` reuses any API already answering on :4000; if something else owns it, `API_PORT=4100 npm run dev`. |
-| Page loads but the API is missing | Make sure you used `npm run dev` (both halves), not `npm run preview`. |
+| Page loads but the API is missing | Make sure you used `npm run dev` (both halves), not `npx vite preview`. |
 | `The database is not answering` | Check `.env`, or use `DB_DRIVER=memory npm run dev`. |
 
 ---
@@ -120,10 +120,11 @@ Use this before deploying, to see the site exactly as the server will serve it.
 ### 2.1 Build and run
 
 ```bash
-npm run prod
+npm run build
+npm start
 ```
 
-That is `npm run build` followed by `node server/scripts/start.js`. It writes
+That is a local build followed by the production startup bridge. It writes
 `dist/` and then starts one Node process:
 
 ```
@@ -139,8 +140,8 @@ Express app the server runs.
 npm start
 ```
 
-`npm start` serves the existing `dist/`. Use `npm run prod` whenever you have
-changed frontend code.
+`npm start` serves the existing `dist/`. Run `npm run build` locally before restarting whenever you have
+changed frontend code. `npm run prod` is now a no-build alias of `npm start`.
 
 ### 2.3 Check it
 
@@ -334,7 +335,7 @@ npm prune --omit=dev
 Then restart. A restart is required: the server loads `dist/` at boot and applies
 any pending database migration. `data/` and `media/` are untouched.
 
-> Do **not** run `npm run prod` on a server. It builds and then starts a second
+> Do **not** run `npm run prod` on a server. It starts a second
 > process; the process manager already runs the app.
 
 ### 3.8 If the deployment misbehaves
@@ -421,13 +422,13 @@ to share the database.
 | Command | Starts | Port | Use on a server? |
 | --- | --- | --- | --- |
 | `npm run dev` | API + Vite, hot reload | 4000 + 5173 | No — local or SSH tunnel |
-| `npm run dev:web` | Vite only | 5173 | No |
-| `npm run dev:api` | API only, restarts on changes | 4000 | No |
+| `npx vite` | Vite only | 5173 | No |
+| `node --watch server/index.js` | API only, restarts on changes | 4000 | No |
 | `npm run build` | Builds `dist/` and exits | — | Yes (or build elsewhere) |
 | `npm run package` | Builds, then writes the runtime-only upload folder | — | On your computer |
-| `npm run prod` | Builds, then serves `dist/` | 4000 | No (the process manager already runs the app) |
+| `npm run prod` | Serves the existing `dist/` (alias of start; no build) | 4000 | No (the process manager already runs the app) |
 | `npm start` | Serves the existing `dist/` in production mode | 4000 | The process manager does this for you |
-| `npm run server` | Serves `dist/` with the current `NODE_ENV` | 4000 | No |
+| `node server/index.js` | Serves `dist/` with the current `NODE_ENV` | 4000 | No |
 | `npm run db:init` | Applies the schema from `.env` | — | Optional |
 | `npm run test:server` | API/installer tests | random | Optional |
 
