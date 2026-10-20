@@ -6,10 +6,10 @@
  * API). Starting them separately is easy to forget, and a browser that opens
  * Vite without the API looks broken. This starts both, forwards Ctrl+C to
  * both, and reuses an API that is already running so `npm run dev` can be
- * started next to `npm run dev:api`.
+ * started next to an existing API process.
  *
  * Vite is only a development tool. The deployed app is the Node server plus
- * the built `dist/` folder; see `npm run prod`.
+ * the built `dist/` folder; see `npm start`.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";

@@ -16,6 +16,8 @@ exactly that runtime-only folder.
   production locally, packaging an upload, and production on a server.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — hosting requirements, databases,
   backups, HTTPS, updates, process-manager examples.
+- **[NAMECHEAP.md](NAMECHEAP.md)** — the same, written for Namecheap shared
+  hosting: cPanel → Setup Node.js App, database names, upload, HTTPS, fixes.
 
 ---
 
@@ -87,7 +89,7 @@ opens by itself while the site has no database and no owner (`/#/setup` works
 too). The dashboard is at `/#/admin`, the public account page at `/#/members`.
 
 `npm run dev` starts both halves and stops both with Ctrl+C. If the API is
-already running (for example from `npm run dev:api`), it reuses it instead of
+already running (for example from `node --watch server/index.js`), it reuses it instead of
 failing on the port.
 
 No database to hand? `DB_DRIVER=memory npm run dev` runs against an in-memory
@@ -97,7 +99,7 @@ setup screen.
 ### See it exactly as it will be deployed
 
 ```bash
-npm run prod              # build dist/, then serve it on :4000
+npm run build && npm start # build locally, then serve it on :4000
 ```
 
 That is the same Node server the host runs: no Vite, no separate API. Open
@@ -117,17 +119,17 @@ run `npm ci --omit=dev` there; no build tools are installed or needed. See
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | API + Vite together, hot reload, `/api` and `/media` proxied |
-| `npm run dev:web` | Vite only (when the API is started another way) |
-| `npm run dev:api` | The API only, restarting on server file changes |
-| `npm run server` | Serve the existing `dist/` (no rebuild) |
+| `npx vite` | Vite only (when the API is started another way) |
+| `node --watch server/index.js` | The API only, restarting on server file changes |
+| `node server/index.js` | Serve the existing `dist/` (no rebuild) |
 | `npm run build` | Production build into `dist/` |
-| `npm run prod` | Build, then serve exactly as hosting does (production mode) |
+| `npm run prod` | Alias of start: serve the existing build, without Vite |
 | `npm run package` | Build, then write the runtime-only upload folder (`release/`) |
 | `npm start` | Serve the existing build in production mode |
 | `npm run db:init` | Apply the schema using `.env` (optional; the installer does this) |
 | `npm run schema:sql` | Regenerate `server/schema.sql` from `server/db/schema.js` |
 | `npm run test:server` | API + installer tests (in-memory database, real HTTP) |
-| `npm run preview` | Vite's static preview of `dist/` on :4173 (no API; use `npm run prod` to test the real thing) |
+| `npx vite preview` | Vite's static preview of `dist/` on :4173 (no API; use `npm run prod` to test the real thing) |
 
 Vite and React are **build tools only**. At runtime the site is one Node
 process (`server/index.js`) serving `dist/`, the API and `/media`; the host never

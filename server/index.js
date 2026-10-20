@@ -3,7 +3,7 @@
  *
  * Local dev:  npm run dev         → API :4000, Vite :5173 (hot reload)
  * Production: npm start           → http://localhost:4000
- *             npm run prod        → build, then the same
+ *             npm run prod        → serve existing build (no build step)
  * Hosting:    any Node host (Passenger, Plesk, systemd) → server/scripts/start.js
  *
  * Under Passenger the panel supplies PORT, and it can be a socket
