@@ -18,7 +18,7 @@
  * shows an off-duty state until 6:00 AM IST the next day.
  */
 export const LIVE_LOCATION = {
-  feedUrl: (import.meta.env.VITE_LIVE_FEED_URL as string | undefined) ?? "",
+  feedUrl: "",
 
   // Bundled fallback — used until/unless the feed above returns data.
   // Kept in step with the first stop of the live route (Nangal → Chandigarh),

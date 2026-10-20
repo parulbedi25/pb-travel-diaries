@@ -152,7 +152,7 @@ export function createApp() {
       res
         .status(503)
         .type("text/plain")
-        .send("The site has not been built yet. Run `npm run build` and restart the server."),
+        .send("The prebuilt website is missing. Restore dist/ from the application package and restart the server."),
     );
   }
 

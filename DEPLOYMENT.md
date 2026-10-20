@@ -8,7 +8,7 @@ process and gives you a MySQL/MariaDB database will run it — a shared panel
 ```
 browser ──► Node (server/index.js) ──► MariaDB   content, accounts, sessions, history, media index
                   │
-                  ├──► dist/    the built site (`npm run build`)
+                  ├──► dist/    the included prebuilt site
                   ├──► media/   uploaded files (back this up)
                   ├──► public/  art that ships with the code, served at /media
                   └──► data/    install.json — the installer's answers (back this up)
@@ -18,28 +18,12 @@ browser ──► Node (server/index.js) ──► MariaDB   content, accounts, 
 screen asks for the database details and the owner account, then creates every
 table itself.
 
-> **Vite is a build tool, not a runtime.** It compiles the React/TypeScript
-> source into `dist/` on your computer (or once on the server). The deployed app
-> is plain Node.js and `dist/`; nothing from Vite is installed or executed when
-> visitors use the site.
+The website in `dist/` is checked into the repository. All npm dependencies
+are server packages. No frontend build tools or compilation are required.
 
----
-
-## Which command runs what
-
-| Where | Command | What happens |
-| --- | --- | --- |
-| Your computer, editing | `npm run dev` | Express on :4000 + Vite on :5173 with hot reload — development only |
-| Your computer, checking a deploy | `npm run build && npm run prod` | Builds locally, then serves the resulting site on :4000 |
-| Your computer, making an upload | `npm run package` | Builds and writes `release/pb-travel-diaries/` — the runtime-only folder |
-| The server | `node server/scripts/start.js` | The app itself; your process manager keeps it alive |
-| The server, after a code change | `npm run build` + restart | Rebuild `dist/`; no Vite process is left running |
-
-`npm run dev` is **not** a hosting command: it runs Vite's development server,
-which is not deployed.
-
-The copy-paste walkthrough is in **[RUNNING.md](RUNNING.md)**. This file covers
-the parts that depend on the host.
+Run `npm install`, optionally `npm run hosting:check`, then `npm start`.
+`npm run package` copies the runtime into `release/pb-travel-diaries/` without
+building. `npm run dev` is Node server watch mode only.
 
 ---
 
@@ -47,7 +31,7 @@ the parts that depend on the host.
 
 | Requirement | Why | Where it usually lives |
 | --- | --- | --- |
-| Node.js **20.19+** or **22.12+** | Vite 7 needs it *to build*; the runtime works on the same versions | Panel's Node.js selector, or `node -v` over SSH |
+| Node.js **20.19+** or **22.12+** | Supported Node runtime; Node 22 recommended | Panel's Node.js selector, or `node -v` over SSH |
 | MySQL 5.7+ / MariaDB 10.3+ | content, accounts, sessions, history | Panel → MySQL/MariaDB databases, or install `mariadb-server` |
 | A long-lived Node process | the API and the site | Passenger, Plesk's Node.js app, systemd, Docker, a Node host |
 | Two writable folders | `data/` (installer answers) and `media/` (uploads) | your app folder |
@@ -97,52 +81,18 @@ test distinguishes “the server answered but this database does not exist yet�
 
 ## 3. Put the code on the server
 
-### Option A — upload the runtime folder (no build tools on the server)
+Upload the application runtime (`app.cjs`, `server/`, `dist/`, `public/`,
+package.json and package-lock.json) outside the public document root. Or run
+`npm run package` locally and upload `release/pb-travel-diaries/`.
 
-This is the route for cPanel/Namecheap shared hosting: see
-[NAMECHEAP.md](NAMECHEAP.md) for the panel fields, database names and the
-no-SSH variant.
+In cPanel use Run NPM Install. With terminal access, `npm install` also works.
+Run `npm run hosting:check` to create/test writable folders. Do not upload
+node_modules, credentials, backups or user uploads from a local installation.
 
-On your computer:
+For cloning on a server: clone the repository, run `npm install`, and start
+`app.cjs`. The included `dist/` is ready to serve, without a build step.
 
-```bash
-npm ci
-npm run package     # builds dist/ and writes release/pb-travel-diaries/
-```
-
-Upload **`release/pb-travel-diaries/`** to the server (ZIP it in File Manager, or
-`scp -r`). It contains `server/`, `dist/`, `public/`, the package files and a
-`START-HERE.txt`. On the server:
-
-```bash
-cd pb-travel-diaries
-npm ci --omit=dev   # only express, mysql2, bcryptjs, dotenv, multer, cookie-parser
-mkdir -p data media
-chmod 775 data media
-```
-
-This is the leanest route: the server installs ~9 MB of runtime packages and
-never needs `src/`, Vite or TypeScript.
-
-### Option B — clone the source and build on the server
-
-```bash
-cd ~
-git clone <your-repository-url> pb-travel-diaries
-cd pb-travel-diaries
-npm ci              # build tools are needed here once
-npm run build       # → dist/
-npm prune --omit=dev
-mkdir -p data media
-chmod 775 data media
-```
-
-Build on the server only if it has enough memory for Vite; a small shared plan
-may prefer Option A.
-
-Either way: `dist/` is generated, `media/` holds uploads, `data/` holds the
-installer's answers (including the database password). None of the three
-belongs in git.
+See [NAMECHEAP.md](NAMECHEAP.md) for the exact panel settings.
 
 ---
 
@@ -404,14 +354,12 @@ table.
    and `media/` — they are not part of the package.
 3. On the server: `npm ci --omit=dev`, then restart the app.
 
-**Option B build on the server:**
+**Option B update a clone on the server:**
 
 ```bash
 cd pb-travel-diaries
 git pull
 npm ci
-npm run build
-npm prune --omit=dev
 ```
 
 Then restart the process (panel button, or `systemctl restart pb`). A restart is
@@ -519,4 +467,4 @@ the uploads.
 | The Himalayan photo / shipped art 404s | The file is missing from `public/media/` (or `dist/media/` on an old build). Rebuild or upload the folder again. |
 | Setup succeeds but the owner screen says “Finish the database step first” | `data/install.json` could not be written. `chmod 775 data` and retry. |
 | App restart loses accounts/content | Expected only with `DB_DRIVER=memory`. Production must use `mysql`. |
-| Build fails on the server | Node is too old (Vite 7 needs 20.19+ or 22.12+), or the plan is short on memory. Build elsewhere with `npm run package` and upload that folder. |
+| Website files missing | Restore the included `dist/` folder and restart; there is no build command. |
