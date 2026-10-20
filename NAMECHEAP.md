@@ -100,3 +100,13 @@ Backups consume hosting quota: copy them off-host too.
 
 General configuration and restore instructions: [DEPLOYMENT.md](DEPLOYMENT.md).
 Panel reference: https://www.namecheap.com/support/knowledgebase/article.aspx/10047/2182/how-to-work-with-nodejs-app/
+
+### `vite: command not found` in cPanel
+
+Do not run `build` or `prod` on the shared host. That output means the source
+manifest is being used instead of the generated deployment manifest. Upload
+the contents of the generated release ZIP, including its `package.json` and
+`package-lock.json`, not just `dist/`. Preserve existing `data/`, `media/` and
+`backup/` folders. The release has no build script and needs no Vite. Click
+Run NPM Install, optionally run hosting:check, then Start/Restart with
+`app.cjs`. No `npm ci` or shell access is required on the host.

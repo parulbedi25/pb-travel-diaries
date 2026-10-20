@@ -102,9 +102,11 @@ package*.json, .env.example, and the three guides
 Run it
 ------
 1. Copy this folder to the server (File Manager, SFTP or scp).
-2. In that folder, install only the runtime packages:
+2. In cPanel click Run NPM Install. No terminal command is required.
+   This folder has only runtime dependencies and already includes dist/.
+   Do NOT run build or prod on the host.
 
-     npm ci --omit=dev
+   Optional terminal equivalent: npm install --omit=dev
 
 3. Create the writable folders (backup/ appears by itself on the first
    scheduled run, but creating it now proves the folder is writable):
@@ -161,4 +163,4 @@ const relative = path.relative(root, target);
 console.log(`[package] ${relative} — ${files.length} files, ${mb(sizeOf(target))}`);
 console.log("[package] contains: server/, dist/, public/, package files, docs");
 console.log("[package] backups go to <install>/backup/ — separate from this folder");
-console.log("[package] on the server: npm ci --omit=dev, then start server/scripts/start.js");
+console.log("[package] cPanel: Run NPM Install, startup file app.cjs, then Start/Restart (no build)");
