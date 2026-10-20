@@ -18,7 +18,8 @@
     "schema:sql": "node server/scripts/write-schema.js",
     "db:status": "node server/scripts/db-status.js",
     "db:migrate": "node server/scripts/db-migrate.js",
-    "backup:now": "node server/scripts/backup-now.js"
+    "backup:now": "node server/scripts/backup-now.js",
+    "hosting:check": "node server/scripts/hosting-check.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

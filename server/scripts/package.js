@@ -54,6 +54,7 @@ function copy(from, to, { skip = [] } = {}) {
 copy("server", "server", { skip: ["server/tests"] });
 copy("dist", "dist");
 copy("public", "public");
+copy("app.cjs", "app.cjs");
 
 for (const file of [
   "package.json",
@@ -61,10 +62,29 @@ for (const file of [
   "README.md",
   "RUNNING.md",
   "DEPLOYMENT.md",
+  "NAMECHEAP.md",
   ".env.example",
 ]) {
   copy(file, file);
 }
+
+// The uploaded package deliberately has no build tools or build scripts.
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+manifest.scripts = {
+  start: "node app.cjs",
+  "hosting:check": "node server/scripts/hosting-check.js",
+  "backup:now": "node server/scripts/backup-now.js",
+};
+delete manifest.devDependencies;
+fs.writeFileSync(path.join(target, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
+// Keep resolved versions/integrities while removing development-only packages.
+const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+lock.packages[""].scripts = undefined;
+delete lock.packages[""].devDependencies;
+for (const [name, pkg] of Object.entries(lock.packages)) {
+  if (name && pkg.dev === true) delete lock.packages[name];
+}
+fs.writeFileSync(path.join(target, "package-lock.json"), JSON.stringify(lock, null, 2) + "\n");
 
 const startHere = `PB Travel Diaries — deploy folder
 =================================
@@ -92,13 +112,18 @@ Run it
      mkdir -p data media backup
      chmod 775 data media backup
 
-4. Point the host's "Node.js app" at the startup file:
+4. Optionally run hosting:check using the panel Run JS Script button.
+   It checks dependencies and creates writable folders, then exits.
 
-     server/scripts/start.js
+5. Point the host's "Node.js app" at the startup file:
+
+     app.cjs
 
    (Any process manager works; Passenger, Plesk and systemd all accept it.)
+   cPanel shared hosting — Namecheap, for one — runs it through Passenger and
+   supplies the socket or port itself; see NAMECHEAP.md for the exact fields.
 
-5. Open the site. The first visit shows the setup screen: website title,
+6. Open the site. The first visit shows the setup screen: website title,
    database details, then the owner account. Moving an existing site instead?
    Choose "Restore a backup" on that same screen and upload one of the zips
    from the old server's backup/ folder.

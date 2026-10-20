@@ -16,6 +16,8 @@ exactly that runtime-only folder.
   production locally, packaging an upload, and production on a server.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — hosting requirements, databases,
   backups, HTTPS, updates, process-manager examples.
+- **[NAMECHEAP.md](NAMECHEAP.md)** — the same, written for Namecheap shared
+  hosting: cPanel → Setup Node.js App, database names, upload, HTTPS, fixes.
 
 ---
 

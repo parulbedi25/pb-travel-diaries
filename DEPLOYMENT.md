@@ -99,6 +99,10 @@ test distinguishes “the server answered but this database does not exist yet�
 
 ### Option A — upload the runtime folder (no build tools on the server)
 
+This is the route for cPanel/Namecheap shared hosting: see
+[NAMECHEAP.md](NAMECHEAP.md) for the panel fields, database names and the
+no-SSH variant.
+
 On your computer:
 
 ```bash
@@ -155,13 +159,20 @@ It sets `NODE_ENV=production` when the environment did not, then runs
 
 | Host | Where to set it |
 | --- | --- |
-| cPanel (Passenger) | **Setup Node.js App** → Create Application: Node 20/22, Production, root = the app folder, startup file `server/scripts/start.js` |
+| cPanel (Passenger) | **Setup Node.js App** → Create Application: Node 20/22, Production, root = the app folder, startup file `server/scripts/start.js` — step-by-step for Namecheap in [NAMECHEAP.md](NAMECHEAP.md) |
 | Plesk | **Node.js** → Application root, Application startup file `server/scripts/start.js`, then *Restart* |
 | Docker | `CMD ["node", "server/scripts/start.js"]` |
 | VPS / systemd | unit below |
 
-The panel supplies `PORT` (sometimes a socket path) and keeps the process
-alive. Do not set `PORT` yourself unless you are running it by hand.
+The panel supplies `PORT` and keeps the process alive. Do not set `PORT`
+yourself unless you are running it by hand.
+
+`PORT` is not always a number. Passenger — the manager behind cPanel's
+**Setup Node.js App**, and therefore every Node app on Namecheap shared
+hosting — usually hands the app the path of a Unix socket it created. The app
+accepts either and passes it straight to `server.listen`; a value that is not a
+bare number is treated as a socket path. This is why a deployment that binds a
+fixed port of its own answers **503** behind Passenger.
 
 ### Environment variables
 

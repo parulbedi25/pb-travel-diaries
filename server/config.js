@@ -19,6 +19,26 @@ const bool = (value, fallback) => {
 };
 
 /**
+ * Where the app should listen.
+ *
+ * cPanel's "Setup Node.js App" — and every other panel built on Phusion
+ * Passenger — does not give the app a fixed port. It sets `PORT` to whatever
+ * it has arranged, which is usually the path of a Unix socket it created
+ * (`/tmp/passenger.../socket`) and occasionally a plain port number. Both are
+ * valid arguments to `server.listen`, so both are kept: a bare number becomes
+ * a number, anything else is passed through untouched.
+ *
+ * Coercing this with `parseInt` would turn that socket path into `NaN` and
+ * drop the app on 4000, a port Passenger never forwards to — the deployment
+ * would answer 503 with no error to go on.
+ */
+const listenTarget = (value, fallback) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  return /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : raw;
+};
+
+/**
  * The setup screen saves its answers in `data/install.json`. Read once at
  * boot; `applyInstall` updates this object after a setup completes so the
  * running process starts using the new database without a restart.
@@ -41,7 +61,8 @@ const driver = process.env.DB_DRIVER || "mysql";
  */
 export const config = {
   root,
-  port: int(process.env.PORT, 4000),
+  /** A number for a TCP port, a string for a socket path — see `listenTarget`. */
+  port: listenTarget(process.env.PORT, 4000),
   nodeEnv: process.env.NODE_ENV || "development",
   /** Where the built site lives. `npm run build` writes here. */
   distDir: path.resolve(root, process.env.DIST_DIR || "dist"),
