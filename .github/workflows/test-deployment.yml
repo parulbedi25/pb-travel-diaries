@@ -1,0 +1,42 @@
+name: Disposable test deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: pb-gh-test
+      TEST_APP_PORT: '4400'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install and test server
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run test:server
+      - name: Deploy isolated test stack and verify
+        shell: bash
+        run: |
+          export TEST_DB_PASSWORD="$(openssl rand -hex 24)"
+          export TEST_DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$TEST_DB_PASSWORD"
+          echo "::add-mask::$TEST_DB_ROOT_PASSWORD"
+          bash scripts/test-deployment.sh
+      - name: Upload test deployment logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-deployment-logs
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Final cleanup
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+        env:
+          TEST_DB_PASSWORD: cleanup-only
+          TEST_DB_ROOT_PASSWORD: cleanup-only

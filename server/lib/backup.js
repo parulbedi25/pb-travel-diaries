@@ -39,14 +39,15 @@ const ZIP_PATTERN = /^pb-backup-[\w.-]+\.zip$/;
 
 /** Files at the project root that belong in `app/`. */
 const APP_FILES = [
-  "index.html",
+  "app.cjs",
   "package.json",
   "package-lock.json",
   "tsconfig.json",
-  "vite.config.ts",
   "README.md",
   "RUNNING.md",
   "DEPLOYMENT.md",
+  "NAMECHEAP.md",
+  "OPTIMIZATION.md",
   ".env.example",
 ];
 

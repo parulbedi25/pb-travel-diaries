@@ -50,6 +50,7 @@ for (const file of [
   "RUNNING.md",
   "DEPLOYMENT.md",
   "NAMECHEAP.md",
+  "OPTIMIZATION.md",
   ".env.example",
 ]) {
   copy(file, file);
@@ -123,29 +124,23 @@ HTTPS, updates).
 `;
 fs.writeFileSync(path.join(target, "START-HERE.txt"), startHere);
 
-/** Report what was produced, in the units a person cares about. */
-function sizeOf(dir) {
-  let total = 0;
+/** Count files and bytes together rather than walking the tree twice. */
+function measure(dir) {
+  const result = { files: 0, bytes: 0 };
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    total += entry.isDirectory() ? sizeOf(full) : fs.statSync(full).size;
+    const child = entry.isDirectory() ? measure(full) : { files: 1, bytes: fs.statSync(full).size };
+    result.files += child.files;
+    result.bytes += child.bytes;
   }
-  return total;
+  return result;
 }
-
-const files = [];
-(function walk(dir) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(full);
-    else files.push(full);
-  }
-})(target);
+const size = measure(target);
 
 const mb = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 const relative = path.relative(root, target);
 
-console.log(`[package] ${relative} — ${files.length} files, ${mb(sizeOf(target))}`);
+console.log(`[package] ${relative} — ${size.files} files, ${mb(size.bytes)}`);
 console.log("[package] contains: server/, dist/, public/, package files, docs");
 console.log("[package] backups go to <install>/backup/ — separate from this folder");
 console.log("[package] cPanel: Run NPM Install, startup file app.cjs, then Start/Restart (no build)");

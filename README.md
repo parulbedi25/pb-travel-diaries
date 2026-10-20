@@ -61,7 +61,8 @@ See [NAMECHEAP.md](NAMECHEAP.md) and [RUNNING.md](RUNNING.md).
 
 ## Files and persistence
 
-- `dist/`: checked-in prebuilt browser HTML/JavaScript/CSS and static assets.
+- `dist/`: checked-in minified browser HTML/JavaScript/CSS.
+- Static images have one canonical copy in `public/`; the server preserves legacy URLs.
 - `public/`: shipped static artwork.
 - `server/`: plain JavaScript server, installer, backups and migrations.
 - `app.cjs`: CommonJS startup bridge for Passenger.
@@ -80,3 +81,13 @@ credentials, uploaded media or database backups.
 
 [DEPLOYMENT.md](DEPLOYMENT.md) covers environment variables, access controls,
 backups and restoring an installation.
+
+## Optimization notes
+
+The HTML bundle is already minified. The server negotiates gzip for the
+document, with `Vary: Accept-Encoding`, validators and uncompressed fallback.
+Restart after replacing dist/index.html: its compressed representation is
+cached once at boot. Source and server code stay readable for maintenance.
+See [OPTIMIZATION.md](OPTIMIZATION.md) for the audit scope and measurements.
+
+Testing-only automation and Docker/MariaDB setup: [TEST-DEPLOYMENT.md](TEST-DEPLOYMENT.md).

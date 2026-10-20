@@ -3,6 +3,7 @@ import path from "node:path";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { config } from "./config.js";
+import { siteDocument } from "./lib/siteDocument.js";
 import { getRepo } from "./db/index.js";
 import { pruneAttempts } from "./lib/auth.js";
 import { authRouter } from "./routes/auth.js";
@@ -107,10 +108,7 @@ export function createApp() {
     }),
   );
 
-  // Art that ships with the code (`public/media/*`) is copied into dist/ by
-  // the build, but serving it here too means the same URL works before the
-  // first build — and in `npm run dev`, where Vite proxies /media to this
-  // server. Uploads above still win: a random upload name never collides.
+  // Shipped media has one canonical copy in public/. Uploads still win.
   app.use(
     "/media",
     express.static(path.join(config.root, "public", "media"), {
@@ -121,10 +119,22 @@ export function createApp() {
     }),
   );
 
+  // Preserve the previous public URL without retaining a second 1.7 MB file.
+  app.get("/images/rider-kit-model.png", (req, res, next) => {
+    res.sendFile(path.join(config.root, "public/images/rider-kit-model-reference-v2.png"),
+      (error) => { if (error) next(error); });
+  });
+  app.use("/images", express.static(path.join(config.root, "public/images"), {
+    index: false,
+    dotfiles: "deny",
+  }));
+
   /* ── the built site ─────────────────────────────────────────────────── */
 
   const indexFile = path.join(config.distDir, "index.html");
   if (fs.existsSync(config.distDir)) {
+    const sendDocument = siteDocument(indexFile);
+    app.get(["/", "/index.html"], sendDocument);
     app.use(
       express.static(config.distDir, {
         index: false,
@@ -143,9 +153,7 @@ export function createApp() {
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next();
       if (req.path.startsWith("/api/") || req.path.startsWith("/media/")) return next();
-      if (!fs.existsSync(indexFile)) return next();
-      res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(indexFile);
+      sendDocument(req, res, next);
     });
   } else {
     app.get("/", (req, res) =>

@@ -58,3 +58,9 @@ media/*
 # The daily backups: database dumps with password hashes and media. They live
 # on the server, not in the repository.
 /backup/
+
+# Disposable deployment diagnostics
+/test-results/
+
+# Committed template only; .env.test itself stays private
+!.env.test.example
