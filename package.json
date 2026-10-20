@@ -1,13 +1,12 @@
 {
-  "name": "react-vite-tailwind",
+  "name": "pb-travel-diaries",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server/scripts/dev.js",
+    "dev": "node --watch app.cjs",
     "start": "node app.cjs",
-    "build": "vite build",
-    "package": "npm run build && node server/scripts/package.js",
+    "package": "node server/scripts/package.js",
     "prod": "node app.cjs",
     "db:init": "node server/scripts/init-db.js",
     "test:server": "node --test server/tests/*.test.js",
@@ -26,23 +25,5 @@
     "mysql2": "^3.24.6",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "4.1.17",
-    "@types/node": "22.19.17",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "5.1.1",
-    "clsx": "^2.1.1",
-    "framer-motion": "^14.4.0",
-    "lucide-react": "^1.59.0",
-    "maplibre-gl": "^6.15.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "tailwind-merge": "^3.4.0",
-    "tailwindcss": "4.1.17",
-    "typescript": "5.9.3",
-    "vite": "7.3.2",
-    "vite-plugin-singlefile": "2.3.0"
   }
 }

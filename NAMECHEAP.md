@@ -21,7 +21,8 @@ cPanel ─► MySQL Databases        (database + user, created first)
 
 ## Quick install — no daemon, SSH or PM2
 
-1. On your computer run `npm ci` followed by `npm run package`.
+1. Upload this repository directly, or run `npm install` and `npm run package`
+   locally to generate a smaller runtime folder.
 2. ZIP the contents of `release/pb-travel-diaries/` (not the source repository).
    This deployment has a production-only package manifest: cPanel's plain
    **Run NPM Install** will not install Vite or TypeScript. Do not upload
@@ -101,12 +102,8 @@ Backups consume hosting quota: copy them off-host too.
 General configuration and restore instructions: [DEPLOYMENT.md](DEPLOYMENT.md).
 Panel reference: https://www.namecheap.com/support/knowledgebase/article.aspx/10047/2182/how-to-work-with-nodejs-app/
 
-### `vite: command not found` in cPanel
+### Older copies invoking Vite
 
-Do not run `build` or `prod` on the shared host. That output means the source
-manifest is being used instead of the generated deployment manifest. Upload
-the contents of the generated release ZIP, including its `package.json` and
-`package-lock.json`, not just `dist/`. Preserve existing `data/`, `media/` and
-`backup/` folders. The release has no build script and needs no Vite. Click
-Run NPM Install, optionally run hosting:check, then Start/Restart with
-`app.cjs`. No `npm ci` or shell access is required on the host.
+This version has no Vite dependency or build script in the root package.json.
+Replace both package files and upload the included dist/ folder. Use Run NPM
+Install and Start/Restart with app.cjs. Preserve data/, media/ and backup/.

@@ -1,19 +1,4 @@
-/**
- * Build a folder that runs on a plain Node host.
- *
- * The app has two kinds of files:
- *
- *   runtime     server/ (plain JavaScript), dist/ (the built site), public/
- *               (art the server serves), package.json + lock
- *   build-only  src/, index.html, tsconfig.json, vite.config.ts and every
- *               Vite/React package
- *
- * Vite never runs in production. This script copies only the runtime half into
- * `release/pb-travel-diaries/`, so the host needs nothing but Node and
- * `npm ci --omit=dev`. Upload the folder (or a ZIP of it), start it, done.
- *
- *   npm run package      # builds dist/ first, then this folder
- */
+/** Package the checked-in website and Node server; no frontend build tools. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +9,7 @@ const indexFile = path.join(dist, "index.html");
 
 if (!fs.existsSync(indexFile)) {
   console.error(
-    "dist/index.html is missing. Run `npm run package` (it builds first), not this file directly.",
+    "dist/index.html is missing. Restore dist/ from the repository before packaging.",
   );
   process.exit(1);
 }
@@ -53,7 +38,6 @@ function copy(from, to, { skip = [] } = {}) {
 
 copy("server", "server", { skip: [
   "server/tests",
-  "server/scripts/dev.js",
   "server/scripts/package.js",
   "server/scripts/write-schema.js",
 ] });
@@ -91,8 +75,7 @@ fs.writeFileSync(path.join(target, "package-lock.json"), JSON.stringify(lock, nu
 const startHere = `PB Travel Diaries — deploy folder
 =================================
 
-This folder is the whole application. It runs on Node.js alone: no Vite,
-no TypeScript, no build step on the server.
+This folder is the whole application. It runs on Node.js alone: no frontend tooling or build step on the server.
 
 What is inside
 --------------
