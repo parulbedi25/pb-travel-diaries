@@ -1,0 +1,56 @@
+# Disposable testing only. Never point these services at a production database.
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: pb_test
+      MARIADB_USER: pb_test
+      MARIADB_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${TEST_DB_ROOT_PASSWORD:?Set TEST_DB_ROOT_PASSWORD}
+    volumes:
+      - test_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  app:
+    build: .
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DB_DRIVER: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: pb_test
+      DB_USER: pb_test
+      DB_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
+      TRUST_PROXY: "false"
+      BACKUP_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${TEST_APP_PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - test_data:/app/data
+      - test_media:/app/media
+      - test_backup:/app/backup
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/health').then(async r=>{const b=await r.json();if(!r.ok||!b.ok||b.database!=='mysql')process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  test_db:
+  test_data:
+  test_media:
+  test_backup:

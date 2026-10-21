@@ -37,7 +37,7 @@ const {
 } = await import("../lib/backup.js");
 const { SetupError } = await import("../lib/installer.js");
 const { publicInstall, readInstall } = await import("../lib/installFile.js");
-const { safeJoin, writeZip } = await import("../lib/zip.js");
+const { readZipText, safeJoin, writeZip } = await import("../lib/zip.js");
 
 const repo = await getRepo();
 const photo = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
@@ -97,6 +97,7 @@ test("a backup is a real zip with the database, the media and the app inside", a
   const dirMode = (await fs.stat(backupDir)).mode & 0o777;
   assert.equal(dirMode, 0o700, "and the folder it lives in is private too");
 
+  assert.match(await readZipText(backup.path, "app/app.cjs"), /server\/index\.js/);
   const payload = await readBackupPayload(backup.path);
   assert.equal(payload.format, BACKUP_FORMAT);
   assert.equal(payload.siteTitle, "PB Travel Diaries");

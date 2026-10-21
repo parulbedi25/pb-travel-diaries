@@ -614,3 +614,15 @@ test("the site title is public and only an editor can change it", async () => {
 
   assert.equal((await call("PUT", "/api/settings/site", { title: "" })).status, 400);
 });
+
+test("canonical and legacy rider images serve identical bytes", async () => {
+  const canonical = await fetch(base + "/images/rider-kit-model-reference-v2.png");
+  const legacy = await fetch(base + "/images/rider-kit-model.png");
+  assert.equal(canonical.status, 200);
+  assert.equal(legacy.status, 200);
+  assert.match(legacy.headers.get("content-type"), /image\/png/);
+  assert.deepEqual(Buffer.from(await canonical.arrayBuffer()), Buffer.from(await legacy.arrayBuffer()));
+  const gear = await fetch(base + "/images/gear/classic-sling-rose-gold.webp");
+  assert.equal(gear.status, 200);
+  assert.match(gear.headers.get("content-type"), /image\/webp/);
+});

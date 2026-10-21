@@ -1,0 +1,45 @@
+# Manually queue this pipeline. It deploys only to its disposable hosted agent.
+trigger: none
+pr: none
+pool:
+  vmImage: ubuntu-latest
+variables:
+  COMPOSE_PROJECT_NAME: pb-azure-test
+  TEST_APP_PORT: '4400'
+jobs:
+  - job: TestDeployment
+    timeoutInMinutes: 20
+    steps:
+      - checkout: self
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '22.x'
+        displayName: Use Node.js 22
+      - bash: npm ci --ignore-scripts --no-audit --no-fund && npm run test:server
+        displayName: Install and test server
+      - bash: |
+          export TEST_DB_PASSWORD="$(openssl rand -hex 24)"
+          export TEST_DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
+          echo "##vso[task.setsecret]$TEST_DB_PASSWORD"
+          echo "##vso[task.setsecret]$TEST_DB_ROOT_PASSWORD"
+          bash scripts/test-deployment.sh
+        displayName: Deploy isolated test stack and verify
+        env:
+          COMPOSE_PROJECT_NAME: $(COMPOSE_PROJECT_NAME)
+          TEST_APP_PORT: $(TEST_APP_PORT)
+      - bash: mkdir -p test-results
+        condition: always()
+        displayName: Ensure diagnostics folder exists
+      - task: PublishPipelineArtifact@1
+        condition: always()
+        inputs:
+          targetPath: test-results
+          artifact: test-deployment-logs
+        displayName: Publish deployment logs
+      - bash: docker compose down --volumes --remove-orphans
+        condition: always()
+        displayName: Final cleanup
+        env:
+          COMPOSE_PROJECT_NAME: $(COMPOSE_PROJECT_NAME)
+          TEST_DB_PASSWORD: cleanup-only
+          TEST_DB_ROOT_PASSWORD: cleanup-only

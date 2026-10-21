@@ -2,7 +2,7 @@
  * Live location config for PB's tracker.
  *
  * Two ways to feed real coordinates:
- *  1. Set VITE_LIVE_FEED_URL in your .env to a JSON endpoint you control
+ *  1. Set feedUrl below to a JSON endpoint you control
  *     (GitHub gist, your server, etc.). It is polled every 60 seconds.
  *     Expected shape:
  *     {

@@ -10,19 +10,9 @@
  */
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
+import { connectionOptions } from "../lib/installer.js";
 import { applySchema } from "../db/schema.js";
 
-const connectionOptions = () => {
-  const { host, port, user, password, database, socketPath } = config.db;
-  return {
-    ...(socketPath ? { socketPath } : { host, port }),
-    user,
-    password,
-    database,
-    charset: "utf8mb4",
-    connectTimeout: 10_000,
-  };
-};
 
 async function main() {
   if (config.dbDriver === "memory") {
@@ -34,7 +24,7 @@ async function main() {
     return;
   }
 
-  const connection = await mysql.createConnection(connectionOptions());
+  const connection = await mysql.createConnection(connectionOptions(config.db, { withDatabase: true }));
   try {
     const result = await applySchema(connection);
     if (result.applied.length === 0) {
