@@ -101,9 +101,21 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    closeOnDesktop();
+    desktop.addEventListener("change", closeOnDesktop);
+    window.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
+      desktop.removeEventListener("change", closeOnDesktop);
+      window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
 
@@ -132,7 +144,7 @@ export default function Navbar() {
       >
         <div
           className={cn(
-            "mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 sm:px-8",
+            "site-header-row mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 transition-all duration-500 sm:px-8",
             scrolled ? "py-3" : "py-5"
           )}
         >
@@ -149,7 +161,7 @@ export default function Navbar() {
             <Logo />
           </div>
 
-          <nav aria-label="Primary" className="relative z-10 hidden items-center gap-1 lg:flex">
+          <nav aria-label="Primary" className="site-header-links relative z-10 hidden items-center gap-1 lg:flex">
             {nav.map((link) => (
               <a
                 key={link.id}
@@ -162,7 +174,7 @@ export default function Navbar() {
             ))}
           </nav>
 
-          <div className="relative z-10 flex items-center gap-2.5 sm:gap-3">
+          <div className="site-header-actions relative z-10 flex items-center gap-2.5 sm:gap-3">
             {isAdmin && (
               <button
                 type="button"
@@ -243,10 +255,10 @@ export default function Navbar() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.35 }}
-            className="fixed inset-0 z-[55] flex flex-col bg-ink-950/90 backdrop-blur-2xl lg:hidden"
+            className="site-mobile-menu fixed inset-0 z-[55] flex flex-col bg-ink-950/90 backdrop-blur-2xl lg:hidden"
           >
             <div className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" />
-            <div className="relative mt-28 flex flex-col gap-2 px-8">
+            <div className="site-mobile-menu-content relative mt-28 flex flex-col gap-2 px-8">
               {nav.map((link, i) => (
                 <motion.a
                   key={link.id}

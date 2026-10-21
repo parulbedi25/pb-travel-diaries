@@ -1,0 +1,49 @@
+/* Header sizing is shared by the prebuilt site and the preserved source. */
+[data-site-header] .site-header-row { max-width: 96rem; }
+[data-site-header] .site-header-row > div:nth-child(2) { min-width: 0; }
+[data-site-header] a[aria-label="PB from PB — home"] { max-width: 100%; min-width: 0; }
+.site-header-links { flex: 1 1 0%; min-width: 0; flex-wrap: wrap; justify-content: center; }
+.site-header-links a { max-width: 10rem; overflow-wrap: anywhere; text-align: center; }
+.site-header-actions { flex: 0 0 auto; }
+.site-header-actions > * { flex-shrink: 0; }
+.site-header-actions > a:not([aria-label]) { max-width: 10rem; overflow-wrap: anywhere; }
+.site-mobile-menu-content > a,
+.site-mobile-menu-content > div > a { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
+.site-mobile-menu-content svg { flex-shrink: 0; }
+@media (max-width: 1599px) {
+  .site-header-actions > a:not([aria-label]),
+  .site-header-actions > button[title]:not([aria-label]) { display: none; }
+}
+@media (max-width: 1279px) {
+  [data-site-header] .site-header-row { gap: 8px; padding-inline: clamp(12px, 3vw, 24px); }
+  [data-site-header] .site-header-row > div:nth-child(2) { flex: 1 1 0%; }
+  [data-site-header] a[aria-label="PB from PB — home"] > span > span:first-child { max-width: min(72px, 20vw) !important; }
+  .site-header-links { display: none !important; }
+  .site-header-actions { gap: 6px; }
+  .site-header-actions > a[aria-label="Admin dashboard"] { display: none; }
+  .site-header-actions > button[aria-expanded] { display: grid !important; }
+  .site-header-actions > button,
+  .site-header-actions > a[aria-label] { width: 40px; height: 44px; }
+  .site-mobile-menu {
+    display: flex !important;
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-top: calc(var(--header-h, 80px) + 16px);
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .site-mobile-menu-content { margin-top: 0; padding-inline: clamp(16px, 5vw, 32px); padding-bottom: 16px; }
+}
+@media (min-width: 1280px) {
+  .site-mobile-menu { display: none; }
+  .site-header-actions > button[aria-expanded] { display: none; }
+}
+/* Decorative light pools must not widen the page on narrow phones. */
+section#features > [aria-hidden],
+section#stories > [aria-hidden] { max-width: 100%; }
+@media (max-width: 639px) {
+  #pricing .grid > .h-full { min-width: 0; }
+  #pricing article { padding-inline: 20px; }
+  #pricing article .items-end { flex-wrap: wrap; }
+}
