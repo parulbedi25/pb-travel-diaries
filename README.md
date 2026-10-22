@@ -102,3 +102,19 @@ permissions still apply; the URL itself is not a security boundary and must
 not be treated as a secret credential. Anonymous visitors gain no edit rights.
 
 SQL query protections and first-install schema: [SQL-SECURITY.md](SQL-SECURITY.md).
+
+## Setup database location
+
+The first-install page offers **Hosting provider / external MySQL** (the
+existing connection flow) or **Local MySQL / MariaDB (same server)**. Local
+mode defaults to localhost and port 3306; use a custom local port or the
+advanced Unix-socket field if needed. Enter the database name, username and
+password, test the connection, then continue to table setup and the owner.
+Both choices use the same SQL-injection protections and versioned migrations.
+
+Local means the computer running Node, not the visitor's computer. MySQL or
+MariaDB must already be installed and running with a usable account. This is
+not an embedded/file database or the disposable memory driver. A website
+cannot install/start a database service on shared hosting. If your provider
+manages the local MySQL service, its connection details also work in provider
+mode. Existing environment-configured installations remain unchanged.

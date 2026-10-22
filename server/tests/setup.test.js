@@ -208,7 +208,7 @@ test("the install file is private, round-trips and never exposes the password", 
   }
 });
 
-test("installDatabase creates the database, applies the schema and saves the answers", async () => {
+for (const connectionMode of ["provider", "local"]) test(`${connectionMode} install creates the database, applies the schema and saves the answers`, async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-install-"));
   const file = path.join(dir, "install.json");
   const seen = [];
@@ -226,6 +226,7 @@ test("installDatabase creates the database, applies the schema and saves the ans
   try {
     const result = await installDatabase(
       {
+        connectionMode,
         siteTitle: "PB Travel Diaries",
         host: "localhost",
         port: "3306",
@@ -251,6 +252,8 @@ test("installDatabase creates the database, applies the schema and saves the ans
     assert.equal(saved.installed, true);
     assert.equal(saved.siteTitle, "PB Travel Diaries");
     assert.equal(saved.db.password, "secret");
+    assert.equal(saved.db.host, "localhost");
+    assert.equal(saved.schemaVersion, LATEST_VERSION);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -520,4 +523,28 @@ test("setup endpoints are locked once a site is installed", async () => {
     body: JSON.stringify({ username: "someone", password: "password1" }),
   });
   assert.equal(owner.status, 403);
+});
+
+test("local MySQL selection defaults to loopback and retains credentials and port", () => {
+  const input = { siteTitle: "Local test", connectionMode: "local", database: "local_site", user: "local_user", password: "test-only-password", port: "3307" };
+  const { db } = validateSetupInput(input);
+  assert.equal(db.host, "localhost");
+  assert.equal(db.port, 3307);
+  assert.equal(db.database, "local_site");
+  assert.equal(db.user, "local_user");
+  assert.equal(db.password, input.password);
+  for (const host of ["localhost", "127.0.0.1", "::1"]) {
+    assert.equal(validateSetupInput({ ...input, host }).db.host, host);
+  }
+  assert.throws(() => validateSetupInput({ ...input, host: "remote.example" }), /Local MySQL/);
+  assert.throws(() => validateSetupInput({ ...input, connectionMode: "embedded" }), /Choose a local or provider/);
+});
+
+test("provider and existing clients retain remote host and local socket support", () => {
+  const input = { siteTitle: "Provider test", database: "provider_site", user: "provider_user", password: "test-only-password" };
+  assert.equal(validateSetupInput({ ...input, connectionMode: "provider", host: "db.example" }).db.host, "db.example");
+  assert.equal(validateSetupInput({ ...input, host: "db.example" }).db.host, "db.example");
+  assert.equal(validateSetupInput({ ...input, connectionMode: "local", socketPath: "/run/mysqld/mysqld.sock" }).db.socketPath, "/run/mysqld/mysqld.sock");
+  assert.throws(() => validateSetupInput({ ...input, connectionMode: "local", database: "" }), /database name/i);
+  assert.throws(() => validateSetupInput({ ...input, connectionMode: "local", user: "" }), /username/i);
 });

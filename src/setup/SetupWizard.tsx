@@ -84,6 +84,7 @@ export default function SetupWizard({
 
   /* Step 1 — the database */
   const [siteTitle, setSiteTitle] = useState(status.siteTitle || "PB Travel Diaries");
+  const [connectionMode, setConnectionMode] = useState<"provider" | "local">("provider");
   const [host, setHost] = useState(status.db?.host || "localhost");
   const [port, setPort] = useState(String(status.db?.port ?? 3306));
   const [database, setDatabase] = useState(status.db?.database || "");
@@ -102,6 +103,7 @@ export default function SetupWizard({
   }, [step]);
 
   const dbInput = {
+    connectionMode,
     siteTitle: siteTitle.trim(),
     host: host.trim(),
     port: port.trim(),
@@ -149,6 +151,7 @@ export default function SetupWizard({
       setRestorePreview(preview);
       if (preview.siteTitle) setSiteTitle(preview.siteTitle);
       if (preview.database) {
+        setConnectionMode("provider");
         setHost(preview.database.host || "localhost");
         setPort(String(preview.database.port ?? 3306));
         setDatabase(preview.database.database || "");
@@ -427,6 +430,28 @@ export default function SetupWizard({
               )}
 
               <div className="border-t border-white/[0.07] pt-5">
+                <label htmlFor="setup-connection-mode" className={labelCls}>Database location</label>
+                <select id="setup-connection-mode" className={cn(inputCls, "mt-1.5 mb-3")}
+                  value={connectionMode} disabled={busy || databaseSaved}
+                  onChange={(event) => {
+                    const next = event.target.value as "provider" | "local";
+                    setConnectionMode(next);
+                    setHost(next === "local" ? "localhost" : "");
+                    setPort("3306"); setSocketPath(""); setShowAdvanced(false);
+                    setError(""); setWarning(""); setNotice("");
+                  }}>
+                  <option value="provider">Hosting provider / external MySQL</option>
+                  <option value="local">Local MySQL / MariaDB (same server)</option>
+                </select>
+                {connectionMode === "local" && (
+                  <p className="mb-3 text-xs leading-relaxed text-zinc-400" role="note">
+                    Connects to MySQL/MariaDB already running on this server, not your browser's computer.
+                    Install/start the database separately and create its database/user first.
+                    Credentials are still required. A custom local port or socket can be set below.
+                    This is persistent storage, not the temporary in-memory preview.
+                  </p>
+                )}
+
                 <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
                   <Database className="h-4 w-4 text-saffron-300" /> MariaDB database
                 </h2>
@@ -475,6 +500,7 @@ export default function SetupWizard({
                       <input
                         id="setup-host"
                         value={host}
+                        readOnly={connectionMode === "local"}
                         onChange={(e) => setHost(e.target.value)}
                         placeholder="localhost"
                         className={cn(inputCls, "pl-10")}
@@ -482,7 +508,7 @@ export default function SetupWizard({
                       />
                     </div>
                     <p className="mt-1 text-[10px] text-zinc-600">
-                      Usually “localhost”. Your panel's database page shows the exact value.
+                      {connectionMode === "local" ? "Local connection: localhost. Set a port or use the advanced socket option." : "Use the database host supplied by your provider; it may also be localhost."}
                     </p>
                   </div>
                   <div>
