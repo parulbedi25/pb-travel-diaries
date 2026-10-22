@@ -30,6 +30,7 @@ export interface SetupStatus {
 }
 
 export interface SetupDatabaseInput {
+  connectionMode?: "provider" | "local";
   siteTitle: string;
   host: string;
   port: string | number;

@@ -48,7 +48,14 @@ export function validateSetupInput(input = {}) {
  * the password rules are identical.
  */
 export function validateDatabase(input = {}) {
-  const host = String(input.host ?? "").trim() || "127.0.0.1";
+  const mode = input.connectionMode ?? "provider";
+  if (!["provider", "local"].includes(mode)) {
+    throw new SetupError("Choose a local or provider database connection.");
+  }
+  const host = String(input.host ?? "").trim() || (mode === "local" ? "localhost" : "127.0.0.1");
+  if (mode === "local" && !["localhost", "127.0.0.1", "::1"].includes(host)) {
+    throw new SetupError("Local MySQL must use localhost, 127.0.0.1 or ::1. Choose provider mode for another server.");
+  }
   const socketPath = String(input.socketPath ?? "").trim();
   if (!socketPath && !HOST_PATTERN.test(host)) {
     throw new SetupError("That database host does not look right.");
