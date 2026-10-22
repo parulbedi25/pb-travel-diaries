@@ -10,6 +10,7 @@
  */
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
+import { authEventLimit } from "../lib/sqlSafety.js";
 import { applySchema } from "./schema.js";
 
 /** How many published snapshots to keep. Older ones are trimmed on save. */
@@ -18,6 +19,7 @@ export const REVISION_LIMIT = 15;
 export async function createMysqlRepo() {
   const pool = mysql.createPool({
     ...config.db,
+    multipleStatements: false,
     waitForConnections: true,
     charset: "utf8mb4",
     // MariaDB reports BIGINT and DECIMAL as strings otherwise; ids stay numbers.
@@ -267,13 +269,14 @@ export async function createMysqlRepo() {
     },
 
     async listAuthEvents(limit = 100) {
-      const safe = Math.max(1, Math.min(500, Number(limit) || 100));
+      const safe = authEventLimit(limit);
       const [rows] = await pool.query(
         `SELECT id, user_id AS userId, username, event, ip, user_agent AS userAgent,
                 detail, created_at AS createdAt
            FROM auth_events
           ORDER BY created_at DESC, id DESC
-          LIMIT ${safe}`,
+          LIMIT ?`,
+        [safe],
       );
       return rows;
     },

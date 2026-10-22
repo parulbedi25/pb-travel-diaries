@@ -91,3 +91,14 @@ cached once at boot. Source and server code stay readable for maintenance.
 See [OPTIMIZATION.md](OPTIMIZATION.md) for the audit scope and measurements.
 
 Testing-only automation and Docker/MariaDB setup: [TEST-DEPLOYMENT.md](TEST-DEPLOYMENT.md).
+
+## Admin recovery during countdown or maintenance
+
+Type `https://YOUR_DOMAIN/commandcenter` to open the admin sign-in page even
+when the homepage is replaced by countdown/maintenance. It redirects to
+`/#/commandcenter`, an alias of the existing dashboard login. No public page
+links to it. Existing passwords, account-disable checks and owner/admin role
+permissions still apply; the URL itself is not a security boundary and must
+not be treated as a secret credential. Anonymous visitors gain no edit rights.
+
+SQL query protections and first-install schema: [SQL-SECURITY.md](SQL-SECURITY.md).

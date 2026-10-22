@@ -51,6 +51,7 @@ for (const file of [
   "DEPLOYMENT.md",
   "NAMECHEAP.md",
   "OPTIMIZATION.md",
+  "SQL-SECURITY.md",
   ".env.example",
 ]) {
   copy(file, file);

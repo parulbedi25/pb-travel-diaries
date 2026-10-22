@@ -10,13 +10,16 @@
  */
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
+import { databaseIdentifier } from "../lib/sqlSafety.js";
 import { applySchema } from "../db/schema.js";
 
 async function main() {
   const { database, host, port, user, password, socketPath } = config.db;
   // Plain connection options: pool-only keys (connectionLimit) belong to the
   // server, not to this one-off script.
+  const quotedDatabase = databaseIdentifier(database);
   const connection = {
+    multipleStatements: false,
     host,
     port,
     user,
@@ -28,7 +31,7 @@ async function main() {
   const admin = await mysql.createConnection(connection);
   try {
     await admin.query(
-      `CREATE DATABASE IF NOT EXISTS \`${database.replace(/`/g, "")}\`
+      `CREATE DATABASE IF NOT EXISTS ${quotedDatabase}
        CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
     );
     console.log(`[db:init] database "${database}" ready`);

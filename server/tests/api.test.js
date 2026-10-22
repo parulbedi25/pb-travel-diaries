@@ -626,3 +626,27 @@ test("canonical and legacy rider images serve identical bytes", async () => {
   assert.equal(gear.status, 200);
   assert.match(gear.headers.get("content-type"), /image\/webp/);
 });
+
+test("mobile layout stylesheet is served as CSS, not the SPA fallback", async () => {
+  const res = await fetch(base + "/mobile-layout.css");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /text\/css/);
+  assert.equal(res.headers.get("cache-control"), "no-cache");
+  const css = await res.text();
+  assert.match(css, /max-width: 1279px/);
+  assert.match(css, /overflow-y: auto/);
+  assert.match(css, /100dvh/);
+});
+
+test("unlisted commandcenter opens the login route without authenticating visitors", async () => {
+  for (const path of ["/commandcenter", "/commandcenter/"]) {
+    const res = await fetch(base + path, { redirect: "manual" });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get("location"), "/#/commandcenter");
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    assert.equal(res.headers.get("x-robots-tag"), "noindex, nofollow");
+    assert.equal(res.headers.get("set-cookie"), null);
+  }
+  const protectedResponse = await fetch(base + "/api/auth/users");
+  assert.equal(protectedResponse.status, 401, "recovery URL must not bypass authentication");
+});

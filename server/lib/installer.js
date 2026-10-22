@@ -1,3 +1,4 @@
+import { databaseIdentifier } from "./sqlSafety.js";
 /**
  * Turn the answers from the setup screen into a working database.
  *
@@ -80,6 +81,7 @@ export function validateDatabase(input = {}) {
 /** Connection options for a database, from validated fields. */
 export function connectionOptions(db, { withDatabase } = {}) {
   const options = {
+    multipleStatements: false,
     user: db.user,
     password: db.password,
     charset: "utf8mb4",
@@ -238,7 +240,7 @@ export async function installDatabase(input, options = {}) {
     if (!exists) {
       try {
         await admin.query(
-          `CREATE DATABASE IF NOT EXISTS \`${db.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+          `CREATE DATABASE IF NOT EXISTS ${databaseIdentifier(db.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
         );
         createdDatabase = true;
       } catch (error) {
