@@ -32,3 +32,11 @@ test("prebuilt navigation and reference source share responsive hooks", () => {
   assert.ok(html.includes('(min-width: 1280px)'));
   assert.ok(source.includes('(min-width: 1280px)'));
 });
+
+test("commandcenter is recognized in reference and prebuilt routers", () => {
+  const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
+  const source = fs.readFileSync(new URL("src/utils/router.ts", root), "utf8");
+  assert.ok(html.includes('new Set([w0e,"/commandcenter","/pb-control","/login"])'));
+  assert.match(source, /COMMAND_CENTER_PATH = "\/commandcenter"/);
+  assert.match(source, /new Set<string>\(\[ADMIN_PATH, COMMAND_CENTER_PATH,/);
+});

@@ -135,6 +135,14 @@ export function createApp() {
       (error) => { if (error) next(error); });
   });
 
+  // Unlisted recovery entry: normal authentication and role checks still apply.
+  // Redirect to the hash router so maintenance/countdown never intercept it.
+  app.get("/commandcenter", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.set("X-Robots-Tag", "noindex, nofollow");
+    res.redirect(302, "/#/commandcenter");
+  });
+
   /* ── the built site ─────────────────────────────────────────────────── */
 
   const indexFile = path.join(config.distDir, "index.html");

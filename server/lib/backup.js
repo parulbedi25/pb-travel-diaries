@@ -1,3 +1,4 @@
+import { databaseIdentifier } from "./sqlSafety.js";
 /**
  * The daily backup, and the importer that puts one back.
  *
@@ -48,6 +49,7 @@ const APP_FILES = [
   "DEPLOYMENT.md",
   "NAMECHEAP.md",
   "OPTIMIZATION.md",
+  "SQL-SECURITY.md",
   ".env.example",
 ];
 
@@ -444,7 +446,7 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
   try {
     try {
       await server.query(
-        `CREATE DATABASE IF NOT EXISTS \`${db.database.replace(/`/g, "")}\`
+        `CREATE DATABASE IF NOT EXISTS ${databaseIdentifier(db.database)}
          CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
       );
     } catch {

@@ -637,3 +637,16 @@ test("mobile layout stylesheet is served as CSS, not the SPA fallback", async ()
   assert.match(css, /overflow-y: auto/);
   assert.match(css, /100dvh/);
 });
+
+test("unlisted commandcenter opens the login route without authenticating visitors", async () => {
+  for (const path of ["/commandcenter", "/commandcenter/"]) {
+    const res = await fetch(base + path, { redirect: "manual" });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get("location"), "/#/commandcenter");
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    assert.equal(res.headers.get("x-robots-tag"), "noindex, nofollow");
+    assert.equal(res.headers.get("set-cookie"), null);
+  }
+  const protectedResponse = await fetch(base + "/api/auth/users");
+  assert.equal(protectedResponse.status, 401, "recovery URL must not bypass authentication");
+});
