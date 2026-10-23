@@ -105,12 +105,12 @@ export default function SetupWizard({
   const dbInput = {
     connectionMode,
     siteTitle: siteTitle.trim(),
-    host: host.trim(),
+    host: connectionMode === "local" ? "" : host.trim(),
     port: port.trim(),
-    database: database.trim(),
-    user: user.trim(),
-    password,
-    socketPath: socketPath.trim(),
+    database: connectionMode === "local" ? "pbfrompb" : database.trim(),
+    user: connectionMode === "local" ? "" : user.trim(),
+    password: connectionMode === "local" ? "" : password,
+    socketPath: connectionMode === "local" ? "" : socketPath.trim(),
   };
 
   const testConnection = async () => {
@@ -151,7 +151,7 @@ export default function SetupWizard({
       setRestorePreview(preview);
       if (preview.siteTitle) setSiteTitle(preview.siteTitle);
       if (preview.database) {
-        setConnectionMode("provider");
+        setConnectionMode(preview.database.driver === "sqlite" ? "local" : "provider");
         setHost(preview.database.host || "localhost");
         setPort(String(preview.database.port ?? 3306));
         setDatabase(preview.database.database || "");
@@ -276,7 +276,7 @@ export default function SetupWizard({
             <p className={cn("text-sm font-semibold", step === 1 ? "text-white" : "text-zinc-400")}>
               Database
             </p>
-            <p className="text-[11px] text-zinc-600">Website title + MariaDB details</p>
+            <p className="text-[11px] text-zinc-600">Website title + database choice</p>
           </div>
           <span className="h-px w-8 bg-white/10" aria-hidden />
           <StepDot n={2} active={step === 2} done={false} />
@@ -441,17 +441,15 @@ export default function SetupWizard({
                     setError(""); setWarning(""); setNotice("");
                   }}>
                   <option value="provider">Hosting provider / external MySQL</option>
-                  <option value="local">Local MySQL / MariaDB (same server)</option>
+                  <option value="local">Local database (SQLite)</option>
                 </select>
                 {connectionMode === "local" && (
-                  <p className="mb-3 text-xs leading-relaxed text-zinc-400" role="note">
-                    Connects to MySQL/MariaDB already running on this server, not your browser's computer.
-                    Install/start the database separately and create its database/user first.
-                    Credentials are still required. A custom local port or socket can be set below.
-                    This is persistent storage, not the temporary in-memory preview.
-                  </p>
+                  <div className="rounded-xl border border-white/10 p-4" role="note">
+                    <p className={labelCls}>Database name</p><p className="mt-2 text-white">pbfrompb</p>
+                    <p className="mt-2 text-xs text-zinc-400">Created privately at server/data/pbfrompb.sqlite. No server or credentials required. Requires Node.js 22.13+ or 24+.</p>
+                  </div>
                 )}
-
+                {connectionMode === "provider" && <>
                 <h2 className="flex items-center gap-2 font-display text-base font-semibold text-white">
                   <Database className="h-4 w-4 text-saffron-300" /> MariaDB database
                 </h2>
@@ -500,7 +498,6 @@ export default function SetupWizard({
                       <input
                         id="setup-host"
                         value={host}
-                        readOnly={connectionMode === "local"}
                         onChange={(e) => setHost(e.target.value)}
                         placeholder="localhost"
                         className={cn(inputCls, "pl-10")}
@@ -508,7 +505,7 @@ export default function SetupWizard({
                       />
                     </div>
                     <p className="mt-1 text-[10px] text-zinc-600">
-                      {connectionMode === "local" ? "Local connection: localhost. Set a port or use the advanced socket option." : "Use the database host supplied by your provider; it may also be localhost."}
+                      Use the database host supplied by your provider; it may also be localhost.
                     </p>
                   </div>
                   <div>
@@ -605,6 +602,7 @@ export default function SetupWizard({
                     </p>
                   </div>
                 )}
+                </>}
               </div>
 
               {error && (
@@ -640,7 +638,7 @@ export default function SetupWizard({
               )}
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-                <button
+                {connectionMode === "provider" && <button
                   type="button"
                   onClick={testConnection}
                   disabled={busy}
@@ -648,7 +646,7 @@ export default function SetupWizard({
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Server className="h-4 w-4" />}
                   Test connection
-                </button>
+                </button>}
                 <button
                   type="submit"
                   disabled={busy || (mode === "restore" && !restorePreview)}

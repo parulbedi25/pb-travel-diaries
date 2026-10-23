@@ -50,6 +50,7 @@ const APP_FILES = [
   "NAMECHEAP.md",
   "OPTIMIZATION.md",
   "SQL-SECURITY.md",
+  "SQLITE.md",
   ".env.example",
 ];
 
@@ -92,7 +93,7 @@ export async function buildRestorePayload({ reason = "manual", repo, at = new Da
   const data = await source.exportAll();
   const install = readInstall();
 
-  const database = install?.db
+  const database = install?.db?.driver === "sqlite" ? { driver: "sqlite", database: "pbfrompb" } : install?.db
     ? {
         host: install.db.host,
         port: install.db.port,
@@ -411,6 +412,11 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
       `That backup is from schema version ${backupVersion}, but this installation only knows ` +
         `version ${LATEST_VERSION}. Deploy the newer code first, then restore.`,
     );
+  }
+
+  if (database?.connectionMode === "local" || (database?.connectionMode == null && payload.database?.driver === "sqlite")) {
+    const { restoreSqlite } = await import("./sqliteRestore.js");
+    return restoreSqlite({ payload, zipPath, replace });
   }
 
   // Database details: what the file remembers, overridden by anything typed on

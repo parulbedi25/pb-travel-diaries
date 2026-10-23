@@ -2,7 +2,7 @@
  * First-run setup.
  *
  * Two steps, in this order:
- *   1. The website title and the MariaDB details. This creates the database
+ *   1. The website title and SQLite/provider selection. This creates the database
  *      (when the account may), every table, and the deployment settings.
  *   2. The owner account. It is the only account that can never be deleted,
  *      and it is created once — afterwards the dashboard adds people or they

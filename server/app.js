@@ -25,6 +25,8 @@ export function createApp() {
   // cookies are never set.
   if (config.trustProxy) app.set("trust proxy", 1);
   app.disable("x-powered-by");
+  // Defense in depth: private install/SQLite directories are never HTTP assets.
+  app.use(["/server/data", "/data"], (_req, res) => res.status(404).end());
 
   app.use(express.json({ limit: "12mb" }));
   app.use(cookieParser());

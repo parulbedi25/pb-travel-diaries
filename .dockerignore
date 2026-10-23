@@ -10,3 +10,5 @@ backup
 src
 server/tests
 *.log
+
+server/data

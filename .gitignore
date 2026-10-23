@@ -64,3 +64,6 @@ media/*
 
 # Committed template only; .env.test itself stays private
 !.env.test.example
+
+# Persistent embedded SQLite storage
+/server/data/

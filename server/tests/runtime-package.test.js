@@ -40,3 +40,13 @@ test("commandcenter is recognized in reference and prebuilt routers", () => {
   assert.match(source, /COMMAND_CENTER_PATH = "\/commandcenter"/);
   assert.match(source, /new Set<string>\(\[ADMIN_PATH, COMMAND_CENTER_PATH,/);
 });
+
+test("SQLite setup is available in reference and prebuilt UI without credentials", () => {
+  const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
+  const source = fs.readFileSync(new URL("src/setup/SetupWizard.tsx", root), "utf8");
+  for (const text of [html, source]) {
+    assert.ok(text.includes("Local database (SQLite)"));
+    assert.ok(text.includes("server/data/pbfrompb.sqlite"));
+    assert.ok(!text.includes("Local MySQL / MariaDB (same server)"));
+  }
+});

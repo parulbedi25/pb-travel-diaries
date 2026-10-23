@@ -1,5 +1,11 @@
 # Running PB Travel Diaries on Namecheap (cPanel → Setup Node.js App)
 
+> **Local SQLite is now available:** choose Local database (SQLite) on setup
+> for `server/data/pbfrompb.sqlite`, with no database credentials. Requires
+> Node.js 22.13+ or 24+. Preserve `server/data/` during updates. Provider MySQL
+> instructions below apply only when choosing provider mode. See [SQLITE.md](SQLITE.md).
+
+
 Namecheap shared hosting runs Node.js through **Phusion Passenger**, which
 cPanel exposes as **Software → Setup Node.js App**. Passenger starts your app,
 keeps it alive and puts it behind Apache on your domain's normal 80/443 — you

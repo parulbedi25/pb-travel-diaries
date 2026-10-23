@@ -14,6 +14,13 @@ import { databaseIdentifier } from "../lib/sqlSafety.js";
 import { applySchema } from "../db/schema.js";
 
 async function main() {
+  if (config.dbDriver === "sqlite") {
+    const { getRepo, closeRepo } = await import("../db/index.js");
+    try { console.log("[db] SQLite migrations:", await (await getRepo()).migrate()); }
+    finally { await closeRepo(); }
+    return;
+  }
+
   const { database, host, port, user, password, socketPath } = config.db;
   // Plain connection options: pool-only keys (connectionLimit) belong to the
   // server, not to this one-off script.

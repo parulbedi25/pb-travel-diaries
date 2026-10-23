@@ -21,7 +21,7 @@ export interface SetupStatus {
   databaseReady: boolean;
   users: number;
   siteTitle: string;
-  db: { host: string; port: number; database: string; user: string; socketPath: string } | null;
+  db: { driver?: "mysql" | "sqlite"; host: string; port: number; database: string; user: string; socketPath: string } | null;
   setupLocked: boolean;
   /** The "Restore a backup" tab: only while the site has no database yet. */
   restoreAllowed?: boolean;
@@ -60,11 +60,12 @@ export interface RestorePreview {
   reason: string;
   schemaVersion: number;
   database: {
-    host: string;
-    port: number;
+    driver?: "mysql" | "sqlite";
+    host?: string;
+    port?: number;
     database: string;
-    user: string;
-    password: string;
+    user?: string;
+    password?: string;
     socketPath?: string;
   } | null;
   users: number;
