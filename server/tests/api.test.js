@@ -650,15 +650,3 @@ test("unlisted commandcenter opens the login route without authenticating visito
   const protectedResponse = await fetch(base + "/api/auth/users");
   assert.equal(protectedResponse.status, 401, "recovery URL must not bypass authentication");
 });
-
-test("trip story stylesheet is served as CSS, with mobile and reduced-motion support", async () => {
-  const response = await fetch(base + "/trip-stories.css");
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /text\/css/);
-  assert.equal(response.headers.get("cache-control"), "no-cache");
-  const css = await response.text();
-  assert.match(css, /trip-story-stage/);
-  assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /max-width:767px/);
-  assert.match(css, /data-theme=light/);
-});

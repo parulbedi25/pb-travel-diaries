@@ -304,12 +304,6 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
         T("days", "Suggested pace"),
         T("season", "Best window"),
         T("vibe", "Vibe chip"),
-        {
-          path: "stops", label: "Story checkpoints", kind: "items",
-          hint: "Add chapters in reading order. Each checkpoint opens its photo and notes. This is a story route, not navigation directions. No checkpoints keeps the existing overview.",
-          fields: [T("title", "Checkpoint title"), T("day", "Day / time label"), TA("notes", "Story notes"), IMG("image", "Checkpoint photo", "Use a local upload. Blank uses the trip photo."), T("caption", "Photo caption"), TA("food", "Food find (optional)"), TA("tip", "Rider note (optional)")],
-          template: { title: "New checkpoint", day: "", notes: "", image: "", caption: "", food: "", tip: "", enabled: true },
-        },
       ],
       template: { name: "New destination", state: "State", tagline: "Tagline", description: "Describe the route.", image: "", distance: "0 km", days: "0 days", season: "Jan – Mar", vibe: "Vibe" },
     },
@@ -612,8 +606,6 @@ export function FieldRow({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
-  if (field.kind === "items") return <ItemsField field={field} value={Array.isArray(value) ? value : []} onChange={onChange}
-    onItemToggle={(index, enabled) => onChange((Array.isArray(value) ? value : []).map((item, i) => i === index ? { ...item, enabled } : item))} />;
   return (
     <div>
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
@@ -756,14 +748,6 @@ export function ItemsField({
                   />
                 )}
               </span>
-              {field.path === "stops" && <span className="flex gap-1">
-                {[-1, 1].map(offset => <button key={offset} type="button" className="trip-checkpoint-move"
-                  aria-label={`Move checkpoint ${i + 1} ${offset === -1 ? "up" : "down"}`}
-                  disabled={i + offset < 0 || i + offset >= items.length}
-                  onClick={() => { const next = [...items]; [next[i], next[i + offset]] = [next[i + offset], next[i]]; onChange(next); }}>
-                  {offset === -1 ? "↑" : "↓"}
-                </button>)}
-              </span>}
               <button
                 onClick={() => onChange(items.filter((_, j) => j !== i))}
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"

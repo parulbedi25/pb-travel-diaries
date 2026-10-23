@@ -114,24 +114,3 @@ Choose **Local database (SQLite)** for one-click persistent setup with the name
 **Hosting provider / external MySQL** keeps the existing credentials-based
 flow. Neither choice uses the temporary in-memory preview driver. See
 [SQLITE.md](SQLITE.md) for persistence, migrations, backups, and requirements.
-
-## Interactive trip stories
-
-**The Journey** now has a manual chapter reader with checkpoint navigation,
-previous/next controls, chapter position, photos, food finds and rider notes.
-The chapter route is a schematic reading sequence, **not a geographic map or
-navigation directions**. It does not autoplay or save reading state in browser
-storage. Only local image paths are loaded; a missing photo has a clear fallback.
-
-In **Dashboard → Sections → Journey Showcase → Edit**, each destination has
-**Story checkpoints**. Add a title, optional day/time, story notes, local photo,
-caption, food find and rider note. Use the up/down arrows to arrange chapters,
-or toggle/remove a checkpoint. Publish the draft using the normal dashboard
-save flow. The inline section editor uses the same fields. Checkpoints live in
-the existing journey content: authentication, section visibility, revisions,
-SQLite/MySQL persistence and JSON backups work without a new schema migration.
-
-Existing destinations without checkpoints keep their original overview; no
-saved content is rewritten. The built-in Ladakh example splits its existing
-copy into three sample chapters. Add your own photos and full stories in the
-dashboard; publishing does not fetch remote imagery.
