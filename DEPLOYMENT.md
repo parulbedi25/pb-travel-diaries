@@ -1,5 +1,11 @@
 # Deploying PB Travel Diaries
 
+> **Local SQLite is now available:** choose Local database (SQLite) on setup
+> for `server/data/pbfrompb.sqlite`, with no database credentials. Requires
+> Node.js 22.13+ or 24+. Preserve `server/data/` during updates. Provider MySQL
+> instructions below apply only when choosing provider mode. See [SQLITE.md](SQLITE.md).
+
+
 One Node.js process serves the built site, the API and the uploaded media, and
 stores everything else in MariaDB. Any host that can run a long-lived Node
 process and gives you a MySQL/MariaDB database will run it — a shared panel

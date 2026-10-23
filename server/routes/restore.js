@@ -146,6 +146,7 @@ restoreRouter.post("/setup/restore", async (req, res, next) => {
     const result = await restoreBackup({
       zipPath: file,
       database: {
+        connectionMode: req.body?.connectionMode,
         host: req.body?.host,
         port: req.body?.port,
         database: req.body?.database,

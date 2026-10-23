@@ -13,7 +13,7 @@ try {
   for (const name of ["express", "mysql2", "bcryptjs", "dotenv", "multer", "cookie-parser", "yauzl", "yazl"]) {
     await import(name);
   }
-  for (const name of ["data", "media", "backup"]) {
+  for (const name of ["data", "media", "backup", "server/data"]) {
     const folder = path.join(root, name);
     fs.mkdirSync(folder, { recursive: true });
     const probe = path.join(folder, `.hosting-check-${process.pid}`);

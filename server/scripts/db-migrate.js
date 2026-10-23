@@ -15,6 +15,13 @@ import { applySchema } from "../db/schema.js";
 
 
 async function main() {
+  if (config.dbDriver === "sqlite") {
+    const { getRepo, closeRepo } = await import("../db/index.js");
+    try { console.log("[db] SQLite migrations:", await (await getRepo()).migrate()); }
+    finally { await closeRepo(); }
+    return;
+  }
+
   if (config.dbDriver === "memory") {
     console.log("[db:migrate] the in-memory driver starts empty on every boot — nothing to do.");
     return;

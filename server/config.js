@@ -50,7 +50,7 @@ const savedInstall = readInstall();
 const envSaysDatabase = ["DB_HOST", "DB_NAME", "DB_USER"].some(
   (key) => process.env[key] !== undefined,
 );
-const driver = process.env.DB_DRIVER || "mysql";
+const driver = process.env.DB_DRIVER || (envSaysDatabase ? "mysql" : savedInstall?.db?.driver || "mysql");
 
 /**
  * Everything the server reads from the environment.
@@ -74,7 +74,7 @@ export const config = {
   /** Set to "memory" for tests — no database needed. */
   dbDriver: driver,
   /** False until either the installer or the environment supplies a database. */
-  hasDatabase: driver === "memory" || Boolean(savedInstall?.db) || envSaysDatabase,
+  hasDatabase: driver === "memory" || driver === "sqlite" || Boolean(savedInstall?.db) || envSaysDatabase,
   /** Shown on the setup screen and in the page title before the DB exists. */
   siteTitle:
     String(process.env.SITE_TITLE ?? "").trim() || savedInstall?.siteTitle || "PB Travel Diaries",
@@ -143,6 +143,7 @@ export function applyInstall(answers) {
   if (!answers) return config;
   if (answers.siteTitle) config.siteTitle = answers.siteTitle;
   if (answers.db) {
+    config.dbDriver = process.env.DB_DRIVER || answers.db.driver || "mysql";
     config.db.host = answers.db.host;
     config.db.port = int(answers.db.port, 3306);
     config.db.user = answers.db.user;

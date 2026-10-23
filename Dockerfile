@@ -7,7 +7,7 @@ COPY app.cjs ./
 COPY server ./server
 COPY dist ./dist
 COPY public ./public
-RUN mkdir -p data media backup && chown -R node:node /app
+RUN mkdir -p data media backup server/data && chown -R node:node /app
 USER node
 EXPOSE 4000
 CMD ["node", "app.cjs"]

@@ -13,6 +13,19 @@ import { migrationStatus } from "../db/schema.js";
 
 
 async function main() {
+  if (config.dbDriver === "sqlite") {
+    const { DatabaseSync } = await import("node:sqlite");
+    const { SQLITE_FILE } = await import("../db/sqlite.js");
+    const { SQLITE_VERSION, SQLITE_MIGRATIONS } = await import("../db/sqliteMigrations.js");
+    const db = new DatabaseSync(SQLITE_FILE, { readOnly: true });
+    try {
+      const installed = Number(db.prepare("SELECT COALESCE(MAX(version),0) AS v FROM pb_schema_migrations").get().v);
+      console.log(`[db:status] SQLite installed v${installed}, latest v${SQLITE_VERSION}`);
+      for (const m of SQLITE_MIGRATIONS.filter(m => m.version > installed)) console.log(`  v${m.version} ${m.name}`);
+    } finally { db.close(); }
+    return;
+  }
+
   if (config.dbDriver === "memory") {
     console.log("[db:status] the in-memory driver has no database to inspect.");
     return;

@@ -52,10 +52,8 @@ export function validateDatabase(input = {}) {
   if (!["provider", "local"].includes(mode)) {
     throw new SetupError("Choose a local or provider database connection.");
   }
-  const host = String(input.host ?? "").trim() || (mode === "local" ? "localhost" : "127.0.0.1");
-  if (mode === "local" && !["localhost", "127.0.0.1", "::1"].includes(host)) {
-    throw new SetupError("Local MySQL must use localhost, 127.0.0.1 or ::1. Choose provider mode for another server.");
-  }
+  if (mode === "local") throw new SetupError("Local SQLite does not use MySQL credentials.");
+  const host = String(input.host ?? "").trim() || "127.0.0.1";
   const socketPath = String(input.socketPath ?? "").trim();
   if (!socketPath && !HOST_PATTERN.test(host)) {
     throw new SetupError("That database host does not look right.");
@@ -159,6 +157,11 @@ function missingDatabaseMessage(db) {
  * `connect` is injectable so the tests can run the whole flow without MariaDB.
  */
 export async function testConnection(input, { connect = mysql.createConnection } = {}) {
+  if (input?.connectionMode === "local") {
+    try { await import("node:sqlite"); }
+    catch { throw new SetupError("Local SQLite requires Node.js 22.13+ or 24+."); }
+    return { ok: true, database: "pbfrompb", databaseExists: false, serverVersion: "SQLite", message: "SQLite is available. Create tables & continue will create the private database file." };
+  }
   const { db } = validateSetupInput(input);
 
   try {
@@ -212,6 +215,10 @@ export async function testConnection(input, { connect = mysql.createConnection }
  * the next visit still opens the setup screen.
  */
 export async function installDatabase(input, options = {}) {
+  if (input?.connectionMode === "local") {
+    const { installSqlite } = await import("./sqliteInstall.js");
+    return installSqlite(input, options);
+  }
   const { connect = mysql.createConnection, file = installFilePath(), apply = true } = options;
   const { siteTitle, db } = validateSetupInput(input);
 

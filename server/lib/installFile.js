@@ -68,6 +68,7 @@ export function writeInstall(answers, file = installFilePath()) {
 /** What the setup screen may see about the database — never the password. */
 export function publicInstall(answers) {
   if (!answers?.db) return null;
+  if (answers.db.driver === "sqlite") return { driver: "sqlite", database: "pbfrompb", host: "", port: 0, user: "", socketPath: "" };
   return {
     host: answers.db.host,
     port: answers.db.port,

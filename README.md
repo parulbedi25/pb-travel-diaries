@@ -1,7 +1,7 @@
 # PB Travel Diaries
 
 A Node.js/Express application serving a prebuilt travel website, dashboard,
-API, and uploaded media. MySQL/MariaDB stores accounts, content and sessions.
+API, and uploaded media. SQLite or MySQL/MariaDB stores accounts, content and sessions.
 
 **No Vite, frontend package installation, or build command is required.**
 The repository includes the ready-to-serve website in `dist/`. `npm install`
@@ -9,7 +9,7 @@ installs server packages only. There are no development dependencies.
 
 ## Start locally
 
-Use Node.js 22.12+ (recommended).
+Use Node.js 22.13+ or 24+ (recommended).
 
 ```bash
 npm install
@@ -17,8 +17,8 @@ npm run hosting:check
 npm start
 ```
 
-Open http://localhost:4000 and complete database/owner setup. Create the MySQL
-database and user first; the installer creates the tables.
+Open http://localhost:4000 and choose Local SQLite or provider MySQL. Only the
+provider option needs a pre-created database and user.
 
 For a disposable preview without MySQL (macOS/Linux):
 
@@ -37,7 +37,7 @@ it for production.
 3. Click **Run NPM Install**.
 4. Optionally run **hosting:check** using **Run JS Script**.
 5. Set **Application startup file** to **`app.cjs`**; click **Start/Restart**.
-6. Open the HTTPS domain and complete database/owner setup immediately.
+6. Open the HTTPS domain, select SQLite or provider MySQL, and complete setup immediately.
 
 No daemon, PM2, Vite, build step or terminal command is needed on cPanel.
 Use cPanel Restart for Passenger, not a second `npm start` process.
@@ -71,7 +71,8 @@ See [NAMECHEAP.md](NAMECHEAP.md) and [RUNNING.md](RUNNING.md).
   frontend build toolchain is intentionally removed. Recompiling frontend code
   requires a separately supplied build workflow; this change does not rewrite
   the existing browser UI into vanilla JavaScript.
-- `data/install.json`: installer settings, including database credentials.
+- `data/install.json`: installer settings, including provider credentials if used.
+- `server/data/pbfrompb.sqlite`: persistent local SQLite data; never replace during updates.
 - `media/`: user uploads; preserve during updates.
 - `backup/`: backup archives; preserve and copy off-host.
 
@@ -105,16 +106,11 @@ SQL query protections and first-install schema: [SQL-SECURITY.md](SQL-SECURITY.m
 
 ## Setup database location
 
-The first-install page offers **Hosting provider / external MySQL** (the
-existing connection flow) or **Local MySQL / MariaDB (same server)**. Local
-mode defaults to localhost and port 3306; use a custom local port or the
-advanced Unix-socket field if needed. Enter the database name, username and
-password, test the connection, then continue to table setup and the owner.
-Both choices use the same SQL-injection protections and versioned migrations.
+Choose **Local database (SQLite)** for one-click persistent setup with the name
+`pbfrompb` and no database credentials. This creates
+`server/data/pbfrompb.sqlite` and then opens owner setup. Use Node.js 22.13+ or
+24+. Preserve `server/data/` during updates; it is never part of a release ZIP.
 
-Local means the computer running Node, not the visitor's computer. MySQL or
-MariaDB must already be installed and running with a usable account. This is
-not an embedded/file database or the disposable memory driver. A website
-cannot install/start a database service on shared hosting. If your provider
-manages the local MySQL service, its connection details also work in provider
-mode. Existing environment-configured installations remain unchanged.
+**Hosting provider / external MySQL** keeps the existing credentials-based
+flow. Neither choice uses the temporary in-memory preview driver. See
+[SQLITE.md](SQLITE.md) for persistence, migrations, backups, and requirements.

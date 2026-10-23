@@ -35,6 +35,7 @@ services:
       db:
         condition: service_healthy
     volumes:
+      - test_sqlite:/app/server/data
       - test_data:/app/data
       - test_media:/app/media
       - test_backup:/app/backup
@@ -51,6 +52,7 @@ services:
 
 volumes:
   test_db:
+  test_sqlite:
   test_data:
   test_media:
   test_backup:

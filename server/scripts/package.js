@@ -38,6 +38,7 @@ function copy(from, to, { skip = [] } = {}) {
 
 copy("server", "server", { skip: [
   "server/tests",
+  "server/data",
   "server/scripts/package.js",
   "server/scripts/write-schema.js",
 ] });
@@ -52,6 +53,7 @@ for (const file of [
   "NAMECHEAP.md",
   "OPTIMIZATION.md",
   "SQL-SECURITY.md",
+  "SQLITE.md",
   ".env.example",
 ]) {
   copy(file, file);
