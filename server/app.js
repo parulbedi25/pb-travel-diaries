@@ -137,6 +137,12 @@ export function createApp() {
       (error) => { if (error) next(error); });
   });
 
+  app.get("/trip-stories.css", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(config.root, "public/trip-stories.css"),
+      (error) => { if (error) next(error); });
+  });
+
   // Unlisted recovery entry: normal authentication and role checks still apply.
   // Redirect to the hash router so maintenance/countdown never intercept it.
   app.get("/commandcenter", (_req, res) => {
