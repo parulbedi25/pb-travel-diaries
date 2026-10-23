@@ -1,95 +1,264 @@
-import * as React from "react";
-import type { JourneyData, Destination, TripStop } from "../store/siteContent";
+import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MapPin,
+  Calendar,
+  Route as RouteIcon,
+  Clock,
+  ChevronRight,
+  Pause,
+  Play,
+} from "lucide-react";
+import type { JourneyData, Destination } from "../store/siteContent";
+import { EASE, SectionHeader, Reveal } from "./ui/motion";
+import Photo from "./ui/Photo";
+import { isOn } from "../utils/enabled";
+import { cn } from "../utils/cn";
 
-/** Only local assets: a saved external URL never triggers an image request. */
-function tripStoryImage(value?: string): string {
-  return typeof value === "string" && /^\/(?!\/)/.test(value) && !/[\\\u0000-\u0020]/.test(value) ? value : "";
-}
-
-function TripStoryPhoto({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = React.useState(false);
-  return <div className="trip-story-photo">
-    {src && !failed ? <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} /> :
-      <div className="trip-story-placeholder"><span aria-hidden="true">↗</span><p>The road has a story.</p><small>Photo to follow</small></div>}
-  </div>;
-}
-
-/** Existing journeys stay readable; checkpoints are an additive content field. */
 export default function Showcase({ data }: { data: JourneyData }) {
-  const trips: Destination[] = (Array.isArray(data.destinations) ? data.destinations : []).filter(d => d && (d as Destination & { enabled?: boolean }).enabled !== false);
-  const [tripIndex, setTripIndex] = React.useState(0);
-  const [chapterIndex, setChapterIndex] = React.useState(0);
-  const instance = React.useId();
-  const trip = trips[Math.min(tripIndex, Math.max(0, trips.length - 1))];
-  const stops: TripStop[] = Array.isArray(trip?.stops) ? trip.stops.filter(s => s && s.enabled !== false) : [];
-  const chapters: TripStop[] = stops.length ? stops : trip ? [{ title: trip.name, notes: trip.description, image: trip.image, caption: trip.tagline }] : [];
-  const current = Math.min(chapterIndex, Math.max(0, chapters.length - 1));
-  const chapter = chapters[current];
-  const panelId = `${instance}-story`;
-  const routeRef = React.useRef<HTMLOListElement>(null);
-  const image = tripStoryImage(chapter?.image) || tripStoryImage(trip?.image);
+  const destinations: Destination[] = data.destinations.filter(isOn);
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const safe = Math.min(active, destinations.length - 1);
+  const dest = destinations[safe];
 
-  const chooseChapter = (index: number) => setChapterIndex(Math.max(0, Math.min(index, chapters.length - 1)));
-  const routeKey = (event: React.KeyboardEvent, index: number) => {
-    let next = index;
-    if (event.key === "ArrowRight") next = Math.min(index + 1, chapters.length - 1);
-    else if (event.key === "ArrowLeft") next = Math.max(0, index - 1);
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = chapters.length - 1;
-    else return;
-    event.preventDefault();
-    chooseChapter(next);
-    routeRef.current?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
-  };
+  useEffect(() => {
+    if (paused || destinations.length < 2) return;
+    const id = setInterval(() => setActive((a) => (a + 1) % destinations.length), 6000);
+    return () => clearInterval(id);
+  }, [paused, destinations.length]);
 
-  return <section id="journey" className="trip-stories" aria-labelledby={`${instance}-title`}>
-    <div className="trip-stories-inner">
-      <header className="trip-story-header">
-        <p className="trip-story-eyebrow">{data.eyebrow || "From the road"} / Interactive trip stories</p>
-        <h2 id={`${instance}-title`}>{data.titleA}<span>{data.titleHi}</span>{data.titleB}</h2>
-        <p>{data.sub}</p>
-      </header>
-      {!trip ? <p className="trip-story-empty">No journeys published yet. The next story starts on the road.</p> : <>
-        <nav className="trip-story-picker" aria-label="Choose a trip story">
-          {trips.map((item, index) => <button type="button" key={index} aria-pressed={trip === item}
-            onClick={() => { setTripIndex(index); setChapterIndex(0); }}>
-            <span className="trip-picker-number">{String(index + 1).padStart(2, "0")}</span>{item.name}
-          </button>)}
-        </nav>
-        <div className="trip-story-meta"><span>{trip.state}</span><span>{trip.distance}</span><span>{trip.days}</span><span>{trip.season}</span></div>
-        <div className="trip-story-stage" id={panelId}>
-          <div className="trip-story-visual">
-            <TripStoryPhoto key={`${image}-${tripIndex}-${current}`} src={image} alt={chapter.caption || `${trip.name} — ${chapter.title}`} />
-            <span className="trip-story-badge">{trip.vibe || "Travel diary"}</span>
-            <div className="trip-story-caption"><span>{trip.name}</span><p>{chapter.caption || trip.tagline}</p></div>
-          </div>
-          <article className="trip-story-article" aria-labelledby={`${instance}-chapter-title`}>
-            <div className="trip-story-chapter-label"><span>{stops.length ? `Chapter ${String(current + 1).padStart(2, "0")}` : "The overview"}</span>{chapter.day && <span>{chapter.day}</span>}</div>
-            <h3 id={`${instance}-chapter-title`}>{chapter.title}</h3>
-            <p className="trip-story-notes">{chapter.notes || trip.description}</p>
-            {chapter.food && <aside className="trip-story-fieldnote"><span>At the table</span><p>{chapter.food}</p></aside>}
-            {chapter.tip && <aside className="trip-story-fieldnote"><span>A note from the road</span><p>{chapter.tip}</p></aside>}
-            <div className="trip-story-controls">
-              <button type="button" disabled={current === 0} onClick={() => chooseChapter(current - 1)} aria-label="Previous chapter">← <span>Previous</span></button>
-              <span role="status" aria-live="polite" aria-atomic="true">{current + 1} / {chapters.length} · {chapter.title}</span>
-              <button type="button" disabled={current === chapters.length - 1} onClick={() => chooseChapter(current + 1)} aria-label="Next chapter"><span>Next</span> →</button>
+  return (
+    <section id="journey" aria-labelledby="journey-title" className="relative py-24 sm:py-32">
+      <div
+        className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/6 blur-[120px]"
+        aria-hidden
+      />
+      <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
+        <SectionHeader
+          eyebrow={data.eyebrow}
+          id="journey-title"
+          title={
+            <>
+              {data.titleA}
+              <span className="text-gradient">{data.titleHi}</span>
+              {data.titleB}
+            </>
+          }
+          sub={data.sub}
+        />
+
+        {destinations.length === 0 ? (
+          <p className="mt-14 rounded-2xl glass p-8 text-center text-sm text-zinc-500">
+            No destinations added yet — add some from the admin dashboard.
+          </p>
+        ) : (
+          <>
+            {/* mobile tabs */}
+            <div
+              className="no-scrollbar mt-12 flex gap-2 overflow-x-auto pb-2 lg:hidden"
+              role="tablist"
+              aria-label="Destinations"
+            >
+              {destinations.map((d, i) => (
+                <button
+                  key={d.name}
+                  role="tab"
+                  aria-selected={i === safe}
+                  onClick={() => {
+                    setActive(i);
+                    setPaused(true);
+                  }}
+                  className={cn(
+                    "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-300",
+                    i === safe
+                      ? "bg-saffron-400 text-on-gold shadow-lg shadow-saffron-400/25"
+                      : "glass text-zinc-400"
+                  )}
+                >
+                  {d.name}
+                </button>
+              ))}
             </div>
-          </article>
-        </div>
-        {stops.length > 0 && <div className="trip-story-route">
-          <div className="trip-story-route-heading"><p>Follow the story</p><span>Chapter route · not navigation directions</span></div>
-          <ol ref={routeRef} aria-label={`${trip.name} story checkpoints`}>
-            {chapters.map((stop, index) => <li key={index} data-current={index === current} data-past={index < current}>
-              <button type="button" aria-current={index === current ? "step" : undefined} aria-controls={panelId}
-                onClick={() => chooseChapter(index)} onKeyDown={event => routeKey(event, index)}>
-                <span className="trip-story-checkpoint">{String(index + 1).padStart(2, "0")}</span>
-                <span className="trip-story-stop-name">{stop.title}</span>{stop.day && <small>{stop.day}</small>}
-              </button>
-            </li>)}
-          </ol>
-          <div className="trip-story-progress" role="progressbar" aria-label="Story chapter position" aria-valuemin={1} aria-valuemax={chapters.length} aria-valuenow={current + 1} aria-valuetext={`Chapter ${current + 1} of ${chapters.length}`}><span style={{ width: `${((current + 1) / chapters.length) * 100}%` }} /></div>
-        </div>}
-      </>}
-    </div>
-  </section>;
+
+            <div
+              className="relative mt-8 lg:mt-14"
+              onMouseEnter={() => setPaused(true)}
+              onMouseLeave={() => setPaused(false)}
+            >
+              {/* desktop list — layered inside the image, on the left */}
+              <Reveal className="absolute inset-y-6 left-6 z-20 hidden w-[300px] lg:block">
+                <div
+                  role="tablist"
+                  aria-label="Destinations"
+                  className="no-scrollbar machine-dest-list flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto rounded-[1.5rem] border border-white/15 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl"
+                >
+                  {destinations.map((d, i) => {
+                    const isActive = i === safe;
+                    return (
+                      <button
+                        key={d.name}
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setActive(i)}
+                        className={cn(
+                          "group relative flex items-center gap-4 rounded-2xl border px-5 py-4 text-left transition-all duration-400",
+                          isActive
+                            ? "border-white/20 bg-white/[0.06]"
+                            : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
+                        )}
+                      >
+                        {isActive && (
+                          <motion.span
+                            layoutId="dest-pill"
+                            className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full bg-saffron-400"
+                            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          />
+                        )}
+                        <span
+                          className={cn(
+                            "grid h-9 w-9 shrink-0 place-items-center rounded-xl font-display text-xs font-bold transition-all duration-300",
+                            isActive
+                              ? "bg-saffron-400 text-on-gold"
+                              : "bg-white/[0.06] text-zinc-500 group-hover:text-zinc-300"
+                          )}
+                        >
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "block truncate font-display text-[15px] font-semibold transition-colors duration-300",
+                              isActive ? "text-white" : "text-zinc-300"
+                            )}
+                          >
+                            {d.name}
+                          </span>
+                          <span className="block truncate text-xs text-zinc-500">
+                            {d.state} · {d.distance}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-all duration-300",
+                            isActive
+                              ? "translate-x-0 text-saffron-400 opacity-100"
+                              : "-translate-x-1 text-zinc-600 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
+                          )}
+                        />
+                      </button>
+                    );
+                  })}
+
+                </div>
+              </Reveal>
+
+              {/* stage — full width; the list overlays it on the left */}
+              <div className="relative">
+                <div className="relative overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-black/50">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={dest.name}
+                      initial={{ opacity: 0, scale: 1.04 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.99 }}
+                      transition={{ duration: 0.7, ease: EASE }}
+                    >
+                      <Photo
+                        src={dest.image}
+                        alt={`${dest.name} — ${dest.tagline}`}
+                        className="aspect-[4/3.2] w-full object-cover sm:aspect-[16/9]"
+                        label="Journey photo unavailable"
+                      />
+                    </motion.div>
+                  </AnimatePresence>
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/25 to-transparent" />
+
+                  <div className="absolute left-5 top-5 flex items-center gap-2 lg:left-auto lg:right-[76px]">
+                    <span className="rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
+                      {dest.vibe}
+                    </span>
+                    <span className="hidden items-center gap-1.5 rounded-full bg-ink-950/60 px-3.5 py-1.5 text-xs font-medium text-zinc-300 backdrop-blur-md sm:flex">
+                      <MapPin className="h-3.5 w-3.5 text-saffron-400" />
+                      {dest.state}
+                    </span>
+                  </div>
+
+                  {/* floating carousel control — top right */}
+                  <button
+                    type="button"
+                    onClick={() => setPaused((p) => !p)}
+                    aria-pressed={!paused}
+                    aria-label={paused ? "Resume image carousel" : "Pause image carousel"}
+                    title={paused ? "Resume carousel" : "Pause carousel"}
+                    className="absolute right-5 top-5 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-ink-950/60 text-white shadow-xl shadow-black/40 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:border-saffron-300 hover:bg-ink-950/80 active:scale-95"
+                  >
+                    {paused ? (
+                      <Play className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Pause className="h-4 w-4 fill-current" />
+                    )}
+                  </button>
+
+                  <div className="absolute inset-x-0 bottom-0 p-6 sm:p-9 lg:left-[332px] lg:pl-4">
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={dest.name}
+                        initial={{ opacity: 0, y: 22 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -12 }}
+                        transition={{ duration: 0.55, ease: EASE }}
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-saffron-300">
+                          {dest.tagline}
+                        </p>
+                        <h3 className="mt-2 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                          {dest.name}
+                        </h3>
+                        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300 sm:text-[15px]">
+                          {dest.description}
+                        </p>
+
+                        <div className="mt-6 flex flex-wrap gap-x-7 gap-y-3">
+                          {[
+                            { icon: RouteIcon, label: dest.distance, sub: "Total distance" },
+                            { icon: Clock, label: dest.days, sub: "Suggested pace" },
+                            { icon: Calendar, label: dest.season, sub: "Best window" },
+                          ].map((s) => (
+                            <div key={s.sub} className="flex items-center gap-2.5">
+                              <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/[0.08] text-saffron-300 backdrop-blur-md">
+                                <s.icon className="h-4 w-4" />
+                              </span>
+                              <div>
+                                <p className="text-sm font-semibold text-white">{s.label}</p>
+                                <p className="text-[11px] text-zinc-400">{s.sub}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex items-center justify-center gap-2 lg:hidden">
+                  {destinations.map((d, i) => (
+                    <button
+                      key={d.name}
+                      onClick={() => setActive(i)}
+                      aria-label={`Show ${d.name}`}
+                      className={cn(
+                        "h-1.5 rounded-full transition-all duration-400",
+                        i === safe ? "w-8 bg-saffron-400" : "w-1.5 bg-white/15"
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }

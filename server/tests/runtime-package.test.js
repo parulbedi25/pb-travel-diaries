@@ -50,36 +50,3 @@ test("SQLite setup is available in reference and prebuilt UI without credentials
     assert.ok(!text.includes("Local MySQL / MariaDB (same server)"));
   }
 });
-
-test("interactive trip stories and their editor are shipped without a frontend build", () => {
-  const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
-  const reader = fs.readFileSync(new URL("src/components/Showcase.tsx", root), "utf8");
-  const editor = fs.readFileSync(new URL("src/admin/AdminPage.tsx", root), "utf8");
-  assert.match(html, /href="\/trip-stories\.css"/);
-  for (const marker of ["Follow the story", "Next chapter", "Previous chapter", "Story chapter position", "Photo to follow"]) {
-    assert.ok(html.includes(marker), `Shipped reader missing ${marker}`);
-    assert.ok(reader.includes(marker), `Reference reader missing ${marker}`);
-  }
-  for (const marker of ["Story checkpoints", "Checkpoint photo", "Food find (optional)", "Move checkpoint"]) {
-    assert.ok(html.includes(marker), `Shipped editor missing ${marker}`);
-    assert.ok(editor.includes(marker), `Reference editor missing ${marker}`);
-  }
-  assert.doesNotMatch(reader, /setInterval|localStorage|dangerouslySetInnerHTML/);
-});
-
-test("shipped inline JavaScript parses after manual prebuilt updates", async () => {
-  const { spawnSync } = await import("node:child_process");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const dir = fs.mkdtempSync(join(tmpdir(), "pb-shipped-script-"));
-  try {
-    const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
-    for (const [index, script] of [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].entries()) {
-      if (!script[1].trim()) continue;
-      const file = join(dir, `${index}.mjs`);
-      fs.writeFileSync(file, script[1]);
-      const result = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
-      assert.equal(result.status, 0, result.stderr);
-    }
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-});

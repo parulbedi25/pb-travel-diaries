@@ -494,19 +494,7 @@ export interface FeaturesData {
   sub: string;
   items: FeatureItem[];
 }
-export interface TripStop {
-  title: string;
-  day?: string;
-  notes: string;
-  image?: string;
-  caption?: string;
-  food?: string;
-  tip?: string;
-  enabled?: boolean;
-}
 export interface Destination {
-  /** Ordered story chapters; old journeys fall back to their overview. */
-  stops?: TripStop[];
   name: string;
   state: string;
   tagline: string;
@@ -902,7 +890,7 @@ const JOURNEY: JourneyData = {
   titleB: "",
   sub: "Every route below has been ridden, filmed and road-tested by PB — with maps, budgets and foul-weather exits published for members.",
   destinations: [
-    { name: "Ladakh", state: "Jammu & Kashmir", tagline: "The Land of High Passes", description: "Eleven passes above 16,000 ft, Pangong turning gold at dawn, and mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage. Full GPX, permit checklist and fuel strategy included.", image: "", distance: "2,150 km", days: "12 days", season: "Jun – Sep", vibe: "High-altitude madness", stops: [{"title": "The high passes", "notes": "Eleven passes above 16,000 ft.", "caption": "The Land of High Passes"}, {"title": "Pangong at dawn", "notes": "Pangong turning gold at dawn.", "caption": "A different kind of golden hour"}, {"title": "Mornings on the road", "notes": "Mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage.", "food": "Butter tea", "caption": "The quieter moments between the miles"}] },
+    { name: "Ladakh", state: "Jammu & Kashmir", tagline: "The Land of High Passes", description: "Eleven passes above 16,000 ft, Pangong turning gold at dawn, and mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage. Full GPX, permit checklist and fuel strategy included.", image: "", distance: "2,150 km", days: "12 days", season: "Jun – Sep", vibe: "High-altitude madness" },
     { name: "Nubra Valley", state: "Ladakh", tagline: "The Cold Desert", description: "Sand dunes wedged between snow peaks, double-humped camels at Hunder, and Turtuk — a Baltistan village India opened to the world only in 2010. The detour most riders skip, and never forget.", image: "", distance: "480 km", days: "4 days", season: "Jun – Sep", vibe: "Otherworldly" },
     { name: "Spiti Valley", state: "Himachal Pradesh", tagline: "The Middle Land", description: "Raw, lunar, and humbling. Key Monastery at sunrise, Chandra Tal under the Milky Way, and the world's highest villages where time moves at 0.5x. My most requested route — mapped to the last kilometre.", image: "", distance: "1,320 km", days: "9 days", season: "May – Oct", vibe: "Raw & spiritual" },
     { name: "Rajasthan", state: "The Desert Crown", tagline: "Forts, Dunes & Fury", description: "Amber Fort at golden hour, Jaisalmer's dunes under a full moon, and Udaipur's lakes at dusk. A 2,400 km loop through living palaces, thorn forests and the loudest thalis in India.", image: "", distance: "2,400 km", days: "10 days", season: "Oct – Feb", vibe: "Royal & loud" },

@@ -100,18 +100,10 @@ test("SQLite backup is portable JSON, excludes raw WAL files, and restores lossl
   await fs.writeFile(path.join(config.mediaDir, "test.png"), "test-photo");
   const repo = await getRepo();
   await repo.insertMedia({ id: "test-image", filename: "test.png", originalName: "test.png", mime: "image/png", size: 10, kind: "image", ext: "png", createdBy: "owner" });
-  const tripContent = { sections: [{ id: "journey", type: "journey", enabled: true, data: { destinations: [{
-    name: "Test trip", description: "Original overview", image: "/media/test.png", stops: [
-      { title: "First checkpoint", notes: "A long-form story\nwith a second paragraph.", image: "/media/test.png", food: "A local breakfast", tip: "Leave early", day: "Day 1", enabled: true },
-      { title: "Hidden draft", notes: "Keep the draft intact", enabled: false },
-    ],
-  }] } }] };
-  await repo.putContent({ content: JSON.stringify(tripContent), revisionId: "trip-story-backup", by: "owner" });
   const original = JSON.parse(JSON.stringify(await repo.exportAll()));
   const backup = await createBackup({ repo });
   const payload = await readBackupPayload(backup.path);
   assert.equal(payload.database.driver, "sqlite");
-  assert.deepEqual(JSON.parse(payload.data.content.content), tripContent, "checkpoint order, photos, notes and flags survive export");
   const names = [];
   await walkZipEntries(backup.path, entry => { names.push(entry.path); });
   assert.ok(!names.some(name => /\.sqlite(?:-|$)/.test(name)));
