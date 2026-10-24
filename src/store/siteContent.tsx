@@ -665,6 +665,10 @@ export interface BenefitsData {
   titleHi: string;
   titleB: string;
   sub: string;
+  /** Looping background film for the section. Empty falls back to the old showreel constant. */
+  videoSrc: string;
+  /** Still shown before the film starts, and instead of it on a slow connection. */
+  videoPoster: string;
   videoLine: string;
   videoChips: string[];
   quote: string;
@@ -1141,6 +1145,10 @@ const BENEFITS: BenefitsData = {
   titleHi: "Three ways to live it.",
   titleB: "",
   sub: "Whether you shoot, ride, or just itch to get out of the city — there's a lane for you here.",
+  // A drone pass over a green Kangra valley. Ships with the site, but it is an
+  // ordinary media field: swap in your own film from the dashboard.
+  videoSrc: "/media/starter/valley-drone.mp4",
+  videoPoster: "/media/starter/valley-drone-poster.webp",
   videoLine: "8 years · 28 states · 140,000 km — in 40 seconds",
   videoChips: ["140K km", "380+ films", "28 states"],
   quote: "I packed my saddlebags in Nangal Dam in 2017 with one backpack and a secondhand camera. The road has been my home ever since.",

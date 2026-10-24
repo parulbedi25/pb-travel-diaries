@@ -78,5 +78,25 @@
     "license": "https://creativecommons.org/licenses/by-sa/4.0/",
     "licenseName": "CC BY-SA 4.0",
     "changes": "Locally resized where needed and re-encoded as WebP from search-supplied originals/previews. Some previews are lower resolution. Page layouts crop the display; no upscaling. Illustrative photographs, not PB originals."
+  },
+  {
+    "file": "valley-drone.mp4",
+    "title": "Kangra valley — drone film",
+    "library": true,
+    "author": "PB Travel Diaries (original)",
+    "source": "",
+    "license": "",
+    "licenseName": "Original to this website",
+    "changes": "Generated for this website and rendered locally as a silent, seamlessly looping 14-second film (1600×900, H.264). No third-party footage or rights are involved; replace it with your own ride footage from the dashboard whenever you like."
+  },
+  {
+    "file": "valley-drone-poster.webp",
+    "title": "Kangra valley — drone film poster",
+    "library": true,
+    "author": "PB Travel Diaries (original)",
+    "source": "",
+    "license": "",
+    "licenseName": "Original to this website",
+    "changes": "First frame of the drone film above, stored as WebP. Used as the poster so the section has a picture before the film loads."
   }
 ]

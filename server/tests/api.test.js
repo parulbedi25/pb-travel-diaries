@@ -244,15 +244,26 @@ test("an image upload lands on disk and is served back", async () => {
   assert.equal(uploads[0].name, "helmet.png");
 });
 
-test("the photographs that ship with the site are listed, and cannot be deleted", async () => {
+test("the media that ships with the site is listed, and cannot be deleted", async () => {
   const list = await call("GET", "/api/media");
   const bundled = list.json.media.filter((entry) => entry.bundled);
 
   assert.ok(bundled.length >= 8, "the starter set is on the shelf");
   for (const item of bundled) {
-    assert.match(item.url, /^\/media\/starter\/[a-z0-9-]+\.webp$/);
-    assert.equal(item.kind, "image");
+    assert.match(item.url, /^\/media\/starter\/[a-z0-9-]+\.(webp|mp4|webm)$/);
+    assert.ok(["image", "video"].includes(item.kind), `${item.url} has a known kind`);
+    assert.equal(item.bundled, true, "bundled files stay read-only");
   }
+  assert.ok(
+    bundled.filter((entry) => entry.kind === "image").length >= 8,
+    "the starter photographs are still there",
+  );
+  // The section film ships with the site, so the dashboard can pick it like an
+  // upload — and a site with no internet still has a film to show.
+  const film = bundled.find((entry) => entry.url.endsWith(".mp4"));
+  assert.ok(film, "the bundled drone film is on the shelf");
+  assert.equal(film.kind, "video");
+  assert.equal(film.type, "video/mp4");
 
   // Servable from the same /media path as an upload, so a section can point at
   // one exactly like a file the owner added.

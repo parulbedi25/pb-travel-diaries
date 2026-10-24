@@ -25,26 +25,36 @@ const credits = JSON.parse(
   }),
 );
 
+/** The kinds a bundled file may be, so `kind` matches what an upload would get. */
+const TYPES_BY_EXT = {
+  webp: { kind: "image", type: "image/webp" },
+  mp4: { kind: "video", type: "video/mp4" },
+  webm: { kind: "video", type: "video/webm" },
+};
+
 export const bundledMedia = (
   await Promise.all(
     credits
       .filter((photo) => photo.library === true)
       .map(async (photo) => {
-        if (!/^[a-z0-9-]+\.webp$/.test(photo.file)) {
+        const match = /^[a-z0-9-]+\.(webp|mp4|webm)$/.exec(photo.file);
+        if (!match) {
           throw new Error("Invalid bundled media filename");
         }
+        const ext = match[1];
+        const { kind, type } = TYPES_BY_EXT[ext];
         const stat = await fs.stat(path.join(directory, photo.file));
         const url = `/media/starter/${photo.file}`;
         return {
           id: `bundled:${photo.file}`,
           name: `${photo.title} (bundled)`,
-          type: "image/webp",
+          type,
           size: stat.size,
           dataUrl: url,
           url,
           addedAt: "",
-          kind: "image",
-          ext: "webp",
+          kind,
+          ext,
           // Read-only: the bytes are part of the website, so the dashboard can
           // pick them but must not offer to delete them.
           bundled: true,

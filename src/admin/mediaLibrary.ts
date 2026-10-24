@@ -28,6 +28,7 @@ export type MediaKind =
   | "powerpoint"
   | "text"
   | "archive"
+  | "video"
   | "other";
 
 export const KIND_META: Record<MediaKind, { label: string; badge: string }> = {
@@ -38,6 +39,7 @@ export const KIND_META: Record<MediaKind, { label: string; badge: string }> = {
   powerpoint: { label: "PowerPoint", badge: "PPT" },
   text: { label: "Text", badge: "TXT" },
   archive: { label: "Archive", badge: "ZIP" },
+  video: { label: "Video", badge: "VID" },
   other: { label: "File", badge: "FILE" },
 };
 
@@ -50,6 +52,7 @@ const EXT_KINDS: Record<string, MediaKind> = {
   ppt: "powerpoint", pptx: "powerpoint", odp: "powerpoint", key: "powerpoint",
   txt: "text", md: "text", json: "text",
   zip: "archive", gpx: "archive", kml: "archive", kmz: "archive",
+  mp4: "video", webm: "video", mov: "video", m4v: "video", ogv: "video",
 };
 
 const MIME_KINDS: Record<string, MediaKind> = {
@@ -67,6 +70,10 @@ const MIME_KINDS: Record<string, MediaKind> = {
   "application/json": "text",
   "application/zip": "archive",
   "application/gpx+xml": "archive",
+  "video/mp4": "video",
+  "video/webm": "video",
+  "video/quicktime": "video",
+  "video/ogg": "video",
 };
 
 /** Extension → canonical MIME, used when the browser reports no type. */
@@ -86,6 +93,8 @@ const EXT_MIME: Record<string, string> = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   txt: "text/plain", md: "text/plain", json: "application/json",
   zip: "application/zip",
+  mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  m4v: "video/x-m4v", ogv: "video/ogg",
 };
 
 export function extOf(name: string): string {
@@ -112,11 +121,18 @@ export function kindOf(item: MediaItem): MediaKind {
  */
 export const MEDIA_ACCEPT =
   "image/*,.png,.jpg,.jpeg,.webp,.gif,.avif,.svg," +
-  ".pdf,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.txt,.md,.json,.zip,.gpx";
+  ".pdf,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.txt,.md,.json,.zip,.gpx," +
+  ".mp4,.webm,.mov,.m4v,.ogv";
 
 /** Images are resized, so their ceiling is generous. Documents are stored whole. */
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
+/**
+ * A section film is a whole video, so it gets its own ceiling — kept just under
+ * the server's default MAX_UPLOAD_MB of 25 so an oversized file fails here
+ * rather than after a long upload.
+ */
+const MAX_VIDEO_BYTES = 24 * 1024 * 1024;
 
 /**
  * The media folder now lives on the server.
@@ -318,7 +334,13 @@ export async function addAnyMediaFile(file: File): Promise<MediaItem> {
   const kind = kindFor(file.name, file.type);
   const type = file.type || EXT_MIME[ext] || "application/octet-stream";
 
-  if (kind !== "image" && file.size > MAX_FILE_BYTES) {
+  if (kind === "video") {
+    if (file.size > MAX_VIDEO_BYTES) {
+      throw new Error(
+        `That film is ${formatBytes(file.size)} — videos need to be under ${formatBytes(MAX_VIDEO_BYTES)}.`
+      );
+    }
+  } else if (kind !== "image" && file.size > MAX_FILE_BYTES) {
     throw new Error(
       `That file is ${formatBytes(file.size)} — documents need to be under ${formatBytes(MAX_FILE_BYTES)}.`
     );

@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Video,
   Gauge,
   Crosshair,
   DatabaseBackup,
@@ -408,6 +409,8 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("titleHi", "Title — highlighted"),
     T("titleB", "Title — after highlight"),
     TA("sub", "Subtitle"),
+    FILE("videoSrc", "Section film (loops, muted)", "MP4 or WebM. Leave empty for no film. Pick the bundled drone shot or upload your own."),
+    IMG("videoPoster", "Film poster", "Shown before the film starts, and instead of it on a slow connection."),
     T("videoLine", "Showreel headline line"),
     STR("videoChips", "Showreel chips", "One per line"),
     TA("quote", "PB portrait quote"),
@@ -698,7 +701,9 @@ export function FieldRow({
           className={inputCls}
         />
       )}
-      {field.kind !== "image" && field.hint && (
+      {/* Image, images and file fields print their own hint, so a generic one
+          here would show every such note twice. */}
+      {field.kind !== "image" && field.kind !== "images" && field.kind !== "file" && field.hint && (
         <p className="mt-1.5 text-[11px] text-zinc-600">{field.hint}</p>
       )}
     </div>
@@ -4313,6 +4318,7 @@ function KindIcon({ kind, broken }: { kind: MediaKind; broken?: boolean }) {
     case "powerpoint": return <Presentation className={cls} />;
     case "archive": return <FileArchive className={cls} />;
     case "pdf": return <FileType className={cls} />;
+    case "video": return <Video className={cls} />;
     default: return <FileText className={cls} />;
   }
 }
@@ -4387,8 +4393,8 @@ function MediaPanel() {
         <FolderOpen className="mx-auto h-8 w-8 text-saffron-300" />
         <h3 className="mt-3 font-display text-lg font-semibold text-white">Media folder</h3>
         <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
-          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG) and documents (PDF, Word, Excel,
-          PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
+          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG), videos (MP4, WEBM) and documents
+          (PDF, Word, Excel, PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
           picked on any image or file field. You can also drop files into{" "}
           <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-saffron-300">
             public/media/
@@ -4430,6 +4436,7 @@ function MediaPanel() {
             const kind = kindOf(m);
             const meta = KIND_META[kind];
             const isImage = kind === "image" && !broken[m.id];
+            const isVideo = kind === "video";
             const inUse = usageCount(m);
             return (
               <figure
@@ -4444,6 +4451,15 @@ function MediaPanel() {
                       loading="lazy"
                       onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
                       className="aspect-[4/3] w-full object-cover"
+                    />
+                  ) : isVideo ? (
+                    <video
+                      src={m.dataUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="aspect-[4/3] w-full bg-black object-cover"
+                      aria-label={m.name}
                     />
                   ) : (
                     <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
