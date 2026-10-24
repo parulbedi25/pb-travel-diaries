@@ -60,7 +60,9 @@ function HeaderCta({
 }
 
 export default function Navbar() {
-  const { content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
+  // The draft is what an editor paints, so a menu or brand edit shows here
+  // before it is published.
+  const { live: content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
   const isAdmin = canEditSite(account);
   const nav = content.nav.filter((l) => l.enabled);
   const ctas = resolveHeaderButtons(content.headerButtons)

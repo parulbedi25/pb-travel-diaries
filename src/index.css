@@ -711,20 +711,44 @@
   pointer-events: none;
 }
 
-/* The two floating toolbars are pale plates with a gold rule rather than a
-   solid gold fill — the glyphs are dark ink either way, so the controls read
-   the same against a black section or a cream one. The resize grips keep the
-   solid yellow fill: they are the one bit of chrome that should read as a
-   solid handle in both themes. */
+/* The two floating toolbars follow the page's theme: a dark glass plate with
+   light glyphs on the dark theme, a pale plate with dark glyphs on the light
+   one. Either way a thin gold rule marks them as chrome, and the resize grips
+   keep the solid yellow fill — they are the one bit of chrome that should read
+   as a solid handle in both themes. */
 .section-chrome-plate {
+  background-color: rgba(18, 17, 15, 0.9);
+  border: 1px solid rgba(245, 179, 1, 0.45);
+  color: #f5f3ef;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+[data-theme="light"] .section-chrome-plate {
   background-color: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(245, 179, 1, 0.75);
-  /* Same ink as .text-on-gold: gold is always a light surface, so the glyphs
-     stay dark whichever theme the page underneath is using. */
+  border-color: rgba(245, 179, 1, 0.75);
+  /* Same ink as .text-on-gold: the pale plate is a light surface. */
   color: #171513;
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+/* Hover has to move with the plate, or a dark toolbar would darken into
+   itself on the dark theme and do nothing at all. */
+.section-chrome-hover:hover,
+.section-chrome-hover:focus-visible {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+[data-theme="light"] .section-chrome-hover:hover,
+[data-theme="light"] .section-chrome-hover:focus-visible {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+.section-chrome-divider {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+[data-theme="light"] .section-chrome-divider {
+  background-color: rgba(0, 0, 0, 0.2);
 }
 .section-chrome-toolbar:hover,
 .section-chrome-toolbar:focus-visible {

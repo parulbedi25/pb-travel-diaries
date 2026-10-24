@@ -2004,6 +2004,15 @@ interface SiteContextValue {
   setSiteTitle: (title: string) => void;
   content: SiteContent; // The published/front-facing content
   draft: SiteContent;   // The working draft content modified inside admin
+  /**
+   * What the site should paint for whoever is looking at it.
+   *
+   * An editor sees the draft: every on-site edit (the section pencils, the
+   * inline panel, a resize) writes the draft, so painting the published copy
+   * would leave the edit invisible until Save Changes. Visitors — and an
+   * editor who switched on "Preview as User" — get the published content.
+   */
+  live: SiteContent;
   loaderDraft: string;
   setLoaderDraft: (v: string) => void;
   brandDraft: BrandSettings;
@@ -2245,6 +2254,14 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     });
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activeTokens.background);
   }, [activeTokens]);
+
+  // What the page paints: the draft while an editor is working, the published
+  // copy for everybody else. Preview-as-User deliberately goes back to
+  // published, so that switch shows exactly what a visitor gets.
+  const live = useMemo(
+    () => (canEditSite(account) && !previewAsVisitor ? draft : content),
+    [account, previewAsVisitor, draft, content]
+  );
 
   // Settings are part of the same draft as sections, not detached editor state.
   const brandDraft = useMemo(() => resolveBrand(draft.brand), [draft.brand]);
@@ -2691,6 +2708,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         setSiteTitle,
         content,
         draft,
+        live,
         loaderDraft,
         setLoaderDraft,
         brandDraft,

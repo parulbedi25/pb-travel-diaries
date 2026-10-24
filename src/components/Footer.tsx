@@ -154,7 +154,8 @@ function BackToTop() {
 
 /** The live footer. Renders nothing when the footer section is switched off. */
 export default function Footer() {
-  const { content } = useSite();
+  // Same as the header: editors see their draft, visitors see what is published.
+  const { live: content } = useSite();
   const settings = useMemo(() => resolveFooter(content.footer), [content.footer]);
   if (!settings.enabled) return null;
   return <FooterView settings={settings} />;
