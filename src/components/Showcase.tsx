@@ -15,6 +15,8 @@ import Photo from "./ui/Photo";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
 
+const JOURNEY_PHOTOS = new Map<string, string>([["ladakh", "/media/starter/ladakh.webp"], ["nubra valley", "/media/starter/nubra.webp"], ["spiti valley", "/media/starter/spiti.webp"], ["rajasthan", "/media/starter/rajasthan.webp"], ["varanasi", "/media/starter/varanasi.webp"], ["meghalaya", "/media/starter/meghalaya.webp"], ["kerala", "/media/starter/kerala.webp"], ["goa", "/media/starter/goa.webp"]]);
+
 export default function Showcase({ data }: { data: JourneyData }) {
   const destinations: Destination[] = data.destinations.filter(isOn);
   const [active, setActive] = useState(0);
@@ -48,6 +50,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
           sub={data.sub}
         />
 
+        <a href="/media/starter/credits.html" className="mt-3 block text-center text-xs text-zinc-500 underline underline-offset-4">Illustrative travel photos · Photo credits</a>
         {destinations.length === 0 ? (
           <p className="mt-14 rounded-2xl glass p-8 text-center text-sm text-zinc-500">
             No destinations added yet — add some from the admin dashboard.
@@ -165,7 +168,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                       transition={{ duration: 0.7, ease: EASE }}
                     >
                       <Photo
-                        src={dest.image}
+                        src={dest.image || JOURNEY_PHOTOS.get(String(dest.name).trim().toLowerCase()) || ""}
                         alt={`${dest.name} — ${dest.tagline}`}
                         className="aspect-[4/3.2] w-full object-cover sm:aspect-[16/9]"
                         label="Journey photo unavailable"

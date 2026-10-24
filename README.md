@@ -114,3 +114,50 @@ Choose **Local database (SQLite)** for one-click persistent setup with the name
 **Hosting provider / external MySQL** keeps the existing credentials-based
 flow. Neither choice uses the temporary in-memory preview driver. See
 [SQLITE.md](SQLITE.md) for persistence, migrations, backups, and requirements.
+
+## Optional studio-look preview
+
+A Ladybug-inspired **styling-only experiment** is enabled by
+`/studio-skin.css`. It keeps the existing yellow palette and component/content
+structure, using larger editorial type, a centered hero, framed media, flatter
+panels, fine borders, and quieter glow. It targets only pages containing the
+homepage hero; dashboard, setup, and standalone routes keep their current look.
+There are no new dependencies, copied reference assets, or build requirements.
+
+To restore the previous design immediately, replace the contents of
+`public/studio-skin.css` with a CSS comment and reload (the stylesheet is served
+with `no-cache`). Alternatively remove its link from `dist/index.html` and
+`src/frontend-template.html`, then restart Node to refresh the cached document.
+The skin itself does not alter component source or bundled application JavaScript; later mobile interaction fixes and image defaults are independent of it.
+
+### Mobile essentials
+
+Below 768px, Machine focuses on the bike, tappable parts, a compact odometer,
+and film/setup links. Specifications, the extended bike story, expedition list,
+and gallery are hidden **only by responsive CSS**; saved content is untouched
+and returns automatically at desktop width. Saved subsection heights cannot
+clip the mobile photo or detail cards. Bike pointers and chips open the same
+accessory details, with a 44px tap target and a close button; phone details sit
+below the photo instead of covering its pointers. Hover zoom is reserved for
+larger screens with a fine mouse pointer.
+
+The Gear also uses stable touch targets without hover zoom, retains its product
+list and purchase links, and scrolls with the page. The mobile Live Tracker keeps
+the map, location/status, endpoints, route progress and full-map link, with less
+secondary telemetry/itinerary clutter. No data or desktop sections are deleted.
+
+## Hero and Journey photographs
+
+Local starter photos are in `media/starter/` (eight destinations, WebP, about
+670 KB combined), with attribution at `/media/starter/credits.html`. Hero and
+Journey use these when an image field is empty; your existing uploaded images
+remain unchanged. No image CDN or remote image request is needed.
+
+For future images, use **Dashboard → Media folder → Upload**, then choose the
+upload in the Hero or Journey section editor. Files live in `media/`, with
+metadata in SQLite/MySQL. Directly copied files can instead be used by entering
+their `/media/...` path. Preserve `media/` on deployment. Only the reviewed
+`media/starter/` folder is shipped in releases; runtime uploads remain excluded
+from Git and deployment packages. The backup includes starters in the self-contained app snapshot and, with the
+default MEDIA_DIR, in the media backup too. Custom MEDIA_DIR installations retain
+a fixed starter-asset fallback.

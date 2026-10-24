@@ -10,6 +10,7 @@
     "prod": "node app.cjs",
     "db:init": "node server/scripts/init-db.js",
     "test:server": "node --test server/tests/*.test.js",
+    "test:ci": "node scripts/test-ci.mjs",
     "schema:sql": "node server/scripts/write-schema.js",
     "db:status": "node server/scripts/db-status.js",
     "db:migrate": "node server/scripts/db-migrate.js",

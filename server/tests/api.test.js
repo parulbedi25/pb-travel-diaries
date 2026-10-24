@@ -650,3 +650,26 @@ test("unlisted commandcenter opens the login route without authenticating visito
   const protectedResponse = await fetch(base + "/api/auth/users");
   assert.equal(protectedResponse.status, 401, "recovery URL must not bypass authentication");
 });
+
+test("optional studio skin is served as CSS rather than the SPA document", async () => {
+  const response = await fetch(base + "/studio-skin.css");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/css/);
+  assert.equal(response.headers.get("cache-control"), "no-cache");
+  const css = await response.text();
+  assert.match(css, /body:has\(main #top\)/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /var\(--color-saffron-400\)/);
+});
+
+test("Hero and Journey starter photos are local, including with a custom upload folder", async () => {
+  for (const name of ["ladakh", "nubra", "spiti", "rajasthan", "varanasi", "meghalaya", "kerala", "goa"]) {
+    const response = await fetch(base + `/media/starter/${name}.webp`);
+    assert.equal(response.status, 200, name);
+    assert.match(response.headers.get("content-type"), /image\/webp/);
+    assert.ok((await response.arrayBuffer()).byteLength > 1000);
+  }
+  const response = await fetch(base + "/media/starter/credits.html");
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Creative Commons/);
+});

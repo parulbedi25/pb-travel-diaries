@@ -67,3 +67,9 @@ media/*
 
 # Persistent embedded SQLite storage
 /server/data/
+
+# Reviewed, distributable starter art only; visitor/editor uploads stay ignored.
+!media/starter/
+!media/starter/*.webp
+!media/starter/credits.html
+!media/starter/credits.json

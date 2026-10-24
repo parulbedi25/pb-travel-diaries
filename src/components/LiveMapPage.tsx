@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Clock, Compass, MapPin, Mountain } from "lucide-react";
 import { useLiveLocation, type LiveStatus } from "../hooks/useLiveLocation";
 import VectorBasemap from "./VectorBasemap";
+import ThemeToggle from "./ThemeToggle";
+import { useSite } from "../store/siteContent";
 import { makeMercatorProjector } from "../utils/mercator";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
@@ -174,6 +176,7 @@ function PositionMap({
 }
 
 export default function LiveMapPage() {
+  const { theme } = useSite();
   const {
     location,
     status,
@@ -204,6 +207,7 @@ export default function LiveMapPage() {
           <span className="sm:ml-1">
             <StatusChip status={status} />
           </span>
+          <ThemeToggle className="ml-auto shrink-0" />
         </div>
       </header>
 
@@ -218,7 +222,8 @@ export default function LiveMapPage() {
 
         {/* ---------- Info Card ---------- */}
         <div className="absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">
-          <div className="w-full max-w-sm rounded-3xl glass p-5 shadow-2xl shadow-black/50 sm:p-6">
+          <div className="live-location-card w-full max-w-sm rounded-3xl border p-5 shadow-2xl shadow-black/50 sm:p-6"
+            style={{ backgroundColor: theme === "light" ? "#fffdf7" : "#111112", color: theme === "light" ? "#242019" : "#f4f4f5", opacity: 1, backdropFilter: "none" }}>
             <p
               className={cn(
                 "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em]",

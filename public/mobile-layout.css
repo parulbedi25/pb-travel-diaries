@@ -47,3 +47,101 @@ section#stories > [aria-hidden] { max-width: 100%; }
   #pricing article { padding-inline: 20px; }
   #pricing article .items-end { flex-wrap: wrap; }
 }
+
+/* Mobile essentials: presentation only; every saved subsection returns on desktop. */
+@media (max-width: 767px) {
+  :is(#live, #machine, #riderkit) { padding-block: 56px; }
+  :is(#live, #machine, #riderkit) h2 { font-size: clamp(26px, 7vw, 36px); line-height: 1.12; }
+  :is(#machine, #riderkit) [id$="-title"] + p { display: none; }
+  :is(#live, #machine, #riderkit) .grid { min-width: 0; }
+
+  /* Clear photo with stable, reachable markers. No hover zoom on touch layouts. */
+  #machine [data-machine-block] { height: auto !important; min-height: 0; grid-column: 1 / -1 !important; }
+  #machine [data-machine-block] > .h-full { height: auto; overflow: visible; }
+  #machine :is([data-machine-block="specs"], [data-machine-block="hanle-story"], [data-machine-block="expedition-setup"], [data-machine-block^="gallery-"]) { display: none; }
+  #machine [data-machine-block="pointer-guide"] > .h-full > div { padding: 20px; gap: 16px; }
+  #machine [data-machine-block="pointer-guide"] > .h-full > div > :nth-child(n+3) { display: none; }
+  #machine [data-machine-block="review-cta"] p { display: none; }
+  #machine .machine-stage { border-radius: 18px; min-height: 0; }
+  #machine .machine-image-area { width: 100%; overflow: visible; }
+  #machine .machine-image-area > .will-change-transform { transform: none !important; transition: none !important; }
+  #machine .machine-image-area > .absolute { display: none; }
+  #machine .machine-image-area .will-change-transform > .absolute[aria-hidden] { pointer-events: none; }
+  #machine .machine-image-area .will-change-transform > .absolute:not([aria-hidden]) { pointer-events: auto !important; padding: 0; }
+  #machine .machine-image-area [data-pointer-index] { width: 44px; height: 44px; transform: none !important; touch-action: manipulation; opacity: 1; }
+  #machine .machine-image-area > [role="dialog"] {
+    position: relative !important; left: auto !important; top: auto !important;
+    width: auto; max-height: none; margin: 12px; transform: none !important;
+  }
+  #machine [role="dialog"] > .relative { display: none; }
+  #machine [role="dialog"] button { min-width: 44px; min-height: 44px; }
+  #machine .machine-mobile-controls { display: flex; height: auto; min-height: 64px; padding: 10px 12px; }
+  #machine .machine-mobile-controls button { min-height: 44px; }
+  #machine .machine-mobile-controls > a { display: none; }
+  #machine .machine-list, #machine .machine-wash { display: none; }
+
+  /* Gear: an uncluttered rider, large tap targets and normal page scrolling. */
+  #riderkit [role="group"] { cursor: default; }
+  #riderkit [role="group"] > .will-change-transform { transform: none !important; transition: none !important; }
+  #riderkit [role="group"] button:not([data-zone-keyboard] button) { min-width: 44px; min-height: 44px; touch-action: manipulation; }
+  #riderkit [role="group"] .will-change-transform button { transform: none !important; }
+  #riderkit [role="group"] > .pointer-events-none { display: none; }
+  #riderkit .gear-product-bubble { left: 8px; right: 8px; bottom: 8px; top: auto; width: auto; max-width: none; max-height: 75%; overflow-y: auto; }
+  #riderkit .gear-product-bubble button { min-width: 44px; min-height: 44px; }
+  #riderkit .max-h-\[54rem\] { max-height: none; overflow: visible; }
+  #riderkit .mt-12 > :first-child > div > p,
+  #riderkit .mt-12 > :last-child > div > .border-b p.mt-1 { display: none; }
+  #riderkit .mt-12 { margin-top: 24px; gap: 16px; }
+
+  /* Keep the map readable; reduce chrome, duplicate stats and itinerary copy. */
+  #live .mt-14 { margin-top: 24px; gap: 16px; }
+  #live .live-plate { gap: 8px; padding: 10px; max-width: 100%; border-radius: 12px; }
+  #live .live-plate .font-mono { font-size: 10px; letter-spacing: .08em; }
+  #live .live-plate .mt-0\.5 { font-size: 10px; }
+  #live .live-plate .shrink-0 { flex-shrink: 0; }
+  #live .absolute.inset-x-0.top-0 { padding: 12px; }
+  #live .absolute.right-5.top-24 { display: none; }
+  #live .min-h-\[440px\] { min-height: 440px; border-radius: 18px; }
+  #live .glass.p-7 { padding: 20px; border-radius: 18px; }
+  #live .sm\:grid-cols-4 > :nth-child(2),
+  #live .sm\:grid-cols-4 > :nth-child(3) { display: none; }
+  #live .glass.p-6 { display: none; }
+  #live a { min-height: 44px; }
+}
+@media (max-width: 767px) {
+  /* Keep endpoint labels, while less-important checkpoint names stay in the strip. */
+  #live .map-label.text-map-label { display: none; }
+  #live .map-label.text-end-label { top: auto; bottom: 24px; }
+  #live ol[aria-label="Stops on this ride"] li > span:nth-child(2) {
+    white-space: normal; overflow-wrap: anywhere; text-align: center;
+    text-overflow: clip; font-size: 8px; line-height: 1.2;
+  }
+}
+
+/* Standalone Live Map: a solid reading surface, independent of the map tiles. */
+.live-location-card {
+  --location-text: #f4f4f5;
+  --location-muted: #b4b4bc;
+  --location-accent: #ffdf8a;
+  background: #111112;
+  color: var(--location-text);
+  border: 1px solid #f5b30170;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.live-location-card h2 { color: var(--location-text); }
+.live-location-card :is(.text-zinc-300, .text-zinc-400, .text-zinc-500) { color: var(--location-muted); }
+.live-location-card .text-saffron-300 { color: var(--location-accent); }
+.live-location-card .border-t { border-color: #ffffff24; }
+[data-theme="light"] .live-location-card {
+  --location-text: #242019;
+  --location-muted: #62594d;
+  --location-accent: #806000;
+  background: #fffdf7;
+  border-color: #a87900;
+  box-shadow: 0 12px 36px #17151326;
+}
+[data-theme="light"] .live-location-card .border-t { border-color: #24201926; }
+[data-theme="light"] .live-location-card .text-emerald-300 { color: #065f46; }
+[data-theme="light"] .live-location-card :is(.text-amber-300, .text-amber-200) { color: #854d0e; }
+[data-theme="light"] .live-location-card .text-sky-400 { color: #075985; }

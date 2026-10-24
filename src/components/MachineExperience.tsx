@@ -324,7 +324,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const zoomPoint = focusedSpot
     ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
     : null;
-  const zoomed = Boolean(zoomPoint);
+  const zoomed = Boolean(zoomPoint) && window.matchMedia("(min-width: 768px) and (hover: hover) and (pointer: fine)").matches;
   const isExpanded = (idx: number) => (focusIdx === null ? listOpen === idx : idx === focusIdx);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -412,7 +412,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     const onDoc = (e: MouseEvent) => {
       if (dragRef.current) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest?.("[data-pointer-index]")) return;
+      if (target?.closest?.("[data-pointer-index], [role=dialog]")) return;
       setPinnedIdx(null);
       setHoverIdx(null);
     };
@@ -557,6 +557,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             )}
             style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
             onMouseEnter={() => {
+              if (!window.matchMedia("(min-width: 768px) and (hover: hover) and (pointer: fine)").matches) return;
               if (dragRef.current) return;
               cancelLeave();
               setHoverIdx(i);
@@ -573,7 +574,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             <button
               type="button"
               data-pointer-index={i}
-              onClick={() => setPinnedIdx((prev) => (prev === i ? null : i))}
+              onClick={() => { setHoverIdx(null); setPinnedIdx((prev) => (prev === i ? null : i)); }}
               aria-pressed={pinnedIdx === i}
               aria-label={`Show ${h.title}`}
               style={{
@@ -665,8 +666,9 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             <button
               key={`${h.title}-chip-${i}`}
               type="button"
-              onClick={() => selectFromList(i)}
-              aria-pressed={isExpanded(i)}
+              data-pointer-index={i}
+              onClick={() => { setHoverIdx(null); setPinnedIdx((prev) => (prev === i ? null : i)); }}
+              aria-pressed={pinnedIdx === i}
               className={cn(
                 "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors",
                 isExpanded(i)

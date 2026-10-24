@@ -15,8 +15,23 @@ jobs:
         inputs:
           versionSpec: '22.x'
         displayName: Use Node.js 22
-      - bash: npm ci --ignore-scripts --no-audit --no-fund && npm run test:server
-        displayName: Install and test server
+      - bash: npm ci --ignore-scripts --no-audit --no-fund
+        displayName: Install dependencies
+      - bash: npm run test:ci
+        displayName: Run automated tests (deployment gate)
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: test-results/server-tests.xml
+          testRunTitle: Application regression tests
+          failTaskOnFailedTests: true
+          failTaskOnMissingResultsFile: true
+        displayName: Publish automated test results
+      - bash: npm run hosting:check
+        displayName: Verify hosting readiness
+      - bash: npm run package
+        displayName: Validate deployment package
       - bash: |
           export TEST_DB_PASSWORD="$(openssl rand -hex 24)"
           export TEST_DB_ROOT_PASSWORD="$(openssl rand -hex 24)"
