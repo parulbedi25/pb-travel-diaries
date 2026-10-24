@@ -155,7 +155,10 @@ function Section({ entry, revealed = false }: { entry: SectionEntry; revealed?: 
 }
 
 function LandingPage() {
-  const { content } = useSite();
+  // `content` decides what the page *is* (countdown taking over, maintenance,
+  // which sections exist for visitors); `live` is what gets painted — for a
+  // signed-in editor that is the draft, so an on-site edit shows up at once.
+  const { content, live } = useSite();
 
   // ── Countdown state (hooks first; the early returns below depend on them) ──
   const countdownEntry = content.sections.find((s) => s.type === "countdown");
@@ -187,7 +190,7 @@ function LandingPage() {
   const showCountdown = countdownOn && !finished;
   const isRevealed = (s: SectionEntry) =>
     finished && !s.enabled && revealIds.has(s.id) && s.type !== "countdown";
-  const others = content.sections.filter(
+  const others = live.sections.filter(
     (s) => s.type !== "countdown" && (s.enabled || isRevealed(s))
   );
 
@@ -221,7 +224,7 @@ function LandingPage() {
       </a>
       <Navbar />
       <main>
-        {content.sections.map((entry) => {
+        {live.sections.map((entry) => {
           // The countdown is simply gone once its timer has passed.
           if (entry.type === "countdown") {
             if (!showCountdown) return null;

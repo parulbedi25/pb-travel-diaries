@@ -15,7 +15,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
   const videoPoster = data.videoPoster || IMAGES.videoPoster;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
-  const { content } = useSite();
+  const { live: content } = useSite();
   const socialLinks = useMemo(
     () => resolveFooter(content.footer).socials.filter((s) => s.enabled && s.href.trim()),
     [content.footer]

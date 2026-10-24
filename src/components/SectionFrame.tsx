@@ -45,7 +45,7 @@ function ToolButton({
       disabled={disabled}
       aria-label={label}
       title={title}
-      className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full opacity-80 transition-colors hover:bg-black/15 hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+      className="section-chrome-hover pointer-events-auto grid h-7 w-7 place-items-center rounded-full opacity-80 transition-colors hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
     >
       {children}
     </button>
@@ -235,11 +235,11 @@ export default function SectionFrame({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="pointer-events-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-colors hover:bg-black/15"
+          className="section-chrome-hover pointer-events-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
         >
           <Pencil className="h-3 w-3" /> Edit
         </button>
-        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <span className="section-chrome-divider mx-0.5 h-5 w-px" aria-hidden />
         <ToolButton
           onClick={() => moveSection(entry.id, entry.label, -1)}
           label="Move section up"
@@ -254,7 +254,7 @@ export default function SectionFrame({
         >
           <ArrowDown className="h-3.5 w-3.5" />
         </ToolButton>
-        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <span className="section-chrome-divider mx-0.5 h-5 w-px" aria-hidden />
         <ToolButton
           onClick={() => adjustHeight(HEIGHT_STEP)}
           label="Make section longer"
@@ -270,7 +270,7 @@ export default function SectionFrame({
         >
           <ChevronDown className="h-3.5 w-3.5" />
         </ToolButton>
-        <span className="mx-0.5 h-5 w-px bg-black/20" aria-hidden />
+        <span className="section-chrome-divider mx-0.5 h-5 w-px" aria-hidden />
         <ToolButton
           onClick={() => setSectionEnabled(entry.id, entry.label, false)}
           label="Hide section"

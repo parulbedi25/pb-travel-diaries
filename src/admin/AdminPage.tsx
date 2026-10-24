@@ -9,7 +9,6 @@ import {
   Copy,
   Download,
   Eye,
-  EyeOff,
   FileText,
   Video,
   Gauge,
@@ -5429,7 +5428,7 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
 ];
 
 export default function AdminPage() {
-  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions, previewAsVisitor, setPreviewAsVisitor } = useSite();
+  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions } = useSite();
   const { account, setAccount } = useSite();
   const authed = Boolean(account);
   const [tab, setTab] = useState<Tab>("sections");
@@ -5565,7 +5564,12 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {/* save button / view website dynamic toggle + discard changes */}
+            {/* Save / discard when there is something to save, a status pill
+                when there is not — and View Website always, because checking a
+                change on the section itself is the whole point of editing it.
+                (It used to disappear as soon as the draft was dirty.) There is
+                no Preview toggle here: that lives in the site header, where the
+                admin is already looking once they open the website. */}
             {hasChanges ? (
               <div className="flex items-center gap-2.5">
                 <button
@@ -5582,50 +5586,16 @@ export default function AdminPage() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2.5">
-                <span className="hidden items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-bold text-emerald-400 sm:inline-flex">
-                  <Check className="h-3.5 w-3.5" /> Up to date
-                </span>
-                <a
-                  href="#/"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-ink-950 shadow-lg shadow-white/10 transition-all duration-300 hover:shadow-[0_0_24px_rgba(255,255,255,0.25)] active:scale-95"
-                >
-                  <Eye className="h-3.5 w-3.5" /> View Website
-                </a>
-                {/* The editor is the one place an admin is already looking at
-                    when they want the visitor's view, so the switch lives here
-                    and not only behind the site header's toolbar. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPreviewAsVisitor(!previewAsVisitor);
-                    window.location.hash = "#/";
-                  }}
-                  title={
-                    previewAsVisitor
-                      ? "You are previewing the site as a normal user. Click to return to Admin Edit Mode."
-                      : "Open the website with every editor toolbar hidden, exactly as a visitor sees it."
-                  }
-                  aria-pressed={previewAsVisitor}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-bold transition-all duration-300 active:scale-95",
-                    previewAsVisitor
-                      ? "border-amber-400/50 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
-                      : "border-emerald-400/50 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25",
-                  )}
-                >
-                  {previewAsVisitor ? (
-                    <>
-                      <EyeOff className="h-3.5 w-3.5" /> Exit Preview
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="h-3.5 w-3.5" /> Preview as User
-                    </>
-                  )}
-                </button>
-              </div>
+              <span className="hidden items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-bold text-emerald-400 sm:inline-flex">
+                <Check className="h-3.5 w-3.5" /> Up to date
+              </span>
             )}
+            <a
+              href="#/"
+              className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-ink-950 shadow-lg shadow-white/10 transition-all duration-300 hover:shadow-[0_0_24px_rgba(255,255,255,0.25)] active:scale-95"
+            >
+              <Eye className="h-3.5 w-3.5" /> View Website
+            </a>
 
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

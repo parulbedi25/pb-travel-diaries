@@ -47,7 +47,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
       : status === "stale"
         ? `Last ping ${ageLabel(ageSec)}`
         : "Window closed · 6 AM IST";
-  const { content } = useSite();
+  const { live: content } = useSite();
   const instagramHref = useMemo(() => {
     const instagram = resolveFooter(content.footer).socials.find((s) => s.label === "Instagram");
     return instagram?.enabled && instagram.href.trim() ? instagram.href.trim() : "";

@@ -11,7 +11,7 @@ export default function BrandLogo({
   className?: string;
   brand?: Partial<BrandSettings>;
 }) {
-  const { content } = useSite();
+  const { live: content } = useSite();
   const b = resolveBrand(brand ?? content.brand);
 
   const showLogo = b.showLogo;
