@@ -82,7 +82,7 @@ test("mobile Machine and Gear have touch interactions in source and shipped bund
 test("curated travel images ship locally without packaging runtime uploads", () => {
   const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
   const defaults = fs.readFileSync(new URL("src/store/siteContent.tsx", root), "utf8");
-  for (const name of ["ladakh", "nubra", "spiti", "rajasthan", "varanasi", "meghalaya", "kerala", "goa"]) {
+  for (const name of ["ladakh-pangong", "nubra-diskit", "spiti-dhankar", "rajasthan-jaipur", "varanasi-sunrise", "meghalaya-dawki", "kerala-munnar", "goa-agonda"]) {
     assert.ok(html.includes(`/media/starter/${name}.webp`));
     assert.ok(defaults.includes(`/media/starter/${name}.webp`));
     const image = fs.readFileSync(new URL(`media/starter/${name}.webp`, root));
@@ -90,7 +90,7 @@ test("curated travel images ship locally without packaging runtime uploads", () 
     assert.equal(image.subarray(8, 12).toString(), "WEBP");
   }
   const manifest = JSON.parse(fs.readFileSync(new URL("media/starter/credits.json", root), "utf8"));
-  assert.equal(manifest.length, 8);
+  assert.equal(manifest.filter(photo => photo.library && photo.file.endsWith(".webp")).length, 8);
   assert.ok(manifest.every(image => image.source && image.author && image.license));
   const packager = fs.readFileSync(new URL("server/scripts/package.js", root), "utf8");
   assert.ok(packager.includes('copy("media/starter", "media/starter")'));

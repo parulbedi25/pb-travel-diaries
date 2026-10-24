@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, Volume2, VolumeX, Play } from "lucide-react";
+import { Check, Play } from "lucide-react";
 import { resolveFooter, useSite, type BenefitsData } from "../store/siteContent";
 import Photo from "./ui/Photo";
 import { IMAGES, SHOWREEL_VIDEO } from "../data/content";
@@ -9,31 +9,55 @@ import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 
 export default function Benefits({ data }: { data: BenefitsData }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [muted, setMuted] = useState(true);
+  const [paused, setPaused] = useState(true);
+  const [videoError, setVideoError] = useState(false);
+  const userPaused = useRef(false);
+  const videoSource = data.videoUrl || SHOWREEL_VIDEO;
+  const videoPoster = data.videoPoster || (videoSource === SHOWREEL_VIDEO ? IMAGES.videoPoster : undefined);
   const { content } = useSite();
   const socialLinks = useMemo(
     () => resolveFooter(content.footer).socials.filter((s) => s.enabled && s.href.trim()),
     [content.footer]
   );
 
-  // Only fetch + play the showreel once it scrolls into view; pause when it leaves.
-  // Saves the whole 4K download for visitors who never reach this section.
+  // Autoplay only while visible, without overriding a manual pause or reduced motion.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const io = new IntersectionObserver(
-      ([e]) => {
-        if (e.isIntersecting) {
-          if (v.preload === "none") v.preload = "auto";
-          void v.play().catch(() => {});
-        } else {
-          v.pause();
-        }
-      },
-      { rootMargin: "200px 0px", threshold: 0.1 }
-    );
+    userPaused.current = false;
+    setVideoError(false);
+    let inView = false;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => {
+      if (inView && !document.hidden && !userPaused.current && !reduced.matches) {
+        v.preload = "auto";
+        void v.play().catch(() => {});
+      } else v.pause();
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      sync();
+    }, { threshold: 0.1 });
     io.observe(v);
-    return () => io.disconnect();
+    document.addEventListener("visibilitychange", sync);
+    reduced.addEventListener("change", sync);
+    return () => {
+      io.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+      reduced.removeEventListener("change", sync);
+      v.pause();
+    };
+  }, [videoSource]);
+
+  const togglePlayback = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    userPaused.current = !v.paused;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
+  };
+
+  return () => io.disconnect();
   }, []);
 
   const toggleMute = () => {
@@ -69,30 +93,36 @@ export default function Benefits({ data }: { data: BenefitsData }) {
             <video
               ref={videoRef}
               className="aspect-[16/10] w-full object-cover sm:aspect-[21/9]"
-              {...(SHOWREEL_VIDEO ? { src: SHOWREEL_VIDEO, poster: IMAGES.videoPoster } : {})}
+              src={videoSource}
+              poster={videoPoster}
+              onPlay={() => setPaused(false)}
+              onPause={() => setPaused(true)}
+              onError={() => setVideoError(true)}
               muted
               loop
               playsInline
               preload="none"
-              aria-label="Aerial showreel of Himalayan valleys"
+              aria-label="Looping aerial drone video"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950/90 via-ink-950/20 to-ink-950/30" />
 
             <button
-              onClick={toggleMute}
-              aria-label={muted ? "Unmute showreel" : "Mute showreel"}
+              onClick={togglePlayback}
+              style={{ zIndex: 2 }}
+              aria-label={paused ? "Play drone video" : "Pause drone video"}
+              aria-pressed={!paused}
               className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full bg-ink-950/55 text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:bg-ink-950/75 active:scale-95"
             >
-              {muted ? <VolumeX className="h-4.5 w-4.5" /> : <Volume2 className="h-4.5 w-4.5" />}
+              {paused ? <Play className="h-4.5 w-4.5" /> : <span aria-hidden="true">Ⅱ</span>}
             </button>
 
             <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-4 p-6 sm:p-9">
               <div>
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-saffron-300">
-                  <Play className="h-3.5 w-3.5 fill-current" /> The road so far
+                  <Play className="h-3.5 w-3.5 fill-current" /> Above the everyday
                 </p>
-                <p className="mt-2 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                  {data.videoLine}
+                <p className="mt-2 font-display text-lg font-semibold tracking-tight text-white sm:text-3xl">
+                  {data.videoLine === "8 years · 28 states · 140,000 km — in 40 seconds" ? "A new perspective. An endless journey." : data.videoLine}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2.5">
@@ -107,6 +137,12 @@ export default function Benefits({ data }: { data: BenefitsData }) {
               </div>
             </div>
           </div>
+          {videoError && <p role="status" className="mt-3 text-sm text-zinc-400">Video unavailable. You can replace it in the section editor.</p>}
+          {videoSource === SHOWREEL_VIDEO && (
+            <a href="/media/starter/credits.html?v=drone-loop-1" className="mt-3 block text-center text-xs text-zinc-500 underline underline-offset-4">
+              Illustrative stock drone footage · ArtHouse Studio · Video credits
+            </a>
+          )}
         </Reveal>
 
         {/* portrait + personas */}

@@ -73,3 +73,5 @@ media/*
 !media/starter/*.webp
 !media/starter/credits.html
 !media/starter/credits.json
+
+!media/starter/*.mp4

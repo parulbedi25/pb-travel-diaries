@@ -148,10 +148,13 @@ secondary telemetry/itinerary clutter. No data or desktop sections are deleted.
 
 ## Hero and Journey photographs
 
-Local starter photos are in `media/starter/` (eight destinations, WebP, about
-670 KB combined), with attribution at `/media/starter/credits.html`. Hero and
-Journey use these when an image field is empty; your existing uploaded images
-remain unchanged. No image CDN or remote image request is needed.
+Local starter photos are in `media/starter/`: a refreshed eight-destination WebP
+collection (about 970 KB), plus the previous set retained for saved links.
+Attribution is at `/media/starter/credits.html?v=collection-2`. Hero and Journey
+use the new photos for empty fields and previous bundled defaults; existing
+custom/uploaded URLs remain unchanged. No image CDN or remote image request is needed.
+All eight current photos also appear as protected `(bundled)` entries in the
+dashboard Media folder and image pickers. See `media/README.md` for details.
 
 For future images, use **Dashboard → Media folder → Upload**, then choose the
 upload in the Hero or Journey section editor. Files live in `media/`, with

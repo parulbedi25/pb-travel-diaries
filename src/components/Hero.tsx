@@ -3,6 +3,7 @@ import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation } from "lucide-r
 import type { HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
 import Photo from "./ui/Photo";
+import { resolveStarterPhoto } from "../utils/starterPhotos";
 
 const container = {
   hidden: {},
@@ -131,8 +132,8 @@ export default function Hero({ data }: { data: HeroData }) {
               {/* main image */}
               <div className="relative overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-black/60">
                 <Photo
-                  src={data.mainImage || "/media/starter/ladakh.webp"}
-                  alt="Stakna Monastery and the Indus River in Ladakh"
+                  src={resolveStarterPhoto(data.mainImage, "/media/starter/ladakh-pangong.webp")}
+                  alt="Pangong Tso lake in Ladakh"
                   className="aspect-[4/3.4] w-full object-cover sm:aspect-[4/3]"
                   priority
                   label="Photo unavailable"
@@ -141,7 +142,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 {/* location chip */}
                 <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-ink-950/60 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-md">
                   <MapPin className="h-3.5 w-3.5 text-saffron-400" />
-                  {data.mainImage ? data.chipLocation : "Stakna · Ladakh"}
+                  {resolveStarterPhoto(data.mainImage, "/media/starter/ladakh-pangong.webp") === "/media/starter/ladakh-pangong.webp" ? "Pangong Tso · Ladakh" : data.chipLocation}
                 </div>
                 {/* bottom card */}
                 <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-2xl bg-ink-950/55 p-3 backdrop-blur-xl">
@@ -164,13 +165,13 @@ export default function Hero({ data }: { data: HeroData }) {
                 className="absolute -left-6 top-14 hidden w-44 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-12"
               >
                 <Photo
-                  src={data.cardAImage || "/media/starter/kerala.webp"}
-                  alt={data.cardATitle}
+                  src={resolveStarterPhoto(data.cardAImage, "/media/starter/kerala-munnar.webp")}
+                  alt={resolveStarterPhoto(data.cardAImage, "/media/starter/kerala-munnar.webp") === "/media/starter/kerala-munnar.webp" ? "Munnar, Kerala" : data.cardATitle}
                   className="aspect-square w-full object-cover"
                   label="Photo unavailable"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-950/90 to-transparent p-2.5 pt-6">
-                  <p className="text-[11px] font-semibold text-white">{data.cardATitle}</p>
+                  <p className="text-[11px] font-semibold text-white">{resolveStarterPhoto(data.cardAImage, "/media/starter/kerala-munnar.webp") === "/media/starter/kerala-munnar.webp" ? "Munnar, Kerala" : data.cardATitle}</p>
                   <p className="text-[10px] text-zinc-400">{data.cardAMeta}</p>
                 </div>
               </motion.div>
@@ -181,7 +182,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 className="absolute -right-4 bottom-24 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-right-10"
               >
                 <Photo
-                  src={data.cardBImage || "/media/starter/varanasi.webp"}
+                  src={resolveStarterPhoto(data.cardBImage, "/media/starter/varanasi-sunrise.webp")}
                   alt={data.cardBTitle}
                   className="aspect-square w-full object-cover"
                   label="Photo unavailable"
@@ -226,7 +227,7 @@ export default function Hero({ data }: { data: HeroData }) {
             </div>
           </div>
         </Reveal>
-        <a href="/media/starter/credits.html" className="mt-3 block text-center text-xs text-zinc-500 underline underline-offset-4">Illustrative travel photos · Photo credits</a>
+        <a href="/media/starter/credits.html?v=collection-2" className="mt-3 block text-center text-xs text-zinc-500 underline underline-offset-4">Illustrative travel photos · Photo credits</a>
       </div>
     </section>
   );

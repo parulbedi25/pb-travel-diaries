@@ -13,18 +13,27 @@ folder and a database dump.
 
 ## Hero and Journey starter images
 
-`starter/` contains eight local, credited travel photographs. They are bundled
-with the app and served at `/media/starter/ladakh.webp`, etc. The Hero uses
-Ladakh plus Kerala/Varanasi cards; each Journey destination uses its matching
-photo. Credits and licence links: `/media/starter/credits.html`.
+`starter/` contains the current eight-photo collection: Pangong Tso (Ladakh),
+Diskit (Nubra), Dhankar (Spiti), Hawa Mahal (Rajasthan), sunrise boats (Varanasi),
+Dawki (Meghalaya), Munnar (Kerala) and Agonda (Goa). The Hero uses Pangong Tso
+plus Munnar/Varanasi cards; each Journey destination uses its matching photo.
+Credits and licence links: `/media/starter/credits.html?v=collection-2`.
+
+**All eight new photos are visible in Dashboard → Media folder**, and selectable
+in the Hero/Journey image pickers. These are marked `(bundled)`; their library
+entries come from the curated manifest, not database upload rows. They are
+protected against deletion because the website uses them as defaults. Choose a
+replacement in a section editor to change its photo. The previous eight files
+remain on disk for saved links; the old default paths display the new collection
+in Hero/Journey. Your custom image URLs are never replaced.
 
 To add your own: Dashboard → Media folder → Upload, then select that image in
-Sections → Hero or Journey Showcase → Edit. Uploaded files are indexed in the
-database and appear in the media picker. The bundled starters are ordinary
-files, not uploaded media-library records; their paths are already filled in
-for the built-in content. Existing non-empty image fields are never overwritten.
+Sections → Hero or Journey Showcase → Edit. Your uploads are saved on the server
+in `media/` (or your configured MEDIA_DIR), indexed in the database, visible in
+the same library, and can be deleted normally. No browser-only storage is used.
 
 You can also place new files directly here and paste `/media/my-photo.jpg` into
 an image field. Direct filesystem additions do not automatically create library
 records. Keep `media/` during updates and include it in your backups. A release
-contains only `media/starter/`, never your private/runtime uploads.
+contains only `media/starter/`, never your private/runtime uploads. Custom
+MEDIA_DIR installations still serve the bundled collection from the app folder.

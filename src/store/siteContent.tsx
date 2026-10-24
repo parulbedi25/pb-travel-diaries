@@ -660,6 +660,8 @@ export interface RiderKitData {
   mapPointers: RiderKitPointer[];
 }
 export interface BenefitsData {
+  videoUrl?: string;
+  videoPoster?: string;
   eyebrow: string;
   titleA: string;
   titleHi: string;
@@ -810,19 +812,19 @@ const HERO: HeroData = {
   cta2Href: "#showreel",
   ratingText: "4.9 from 6,200+ travelers",
   tribeText: "480K+ tribe members",
-  chipLocation: "Stakna · Ladakh",
+  chipLocation: "Pangong Tso · Ladakh",
   epTitle: "EP. 214 — Spiti: The Middle Land",
   epMeta: "38:12 · Premieres Sunday, 7 PM IST",
   statTop: "1,412 days",
   statSub: "on the road since 2017",
   showreelHref,
   mainImage:
-    "/media/starter/ladakh.webp",
+    "/media/starter/ladakh-pangong.webp",
   cardAImage:
-    "/media/starter/kerala.webp",
+    "/media/starter/kerala-munnar.webp",
   cardBImage:
-    "/media/starter/varanasi.webp",
-  cardATitle: "Alappuzha, Kerala",
+    "/media/starter/varanasi-sunrise.webp",
+  cardATitle: "Munnar, Kerala",
   cardAMeta: "Day 3 · 212 km",
   cardBTitle: "Varanasi, UP",
   cardBMeta: "Dawn aarti · 5:40 AM",
@@ -890,14 +892,14 @@ const JOURNEY: JourneyData = {
   titleB: "",
   sub: "Every route below has been ridden, filmed and road-tested by PB — with maps, budgets and foul-weather exits published for members.",
   destinations: [
-    { name: "Ladakh", state: "Jammu & Kashmir", tagline: "The Land of High Passes", description: "Eleven passes above 16,000 ft, Pangong turning gold at dawn, and mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage. Full GPX, permit checklist and fuel strategy included.", image: "/media/starter/ladakh.webp", distance: "2,150 km", days: "12 days", season: "Jun – Sep", vibe: "High-altitude madness" },
-    { name: "Nubra Valley", state: "Ladakh", tagline: "The Cold Desert", description: "Sand dunes wedged between snow peaks, double-humped camels at Hunder, and Turtuk — a Baltistan village India opened to the world only in 2010. The detour most riders skip, and never forget.", image: "/media/starter/nubra.webp", distance: "480 km", days: "4 days", season: "Jun – Sep", vibe: "Otherworldly" },
-    { name: "Spiti Valley", state: "Himachal Pradesh", tagline: "The Middle Land", description: "Raw, lunar, and humbling. Key Monastery at sunrise, Chandra Tal under the Milky Way, and the world's highest villages where time moves at 0.5x. My most requested route — mapped to the last kilometre.", image: "/media/starter/spiti.webp", distance: "1,320 km", days: "9 days", season: "May – Oct", vibe: "Raw & spiritual" },
-    { name: "Rajasthan", state: "The Desert Crown", tagline: "Forts, Dunes & Fury", description: "Amber Fort at golden hour, Jaisalmer's dunes under a full moon, and Udaipur's lakes at dusk. A 2,400 km loop through living palaces, thorn forests and the loudest thalis in India.", image: "/media/starter/rajasthan.webp", distance: "2,400 km", days: "10 days", season: "Oct – Feb", vibe: "Royal & loud" },
-    { name: "Varanasi", state: "Uttar Pradesh", tagline: "The Eternal City", description: "The oldest living city on earth doesn't photograph — it swallows you. Dawn boats on the Ganga, the thunder of the evening aarti, and kachori-sabzi breakfasts in lanes older than empires.", image: "/media/starter/varanasi.webp", distance: "620 km", days: "3 days", season: "Oct – Mar", vibe: "Intense & timeless" },
-    { name: "Meghalaya", state: "Northeast India", tagline: "The Abode of Clouds", description: "Nohkalikai plunging 1,115 ft, living root bridges grown over 500 years, and Mawlynnong — Asia's cleanest village. India's wettest, greenest, most surprising corner, packed into one epic loop.", image: "/media/starter/meghalaya.webp", distance: "1,180 km", days: "8 days", season: "Oct – Apr", vibe: "Lush & wild" },
-    { name: "Kerala", state: "God's Own Country", tagline: "Slow Roads & Stiller Waters", description: "Houseboats drifting through Alappuzha, Munnar's tea carpeting every hill, and Fort Kochi's Chinese fishing nets at sunset. The antidote to burnout — best absorbed at 40 kmph, windows down.", image: "/media/starter/kerala.webp", distance: "940 km", days: "7 days", season: "Sep – Mar", vibe: "Slow & green" },
-    { name: "Goa", state: "The Coastal Pulse", tagline: "Beyond the Beach Shacks", description: "Everyone knows Baga. Almost nobody finds Kakolem. My Goa route trades crowds for hidden coves, spice-farm trails, Divar island ferry hops and the Saturday night market at Arpora.", image: "/media/starter/goa.webp", distance: "560 km", days: "5 days", season: "Nov – Feb", vibe: "Salty & free" },
+    { name: "Ladakh", state: "Jammu & Kashmir", tagline: "The Land of High Passes", description: "Eleven passes above 16,000 ft, Pangong turning gold at dawn, and mornings that smell of butter tea and diesel. Ladakh isn't a trip — it's a rite of passage. Full GPX, permit checklist and fuel strategy included.", image: "/media/starter/ladakh-pangong.webp", distance: "2,150 km", days: "12 days", season: "Jun – Sep", vibe: "High-altitude madness" },
+    { name: "Nubra Valley", state: "Ladakh", tagline: "The Cold Desert", description: "Sand dunes wedged between snow peaks, double-humped camels at Hunder, and Turtuk — a Baltistan village India opened to the world only in 2010. The detour most riders skip, and never forget.", image: "/media/starter/nubra-diskit.webp", distance: "480 km", days: "4 days", season: "Jun – Sep", vibe: "Otherworldly" },
+    { name: "Spiti Valley", state: "Himachal Pradesh", tagline: "The Middle Land", description: "Raw, lunar, and humbling. Key Monastery at sunrise, Chandra Tal under the Milky Way, and the world's highest villages where time moves at 0.5x. My most requested route — mapped to the last kilometre.", image: "/media/starter/spiti-dhankar.webp", distance: "1,320 km", days: "9 days", season: "May – Oct", vibe: "Raw & spiritual" },
+    { name: "Rajasthan", state: "The Desert Crown", tagline: "Forts, Dunes & Fury", description: "Amber Fort at golden hour, Jaisalmer's dunes under a full moon, and Udaipur's lakes at dusk. A 2,400 km loop through living palaces, thorn forests and the loudest thalis in India.", image: "/media/starter/rajasthan-jaipur.webp", distance: "2,400 km", days: "10 days", season: "Oct – Feb", vibe: "Royal & loud" },
+    { name: "Varanasi", state: "Uttar Pradesh", tagline: "The Eternal City", description: "The oldest living city on earth doesn't photograph — it swallows you. Dawn boats on the Ganga, the thunder of the evening aarti, and kachori-sabzi breakfasts in lanes older than empires.", image: "/media/starter/varanasi-sunrise.webp", distance: "620 km", days: "3 days", season: "Oct – Mar", vibe: "Intense & timeless" },
+    { name: "Meghalaya", state: "Northeast India", tagline: "The Abode of Clouds", description: "Nohkalikai plunging 1,115 ft, living root bridges grown over 500 years, and Mawlynnong — Asia's cleanest village. India's wettest, greenest, most surprising corner, packed into one epic loop.", image: "/media/starter/meghalaya-dawki.webp", distance: "1,180 km", days: "8 days", season: "Oct – Apr", vibe: "Lush & wild" },
+    { name: "Kerala", state: "God's Own Country", tagline: "Slow Roads & Stiller Waters", description: "Houseboats drifting through Alappuzha, Munnar's tea carpeting every hill, and Fort Kochi's Chinese fishing nets at sunset. The antidote to burnout — best absorbed at 40 kmph, windows down.", image: "/media/starter/kerala-munnar.webp", distance: "940 km", days: "7 days", season: "Sep – Mar", vibe: "Slow & green" },
+    { name: "Goa", state: "The Coastal Pulse", tagline: "Beyond the Beach Shacks", description: "Everyone knows Baga. Almost nobody finds Kakolem. My Goa route trades crowds for hidden coves, spice-farm trails, Divar island ferry hops and the Saturday night market at Arpora.", image: "/media/starter/goa-agonda.webp", distance: "560 km", days: "5 days", season: "Nov – Feb", vibe: "Salty & free" },
   ],
 };
 
@@ -1139,7 +1141,7 @@ const BENEFITS: BenefitsData = {
   titleHi: "Three ways to live it.",
   titleB: "",
   sub: "Whether you shoot, ride, or just itch to get out of the city — there's a lane for you here.",
-  videoLine: "8 years · 28 states · 140,000 km — in 40 seconds",
+  videoLine: "A new perspective. An endless journey.",
   videoChips: ["140K km", "380+ films", "28 states"],
   quote: "I packed my saddlebags in Nangal Dam in 2017 with one backpack and a secondhand camera. The road has been my home ever since.",
   personas: [

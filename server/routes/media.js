@@ -6,6 +6,7 @@ import multer from "multer";
 import { config } from "../config.js";
 import { getRepo } from "../db/index.js";
 import { requireEditor } from "../lib/auth.js";
+import { bundledMedia } from "../lib/bundledMedia.js";
 
 export const mediaRouter = express.Router();
 
@@ -71,7 +72,7 @@ mediaRouter.get("/media", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const rows = await repo.listMedia();
-    res.json({ media: rows.map(toItem) });
+    res.json({ media: [...rows.map(toItem), ...bundledMedia] });
   } catch (error) {
     next(error);
   }
@@ -114,6 +115,9 @@ mediaRouter.post("/media", requireEditor, upload.single("file"), async (req, res
 mediaRouter.delete("/media/:id", requireEditor, async (req, res, next) => {
   try {
     const repo = await getRepo();
+    if (bundledMedia.some(item => item.id === req.params.id)) {
+      return res.status(403).json({ error: "Bundled photos are included with the website. Choose another image in the section editor instead." });
+    }
     const row = await repo.findMedia(String(req.params.id));
     if (!row) return res.status(404).json({ error: "No such file." });
 
