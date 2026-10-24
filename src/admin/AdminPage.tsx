@@ -4483,6 +4483,12 @@ function MediaPanel() {
                     <button
                       type="button"
                       onClick={() => setPendingDelete(m)}
+                      disabled={m.bundled}
+                      title={
+                        m.bundled
+                          ? "Ships with the website — choose another photo in the section editor"
+                          : "Delete this file"
+                      }
                       aria-label={`Delete ${m.name}`}
                       className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
                     >

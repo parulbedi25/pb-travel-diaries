@@ -2,6 +2,8 @@ import { siteApi } from "../api/siteApi";
 
 export interface MediaItem {
   id: string;
+  /** Ships with the website: selectable, but not deletable from the dashboard. */
+  bundled?: boolean;
   name: string;
   type: string;
   size: number;
