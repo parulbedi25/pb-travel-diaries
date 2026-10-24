@@ -474,27 +474,3 @@ the uploads.
 | Setup succeeds but the owner screen says “Finish the database step first” | `data/install.json` could not be written. `chmod 775 data` and retry. |
 | App restart loses accounts/content | Expected only with `DB_DRIVER=memory`. Production must use `mysql`. |
 | Website files missing | Restore the included `dist/` folder and restart; there is no build command. |
-
-## Automated checks in GitHub Actions and Azure Pipelines
-
-Both manually queued disposable deployment pipelines run these gates in order:
-
-1. Install locked dependencies with `npm ci`.
-2. Run `npm run test:ci`: the complete `server/tests/*.test.js` suite, including
-   API, runtime packaging, local starter media and Live Map theme regression checks.
-3. Run `npm run hosting:check` to check required files, dependencies and writable folders.
-4. Run `npm run package` to validate creation of the deployment package (not a frontend build).
-5. Deploy the isolated Docker stack and run the existing application/database smoke checks.
-
-A failed gate prevents deployment; no production site or database is changed.
-The test count follows the repository rather than a hardcoded expected count.
-Test output appears in the pipeline step logs. The shared runner also writes
-`test-results/server-tests.xml` in JUnit format. Azure publishes this in the run's
-**Tests** tab; GitHub retains it in the **test-deployment-logs** artifact and notes
-its location in the job summary. Both providers retain available diagnostics on
-failure and always attempt to clean up the disposable stack.
-
-Run the same checks locally with `npm run test:ci`, `npm run hosting:check`, and
-`npm run package`. Browser interaction checks previously performed during development
-are not part of this server test runner; these pipelines do not claim browser or
-live external tile-provider coverage.

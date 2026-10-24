@@ -13,7 +13,6 @@
  */
 
 import { useMemo } from "react";
-import { useSite } from "../store/siteContent";
 import { osmTileUrl, tilesForView, type TileView } from "../utils/tiles";
 
 export type { TileView };
@@ -29,7 +28,6 @@ export default function TileBasemap({
   height: number;
   className?: string;
 }) {
-  const { theme } = useSite();
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -37,8 +35,7 @@ export default function TileBasemap({
   );
 
   return (
-    <div className={className} data-raster-theme={theme} aria-hidden="true"
-      style={{ filter: theme === "light" ? "none" : "invert(1) hue-rotate(180deg) brightness(0.75) saturate(0.65)" }}>
+    <div className={className} aria-hidden="true">
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}

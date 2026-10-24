@@ -55,7 +55,7 @@ const APP_FILES = [
 ];
 
 /** Folders that belong in `app/`, walked recursively. */
-const APP_DIRS = ["server", "src", "public", "dist", "media/starter"];
+const APP_DIRS = ["server", "src", "public", "dist"];
 
 /** Never archived, whatever folder they appear in. */
 const SKIP_DIRS = new Set(["node_modules", ".git", "backup", "release", "data", ".s"]);

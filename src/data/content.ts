@@ -10,11 +10,11 @@ export const IMAGES = {
   portrait:
     "",
   videoPoster:
-    "/media/starter/drone-city-poster.webp",
+    "",
 };
 
 export const SHOWREEL_VIDEO =
-  "/media/starter/drone-city-loop.mp4";
+  "";
 
 export type Destination = {
   slug: string;
