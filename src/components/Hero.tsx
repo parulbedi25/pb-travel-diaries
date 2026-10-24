@@ -131,8 +131,8 @@ export default function Hero({ data }: { data: HeroData }) {
               {/* main image */}
               <div className="relative overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl shadow-black/60">
                 <Photo
-                  src={data.mainImage}
-                  alt="Winding mountain road through the snowcapped Himalayas of Leh, Ladakh"
+                  src={data.mainImage || "/media/starter/ladakh.webp"}
+                  alt="Stakna Monastery and the Indus River in Ladakh"
                   className="aspect-[4/3.4] w-full object-cover sm:aspect-[4/3]"
                   priority
                   label="Photo unavailable"
@@ -141,7 +141,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 {/* location chip */}
                 <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-ink-950/60 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-md">
                   <MapPin className="h-3.5 w-3.5 text-saffron-400" />
-                  {data.chipLocation}
+                  {data.mainImage ? data.chipLocation : "Stakna · Ladakh"}
                 </div>
                 {/* bottom card */}
                 <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-2xl bg-ink-950/55 p-3 backdrop-blur-xl">
@@ -164,7 +164,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 className="absolute -left-6 top-14 hidden w-44 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-12"
               >
                 <Photo
-                  src={data.cardAImage}
+                  src={data.cardAImage || "/media/starter/kerala.webp"}
                   alt={data.cardATitle}
                   className="aspect-square w-full object-cover"
                   label="Photo unavailable"
@@ -181,7 +181,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 className="absolute -right-4 bottom-24 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-right-10"
               >
                 <Photo
-                  src={data.cardBImage}
+                  src={data.cardBImage || "/media/starter/varanasi.webp"}
                   alt={data.cardBTitle}
                   className="aspect-square w-full object-cover"
                   label="Photo unavailable"
@@ -226,6 +226,7 @@ export default function Hero({ data }: { data: HeroData }) {
             </div>
           </div>
         </Reveal>
+        <a href="/media/starter/credits.html" className="mt-3 block text-center text-xs text-zinc-500 underline underline-offset-4">Illustrative travel photos · Photo credits</a>
       </div>
     </section>
   );

@@ -44,6 +44,8 @@ copy("server", "server", { skip: [
 ] });
 copy("dist", "dist");
 copy("public", "public");
+// Ship only the curated starters, never private/runtime uploads.
+copy("media/starter", "media/starter");
 copy("app.cjs", "app.cjs");
 
 for (const file of [

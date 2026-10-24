@@ -3,7 +3,9 @@
 node_modules
 release
 data
-media
+media/*
+!media/starter/
+!media/starter/**
 backup
 .env
 .env.*
