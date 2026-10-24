@@ -5564,12 +5564,9 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {/* Save / discard when there is something to save, a status pill
-                when there is not — and View Website always, because checking a
-                change on the section itself is the whole point of editing it.
-                (It used to disappear as soon as the draft was dirty.) There is
-                no Preview toggle here: that lives in the site header, where the
-                admin is already looking once they open the website. */}
+            {/* One slot, two jobs: Save Changes while the draft is dirty, View
+                Website when it is not. There is no separate Preview button —
+                that switch lives in the site header. */}
             {hasChanges ? (
               <div className="flex items-center gap-2.5">
                 <button
@@ -5586,16 +5583,18 @@ export default function AdminPage() {
                 </button>
               </div>
             ) : (
-              <span className="hidden items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-bold text-emerald-400 sm:inline-flex">
-                <Check className="h-3.5 w-3.5" /> Up to date
-              </span>
+              <div className="flex items-center gap-2.5">
+                <span className="hidden items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-bold text-emerald-400 sm:inline-flex">
+                  <Check className="h-3.5 w-3.5" /> Up to date
+                </span>
+                <a
+                  href="#/"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-ink-950 shadow-lg shadow-white/10 transition-all duration-300 hover:shadow-[0_0_24px_rgba(255,255,255,0.25)] active:scale-95"
+                >
+                  <Eye className="h-3.5 w-3.5" /> View Website
+                </a>
+              </div>
             )}
-            <a
-              href="#/"
-              className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-ink-950 shadow-lg shadow-white/10 transition-all duration-300 hover:shadow-[0_0_24px_rgba(255,255,255,0.25)] active:scale-95"
-            >
-              <Eye className="h-3.5 w-3.5" /> View Website
-            </a>
 
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
