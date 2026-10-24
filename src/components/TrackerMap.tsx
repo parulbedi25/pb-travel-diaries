@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Satellite } from "lucide-react";
+import { Check, Navigation } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
@@ -37,6 +37,13 @@ export interface TrackerMapProps {
   status: LiveStatus;
   /** "Ping 2m ago" / "Window closed · 6 AM IST" — shown on the strip. */
   pingLabel: string;
+  /**
+   * Draw each stop's name under its checkpoint. Off unless asked for: the map
+   * is meant to be read by the pins, and a name on every one of them turns the
+   * middle of it into a wall of text. The pins keep their tooltips and their
+   * labels for screen readers either way.
+   */
+  labels?: boolean;
 }
 
 /** Space the drawn route has to keep clear of. */
@@ -135,6 +142,7 @@ export default function TrackerMap({
   liveState,
   status,
   pingLabel,
+  labels = false,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -391,20 +399,22 @@ export default function TrackerMap({
                 )}
                 {isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
               </span>
-              <span
-                className={cn(
-                  "map-label absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
-                  isStart
-                    ? "text-start-label"
-                    : isEnd
-                      ? "text-end-label"
-                      : isLive
-                        ? "text-live-label"
-                        : "text-map-label",
-                )}
-              >
-                {stop.name}
-              </span>
+              {labels && (
+                <span
+                  className={cn(
+                    "map-label absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
+                    isStart
+                      ? "text-start-label"
+                      : isEnd
+                        ? "text-end-label"
+                        : isLive
+                          ? "text-live-label"
+                          : "text-map-label",
+                  )}
+                >
+                  {stop.name}
+                </span>
+              )}
             </button>
           </div>
         );
@@ -419,10 +429,12 @@ export default function TrackerMap({
                 {formatKm(totals[totals.length - 1] ?? 0)}
               </p>
               <div className="flex items-center gap-1">
-                <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
-                  <Satellite
+                {/* The compass belongs here, beside the ping it describes,
+                    rather than floating loose in the corner of the map. */}
+                <span className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+                  <Navigation
                     className={cn(
-                      "h-3 w-3",
+                      "h-3 w-3 fill-current",
                       status === "live" ? "text-emerald-300" : "text-amber-300",
                     )}
                     aria-hidden="true"
