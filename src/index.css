@@ -211,6 +211,14 @@
     font-family: var(--font-urdu);
   }
 
+  /* Nastaliq draws much taller than the Latin beside it, so an Urdu word set at
+     the same size reads oversized and stretches the line. A touch smaller, with
+     a line box that does not add height. */
+  .urdu-inline {
+    font-size: 0.84em;
+    line-height: 1;
+  }
+
   /* Ambient glow blobs: promote to their own layer so the blur is composited once */
   .glow {
     will-change: transform;
