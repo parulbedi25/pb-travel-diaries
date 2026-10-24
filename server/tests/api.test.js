@@ -236,9 +236,34 @@ test("an image upload lands on disk and is served back", async () => {
   assert.equal(served.status, 200);
   assert.equal((await served.arrayBuffer()).byteLength, png.length);
 
+  // The shelf lists uploads and the photographs that ship with the site, so
+  // the upload is found by name rather than assumed to be the only entry.
   const list = await call("GET", "/api/media");
-  assert.equal(list.json.media.length, 1);
-  assert.equal(list.json.media[0].name, "helmet.png");
+  const uploads = list.json.media.filter((entry) => !entry.bundled);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].name, "helmet.png");
+});
+
+test("the photographs that ship with the site are listed, and cannot be deleted", async () => {
+  const list = await call("GET", "/api/media");
+  const bundled = list.json.media.filter((entry) => entry.bundled);
+
+  assert.ok(bundled.length >= 8, "the starter set is on the shelf");
+  for (const item of bundled) {
+    assert.match(item.url, /^\/media\/starter\/[a-z0-9-]+\.webp$/);
+    assert.equal(item.kind, "image");
+  }
+
+  // Servable from the same /media path as an upload, so a section can point at
+  // one exactly like a file the owner added.
+  const served = await fetch(base + bundled[0].url);
+  assert.equal(served.status, 200);
+
+  // Part of the website, not of the upload folder: picking is allowed, deleting
+  // is refused so a page cannot be left pointing at a file that vanished.
+  const denied = await call("DELETE", `/api/media/${encodeURIComponent(bundled[0].id)}`);
+  assert.equal(denied.status, 403);
+  assert.ok((await call("GET", "/api/media")).json.media.some((e) => e.id === bundled[0].id));
 });
 
 test("unsupported upload types are refused", async () => {
@@ -260,11 +285,14 @@ test("uploads need a session", async () => {
 
 test("deleting media removes the row and the file", async () => {
   const list = await call("GET", "/api/media");
-  const item = list.json.media[0];
+  const item = list.json.media.find((entry) => !entry.bundled);
   const filename = item.dataUrl.replace("/media/", "");
 
   assert.equal((await call("DELETE", `/api/media/${item.id}`)).status, 200);
-  assert.equal((await call("GET", "/api/media")).json.media.length, 0);
+  assert.equal(
+    (await call("GET", "/api/media")).json.media.filter((entry) => !entry.bundled).length,
+    0,
+  );
   await assert.rejects(fs.access(path.join(mediaDir, filename)), "the file is gone from disk");
 });
 
