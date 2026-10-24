@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Clock, Compass, MapPin, Mountain } from "lucide-react";
+import { ArrowLeft, Clock, Compass, MapPin, Mountain, Navigation } from "lucide-react";
 import { type LiveStatus } from "../hooks/useLiveLocation";
 import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import VectorBasemap from "./VectorBasemap";
-import ThemeToggle from "./ThemeToggle";
 import { makeMercatorProjector } from "../utils/mercator";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
@@ -206,9 +205,6 @@ export default function LiveMapPage() {
           <span className="sm:ml-1">
             <StatusChip status={status} />
           </span>
-          {/* The map, the card and the badges all follow the site theme, so the
-              switch belongs on this page and not only on the homepage. */}
-          <ThemeToggle className="ml-auto shrink-0" />
         </div>
       </header>
 
@@ -270,21 +266,33 @@ export default function LiveMapPage() {
             </ul>
 
             {status === "offduty" && (
-              <p className="mt-4 rounded-xl bg-white/[0.05] px-3.5 py-2.5 text-[11px] text-zinc-400">
-                Tracker sleeps after 9 PM. Next window opens in{" "}
-                <span className="font-semibold text-saffron-300">
-                  {formatCountdown(nextWindowOpenMs - now.getTime())}
-                </span>{" "}
-                (6:00 AM IST).
+              <p className="mt-4 flex items-start gap-2 rounded-xl bg-white/[0.05] px-3.5 py-2.5 text-[11px] text-zinc-400">
+                <Navigation
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-current text-saffron-300"
+                  aria-hidden="true"
+                />
+                <span>
+                  Tracker sleeps after 9 PM. Next window opens in{" "}
+                  <span className="font-semibold text-saffron-300">
+                    {formatCountdown(nextWindowOpenMs - now.getTime())}
+                  </span>{" "}
+                  (6:00 AM IST).
+                </span>
               </p>
             )}
             {status === "live" && (
-              <p className="mt-4 rounded-xl bg-white/[0.05] px-3.5 py-2.5 text-[11px] text-zinc-400">
-                Window closes in{" "}
-                <span className="font-semibold text-saffron-300">
-                  {formatCountdown(windowCloseMs - now.getTime())}
-                </span>{" "}
-                (9:00 PM IST) — then تسکین (Taskeen) goes off-grid till morning.
+              <p className="mt-4 flex items-start gap-2 rounded-xl bg-white/[0.05] px-3.5 py-2.5 text-[11px] text-zinc-400">
+                <Navigation
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-current text-saffron-300"
+                  aria-hidden="true"
+                />
+                <span>
+                  Window closes in{" "}
+                  <span className="font-semibold text-saffron-300">
+                    {formatCountdown(windowCloseMs - now.getTime())}
+                  </span>{" "}
+                  (9:00 PM IST) — then تسکین (Taskeen) goes off-grid till morning.
+                </span>
               </p>
             )}
             {status === "stale" && (
