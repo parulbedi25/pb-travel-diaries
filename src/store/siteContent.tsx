@@ -1140,7 +1140,7 @@ const GEARS: GearsData = {
       brand: "Royal Enfield",
       model: "TAS250003 · Black",
       description: "Royal Enfield lists these as Class A certified trousers for urban, touring, adventure and cruising, in summer and rain.",
-      image: "",
+      image: "/images/gear/gravel-riding-trouser-black.webp",
       imageAlt: "Royal Enfield Gravel riding trousers in black",
       highlights: ["Class A certified", "Urban, touring, adventure & cruising", "Summer & rain"],
       fit: "Sizes 28–44 listed",
