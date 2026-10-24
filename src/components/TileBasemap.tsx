@@ -13,6 +13,7 @@
  */
 
 import { useMemo } from "react";
+import { useSite } from "../store/siteContent";
 import { osmTileUrl, tilesForView, type TileView } from "../utils/tiles";
 
 export type { TileView };
@@ -28,6 +29,7 @@ export default function TileBasemap({
   height: number;
   className?: string;
 }) {
+  const { theme } = useSite();
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,7 +37,20 @@ export default function TileBasemap({
   );
 
   return (
-    <div className={className} aria-hidden="true">
+    <div
+      className={className}
+      data-raster-theme={theme}
+      aria-hidden="true"
+      // OSM only publishes one drawing, drawn for a white page. In dark mode it
+      // is inverted so the map follows the theme instead of glowing white
+      // behind white text; in light mode it is left exactly as published.
+      style={{
+        filter:
+          theme === "light"
+            ? "none"
+            : "invert(1) hue-rotate(180deg) brightness(0.72) saturate(0.7)",
+      }}
+    >
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}
