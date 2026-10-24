@@ -35,7 +35,7 @@ export default function Hero({ data }: { data: HeroData }) {
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid items-center gap-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
+        <div className="grid items-center gap-16 lg:grid-cols-2 lg:gap-10">
           {/* ---------- Copy ---------- */}
           <motion.div variants={container} initial="hidden" animate="show" className="max-w-2xl">
             <motion.div variants={item}>
