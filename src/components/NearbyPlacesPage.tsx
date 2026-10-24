@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
-  Compass,
   ImageOff,
   MapPin,
   Navigation,
@@ -14,8 +13,8 @@ import { useNearbyPlaces, type NearbyPlace } from "../hooks/useNearbyPlaces";
 import VectorBasemap from "./VectorBasemap";
 import ThemeToggle from "./ThemeToggle";
 import { Logo } from "./Navbar";
-import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
-import { distanceKm, googleMapsPlaceUrl, type MapPoint } from "../utils/liveRoute";
+import { fitViewInset, makeMercatorProjector } from "../utils/mercator";
+import { googleMapsPlaceUrl } from "../utils/liveRoute";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { cn } from "../utils/cn";
 
@@ -27,13 +26,30 @@ import { cn } from "../utils/cn";
  * every geotagged Wikipedia article within a short ride, with its free photo
  * and a tap-through to Google Maps for the ones worth a detour.
  *
+ * The list lives *inside* the map panel, because the two are one thought —
+ * "these places, there". That makes the panel a room with furniture in it, so
+ * the fit has to know which part of the map is still visible: the pins are
+ * zoomed into what the list leaves uncovered, never slide under it, and keep a
+ * few pixels of air at every edge they can reach.
+ *
  * Nothing here is stored in the site document. The places are fetched from
  * Wikipedia when the page opens, because a place worth visiting is not a thing
  * anybody should have to retype into a dashboard.
  */
 
-/** How far each pin's label is nudged so it does not sit on the pin itself. */
+/** Distance between a pin and its bubble, in pixels. */
 const BUBBLE_OFFSET = 16;
+/** The bubble's own width (w-62 = 15.5rem). Used to keep it clear of the list. */
+const BUBBLE_WIDTH = 248;
+/** Roughly how tall a bubble gets; enough to know if there is room for one. */
+const BUBBLE_HEIGHT = 246;
+/** Air between a pin's coordinate and the nearest uncovered edge. */
+const PIN_PAD_X = 26;
+const PIN_PAD_Y = 46;
+/** Pixels of map the panel keeps clear on each side. */
+type Insets = { top: number; right: number; bottom: number; left: number };
+/** Before the panel is measured: a little air on every side. */
+const DEFAULT_INSETS: Insets = { top: 34, right: 34, bottom: 54, left: 34 };
 
 function PlaceThumb({
   place,
@@ -73,7 +89,9 @@ function PlaceThumb({
 export default function NearbyPlacesPage() {
   const { location, status, route } = useSiteLiveLocation();
   const settings = route.nearby;
-  const radiusKm = Math.max(1, Math.min(50, Math.round(settings?.radiusKm ?? 10)));
+  // Ten kilometres is the range this page is built for: close enough to be a
+  // detour, far enough that a small town still has something in it.
+  const radiusKm = Math.max(1, Math.min(10, Math.round(settings?.radiusKm ?? 10)));
   const count = Math.max(5, Math.min(10, Math.round(settings?.count ?? 8)));
   const { places, loading, error, reload } = useNearbyPlaces({
     lat: location.lat,
@@ -84,34 +102,60 @@ export default function NearbyPlacesPage() {
 
   const [selected, setSelected] = useState<number | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [layout, setLayout] = useState({
+    width: 900,
+    height: 520,
+    insets: DEFAULT_INSETS,
+  });
 
   // The pins are laid over the tiles, so the panel is measured rather than
-  // assumed — same reason the live map measures its own.
+  // assumed — and so is the list, because whatever the list covers is not map
+  // as far as the pins are concerned.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const measure = () => {
+      const rect = host.getBoundingClientRect();
       const width = host.clientWidth;
       const height = host.clientHeight;
-      if (width > 0 && height > 0) setSize({ width, height });
+      if (!width || !height) return;
+
+      const panel = panelRef.current?.getBoundingClientRect();
+      let insets: Insets = DEFAULT_INSETS;
+      if (panel && panel.width > 0 && panel.height > 0) {
+        const gap = 20;
+        const isBottomSheet = panel.top - rect.top > rect.height * 0.3;
+        insets = isBottomSheet
+          ? // The sheet and the credit above it.
+            { ...DEFAULT_INSETS, bottom: Math.round(rect.bottom - panel.top) + gap + 28 }
+          : // The sidebar and the gap between it and the pins.
+            { ...DEFAULT_INSETS, right: Math.round(rect.right - panel.left) + gap };
+      }
+      setLayout({ width, height, insets });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);
+    if (panelRef.current) observer.observe(panelRef.current);
     return () => observer.disconnect();
   }, []);
 
-  const width = size.width || 900;
-  const height = size.height || 480;
+  const { width, height, insets } = layout;
 
+  // Every place plus the current position, fitted into the part of the map
+  // the list does not cover.
   const points = useMemo(
-    () => [{ lat: location.lat, lng: location.lng }, ...places.map((p) => ({ lat: p.lat, lng: p.lng }))],
+    () => [
+      { lat: location.lat, lng: location.lng },
+      ...places.map((p) => ({ lat: p.lat, lng: p.lng })),
+    ],
     [location.lat, location.lng, places],
   );
   const view = useMemo(
-    () => fitViewExact(points, width, height, { padX: 56, padY: 60 }),
-    [points, width, height],
+    () => fitViewInset(points, width, height, insets, { padX: PIN_PAD_X, padY: PIN_PAD_Y }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [points, width, height, insets.top, insets.right, insets.bottom, insets.left],
   );
   const projector = useMemo(
     () => makeMercatorProjector(view, width, height),
@@ -123,10 +167,162 @@ export default function NearbyPlacesPage() {
   // A place can be nearest-first from Wikipedia and still sit on the far side
   // of the panel; the map is drawn for the whole set, the list keeps the order.
   const selectedPlace = selected !== null ? places[selected] : undefined;
-  const selectedPoint: MapPoint | null = selectedPlace
-    ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
-    : null;
-  const selectedXY = selectedPoint ? projector.toXY(selectedPoint) : null;
+
+  // Where the bubble goes: beside its pin, never over the list and never off
+  // an edge. Above the pin when there is room, below it when there is not.
+  const bubble = useMemo(() => {
+    if (!selectedPlace) return null;
+    const point = projector.toXY({ lat: selectedPlace.lat, lng: selectedPlace.lng });
+    const px = (point.x / 100) * width;
+    const py = (point.y / 100) * height;
+    const minX = insets.left + BUBBLE_WIDTH / 2 + 8;
+    const maxX = width - insets.right - BUBBLE_WIDTH / 2 - 8;
+    const left = Math.min(Math.max(px, Math.min(minX, maxX)), Math.max(minX, maxX));
+    const roomAbove = py - insets.top - BUBBLE_OFFSET;
+    const roomBelow = height - insets.bottom - py - BUBBLE_OFFSET;
+    const above = roomAbove > BUBBLE_HEIGHT || roomAbove > roomBelow;
+    return { left, top: py, above };
+  }, [selectedPlace, projector, width, height, insets]);
+
+  const mapsUrlFor = (place: NearbyPlace) =>
+    googleMapsPlaceUrl({ lat: place.lat, lng: place.lng });
+
+  const select = (index: number) => setSelected(selected === index ? null : index);
+
+  const panelBody = (
+    <>
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.07] px-3.5 py-2.5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            Within {radiusKm} km
+          </p>
+          <p className="font-display text-sm font-semibold text-white">
+            {loading ? "Searching…" : `${places.length} places`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={reload}
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
+        >
+          <RefreshCcw className={cn("h-3 w-3", loading && "animate-spin")} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        {loading && !places.length && (
+          <ul className="flex flex-col gap-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} className="flex gap-3 rounded-xl p-2">
+                <span className="h-14 w-16 shrink-0 animate-pulse rounded-lg bg-white/[0.06]" />
+                <span className="flex-1 space-y-1.5 py-0.5">
+                  <span className="block h-3 w-2/3 animate-pulse rounded bg-white/[0.06]" />
+                  <span className="block h-2.5 w-1/3 animate-pulse rounded bg-white/[0.05]" />
+                  <span className="block h-2.5 w-full animate-pulse rounded bg-white/[0.04]" />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!loading && error && (
+          <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.07] p-3 text-[11px] leading-relaxed text-amber-200">
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={reload}
+              className="mt-2.5 rounded-full border border-amber-300/40 px-3 py-1 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/10"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && !places.length && (
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[11px] leading-relaxed text-zinc-400">
+            <p className="font-display text-sm font-semibold text-white">
+              Nothing geotagged within {radiusKm} km
+            </p>
+            <p className="mt-1">
+              Wikipedia has no articles pinned this close to {location.name}.
+            </p>
+          </div>
+        )}
+
+        {places.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {places.map((place, index) => {
+              const active = selected === index;
+              const mapsUrl = mapsUrlFor(place);
+              return (
+                <li key={place.pageid}>
+                  <div
+                    className={cn(
+                      "group flex items-start gap-2.5 rounded-xl p-2 transition-colors",
+                      active ? "bg-saffron-400/[0.12]" : "hover:bg-white/[0.05]",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => select(index)}
+                      aria-pressed={active}
+                      aria-label={`Show ${place.title} on the map`}
+                      className="relative h-14 w-16 shrink-0 overflow-hidden rounded-lg"
+                    >
+                      <PlaceThumb
+                        place={place}
+                        className={cn(
+                          "h-full w-full transition-transform duration-500 group-hover:scale-105",
+                          active && "scale-105",
+                        )}
+                        sizes="64px"
+                      />
+                      <span className="absolute left-1 top-1 grid h-4.5 w-4.5 min-h-[18px] min-w-[18px] place-items-center rounded-full bg-ink-950/85 text-[9px] font-bold text-white">
+                        {index + 1}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => select(index)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate font-display text-[13px] font-semibold text-white">
+                          {place.title}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] text-saffron-300">
+                          {place.distanceKm.toFixed(1)} km
+                        </span>
+                      </span>
+                      {place.extract && (
+                        <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-zinc-400">
+                          {place.extract}
+                        </span>
+                      )}
+                    </button>
+                    <a
+                      href={mapsUrl}
+                      {...externalLinkProps(mapsUrl)}
+                      aria-label={`Open ${place.title} in Google Maps`}
+                      title="Open in Google Maps"
+                      className="shrink-0 rounded-lg border border-white/10 p-1.5 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
+                    >
+                      <MapPin className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <p className="border-t border-white/[0.07] px-3.5 py-2 text-[9.5px] leading-relaxed text-zinc-500">
+        Places &amp; photos: Wikipedia · Wikimedia Commons (CC BY-SA)
+      </p>
+    </>
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-950">
@@ -153,7 +349,7 @@ export default function NearbyPlacesPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-16 pt-8 sm:px-8">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-5 pb-10 pt-6 sm:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
@@ -167,35 +363,19 @@ export default function NearbyPlacesPage() {
                 "Pulled live from Wikipedia around wherever PB is right now."}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-            <span className="rounded-full bg-white/[0.06] px-3 py-1.5 font-mono">
-              within {radiusKm} km
-            </span>
-            <span className="rounded-full bg-white/[0.06] px-3 py-1.5 font-mono">
-              {loading ? "searching…" : `${places.length} places`}
-            </span>
-            <button
-              type="button"
-              onClick={reload}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 font-semibold text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
-            >
-              <RefreshCcw className={cn("h-3 w-3", loading && "animate-spin")} />
-              Refresh
-            </button>
-          </div>
         </div>
 
-        {/* ---------- The map ---------- */}
+        {/* ---------- Map + the list that lives on it ---------- */}
         <div
           ref={hostRef}
-          className="map-paper relative mt-6 h-[420px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:h-[500px]"
+          className="map-paper relative mt-5 h-[70vh] max-h-[760px] min-h-[540px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50"
         >
           <VectorBasemap
             view={view}
             width={width}
             height={height}
             className="absolute inset-0"
-            attributionClassName="live-map-attribution pointer-events-none absolute right-3 top-3 z-20 text-[9px]"
+            attributionClassName="live-map-attribution pointer-events-none absolute bottom-[calc(46%+1.5rem)] left-3 z-20 text-[9px] lg:bottom-3"
           />
 
           {/* Where PB is: the same gold pin the live map uses, kept on top. */}
@@ -224,14 +404,12 @@ export default function NearbyPlacesPage() {
               <button
                 key={place.pageid}
                 type="button"
-                onClick={() => setSelected(active ? null : index)}
+                onClick={() => select(index)}
                 aria-label={`${place.title}, ${place.distanceKm.toFixed(1)} kilometres away`}
                 aria-pressed={active}
                 className={cn(
                   "group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 border-white text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
-                  active
-                    ? "bg-saffron-400 text-ink-950"
-                    : "bg-ink-950/85 text-white hover:bg-ink-800",
+                  active ? "bg-saffron-400 text-ink-950" : "bg-ink-950/85 text-white hover:bg-ink-800",
                 )}
                 style={{ left: `${point.x}%`, top: `${point.y}%` }}
               >
@@ -240,17 +418,19 @@ export default function NearbyPlacesPage() {
             );
           })}
 
-          {/* The bubble. Placed below the pin when the pin is high up, above it
-              when the pin is low, so it never leaves the map. */}
-          {selectedPlace && selectedXY && (
+          {/* The bubble: beside its pin, above or below depending on the room,
+              and slid inwards rather than allowed under the list. */}
+          {selectedPlace && bubble && (
             <div
               role="dialog"
               aria-label={selectedPlace.title}
               className="absolute z-30 w-[15.5rem] overflow-hidden rounded-2xl border border-white/10 bg-ink-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl"
               style={{
-                left: `${Math.min(88, Math.max(12, selectedXY.x))}%`,
-                top: `${selectedXY.y}%`,
-                transform: `translate(-50%, ${selectedXY.y > 35 ? "calc(-100% - " + BUBBLE_OFFSET + "px)" : BUBBLE_OFFSET + "px"})`,
+                left: `${bubble.left}px`,
+                top: `${bubble.top}px`,
+                transform: `translate(-50%, ${
+                  bubble.above ? `calc(-100% - ${BUBBLE_OFFSET}px)` : `${BUBBLE_OFFSET}px`
+                })`,
               }}
             >
               <div className="relative">
@@ -272,128 +452,37 @@ export default function NearbyPlacesPage() {
                   {selectedPlace.distanceKm.toFixed(1)} km away
                 </p>
                 <a
-                  href={googleMapsPlaceUrl({ lat: selectedPlace.lat, lng: selectedPlace.lng })}
-                  {...externalLinkProps(googleMapsPlaceUrl({ lat: selectedPlace.lat, lng: selectedPlace.lng }))}
+                  href={mapsUrlFor(selectedPlace)}
+                  {...externalLinkProps(mapsUrlFor(selectedPlace))}
                   className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-ink-950 transition-colors hover:bg-saffron-300"
                 >
                   <Navigation className="h-3 w-3" />
                   Open in Google Maps
                 </a>
+                <a
+                  href={selectedPlace.wikiUrl}
+                  {...externalLinkProps(selectedPlace.wikiUrl)}
+                  className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:text-white"
+                >
+                  Read on Wikipedia
+                  <ArrowUpRight className="h-3 w-3" />
+                </a>
               </div>
             </div>
           )}
 
-          <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex items-center gap-2 rounded-full bg-ink-950/80 px-3 py-1.5 text-[10px] text-zinc-400">
-            <Compass className="h-3 w-3 text-saffron-300" aria-hidden />
-            {loading
-              ? "Asking Wikipedia for places near here…"
-              : `${location.name} · ${places.length} places · tap a pin`}
+          {/* The list, on the map: a sidebar where there is width for one, a
+              sheet along the bottom where there is not. */}
+          <div
+            ref={panelRef}
+            className="absolute inset-x-3 bottom-3 z-20 flex h-[46%] flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/60 backdrop-blur-xl lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:h-auto lg:w-[350px] xl:w-[380px]"
+          >
+            {panelBody}
           </div>
         </div>
 
-        {/* ---------- The list ---------- */}
-        {loading && !places.length && (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-64 animate-pulse rounded-3xl border border-white/[0.06] bg-white/[0.03]" />
-            ))}
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="mt-8 rounded-3xl border border-amber-400/25 bg-amber-400/[0.07] p-5 text-sm text-amber-200">
-            <p>{error}</p>
-            <button
-              type="button"
-              onClick={reload}
-              className="mt-3 rounded-full border border-amber-300/40 px-4 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-300/10"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && !places.length && (
-          <div className="mt-8 rounded-3xl border border-white/[0.08] bg-white/[0.03] p-6 text-sm text-zinc-400">
-            <p className="font-display text-base font-semibold text-white">
-              Nothing geotagged within {radiusKm} km
-            </p>
-            <p className="mt-1.5 leading-relaxed">
-              Wikipedia has no articles pinned this close to {location.name}. Widen the search
-              radius in the dashboard — the tracker&apos;s live section sets it.
-            </p>
-          </div>
-        )}
-
-        {places.length > 0 && (
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {places.map((place, index) => {
-              const mapsUrl = googleMapsPlaceUrl({ lat: place.lat, lng: place.lng });
-              const active = selected === index;
-              return (
-                <li key={place.pageid}>
-                  <article
-                    className={cn(
-                      "group flex h-full flex-col overflow-hidden rounded-3xl border bg-white/[0.03] transition-colors duration-300",
-                      active ? "border-saffron-400/50" : "border-white/[0.08] hover:border-white/20",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelected(active ? null : index)}
-                      className="relative block w-full text-left"
-                      aria-label={`Show ${place.title} on the map`}
-                    >
-                      <PlaceThumb place={place} className="h-40 w-full transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width: 640px) 100vw, 33vw" />
-                      <span className="absolute left-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-ink-950/85 text-[11px] font-bold text-white">
-                        {index + 1}
-                      </span>
-                      <span className="absolute right-3 top-3 rounded-full bg-ink-950/85 px-2.5 py-1 font-mono text-[10px] text-saffron-300">
-                        {place.distanceKm.toFixed(1)} km
-                      </span>
-                    </button>
-                    <div className="flex flex-1 flex-col p-4">
-                      <h3 className="font-display text-base font-semibold leading-tight text-white">
-                        {place.title}
-                      </h3>
-                      {place.extract ? (
-                        <p className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-zinc-400">
-                          {place.extract}
-                        </p>
-                      ) : (
-                        <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
-                          {distanceKm({ lat: location.lat, lng: location.lng }, place).toFixed(1)} km from{" "}
-                          {location.name}.
-                        </p>
-                      )}
-                      <div className="mt-3 flex flex-wrap items-center gap-2 pt-1">
-                        <a
-                          href={mapsUrl}
-                          {...externalLinkProps(mapsUrl)}
-                          className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-[11px] font-semibold text-ink-950 transition-colors hover:bg-saffron-300"
-                        >
-                          <MapPin className="h-3 w-3" />
-                          Google Maps
-                          <ArrowUpRight className="h-3 w-3" />
-                        </a>
-                        <a
-                          href={place.wikiUrl}
-                          {...externalLinkProps(place.wikiUrl)}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
-                        >
-                          Wikipedia
-                        </a>
-                      </div>
-                    </div>
-                  </article>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <p className="mt-8 text-[11px] leading-relaxed text-zinc-500">
-          Places, text and photos come from{" "}
+        <p className="mt-5 text-[11px] leading-relaxed text-zinc-500">
+          Top places within {radiusKm} km of {location.name}, fetched live from{" "}
           <a
             href="https://www.wikipedia.org"
             {...externalLinkProps("https://www.wikipedia.org")}
@@ -401,7 +490,7 @@ export default function NearbyPlacesPage() {
           >
             Wikipedia
           </a>{" "}
-          and{" "}
+          with photos from{" "}
           <a
             href="https://commons.wikimedia.org"
             {...externalLinkProps("https://commons.wikimedia.org")}
@@ -409,8 +498,7 @@ export default function NearbyPlacesPage() {
           >
             Wikimedia Commons
           </a>{" "}
-          (CC BY-SA), fetched live around {location.name} · {radiusKm} km. Maps ©
-          OpenStreetMap contributors.
+          (CC BY-SA). Maps © OpenStreetMap contributors.
         </p>
       </main>
     </div>

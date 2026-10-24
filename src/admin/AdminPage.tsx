@@ -288,7 +288,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
       path: "nearby.radiusKm",
       label: "Nearby page — search radius (km)",
       kind: "number",
-      hint: "How far around the current location to look. 1–50 km.",
+      hint: "How far around the current location to look. 1–10 km; 10 is the maximum.",
     },
     {
       path: "nearby.count",
