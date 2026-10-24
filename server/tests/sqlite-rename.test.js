@@ -1,7 +1,8 @@
 /**
- * The bike used to be called طویل (Taweel). The rename to तस्कीन (Taskeen) has
+ * The bike used to be called طویل (Taweel). The rename to تسکین (Taskeen) has
  * to reach the site document that is already sitting in the database — the
- * defaults alone only cover a site that has never been saved.
+ * defaults alone only cover a site that has never been saved. A document saved
+ * while the Devanagari spelling was briefly in use is swept up as well.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -37,7 +38,7 @@ const legacyDocument = JSON.stringify({
   ],
 });
 
-test("the saved site document is renamed to तस्कीन (Taskeen)", async () => {
+test("the saved site document is renamed to تسکین (Taskeen)", async () => {
   const db = installedDatabase(legacyDocument);
   const report = migrateSqlite(db);
   const saved = db.prepare("SELECT content FROM site_content WHERE id = 1").get().content;
@@ -45,19 +46,40 @@ test("the saved site document is renamed to तस्कीन (Taskeen)", async
   const machine = sections[0];
 
   assert.ok(report.applied.includes(2), "the rename migration runs on an older database");
-  assert.equal(machine.label, "The Machine (तस्कीन / Taskeen)");
-  assert.equal(machine.data.titleHi, "तस्कीन");
+  assert.equal(machine.label, "The Machine (تسکین / Taskeen)");
+  assert.equal(machine.data.titleHi, "تسکین");
   assert.equal(machine.data.titleB, " (Taskeen) — Himalayan 450, Hanle Black.");
-  assert.equal(machine.data.namePlate, "तस्कीन");
+  assert.equal(machine.data.namePlate, "تسکین");
   assert.equal(machine.data.namePlateEn, "Taskeen");
   assert.equal(machine.data.filmCta, "Watch the Taskeen film");
   assert.equal(machine.data.gallery[0].alt, "Close-up of Taskeen's TripperDash console");
   // The name meant "long"; the replacement must not inherit the old meaning.
   assert.equal(
     machine.data.plateSub,
-    "Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind",
+    "Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind",
   );
-  assert.doesNotMatch(saved, /Taweel|طویل/, "no old name survives in the saved document");
+  assert.doesNotMatch(saved, /Taweel|طویل|तस्कीन/, "no old spelling survives in the saved document");
+});
+
+test("a document saved with the Devanagari spelling is rewritten too", () => {
+  // exactly what the previous release would have saved
+  const interim = legacyDocument
+    .replaceAll("طویل", "तस्कीन")
+    .replace(
+      "Named for the long roads out of Nangal Dam — तस्कीन means long",
+      "Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind",
+    );
+  const db = installedDatabase(interim);
+  migrateSqlite(db);
+  const saved = db.prepare("SELECT content FROM site_content WHERE id = 1").get().content;
+  const machine = JSON.parse(saved).sections[0];
+
+  assert.equal(machine.data.namePlate, "تسکین");
+  assert.equal(
+    machine.data.plateSub,
+    "Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind",
+  );
+  assert.doesNotMatch(saved, /Taweel|طویل|तस्कीन/);
 });
 
 test("running it twice changes nothing the second time", () => {

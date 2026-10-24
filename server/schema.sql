@@ -113,13 +113,17 @@ ALTER TABLE auth_events MODIFY event ENUM('signup','login','logout','failed_logi
 
 INSERT IGNORE INTO schema_migrations (version, name) VALUES (3, 'disabled accounts');
 
-UPDATE site_content SET content = REPLACE(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind');
+UPDATE site_content SET content = REPLACE(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind');
 
-UPDATE site_content SET content = REPLACE(content, 'طویل', 'तस्कीन');
+UPDATE site_content SET content = REPLACE(content, 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind');
+
+UPDATE site_content SET content = REPLACE(content, 'طویل', 'تسکین');
+
+UPDATE site_content SET content = REPLACE(content, 'तस्कीन', 'تسکین');
 
 UPDATE site_content SET content = REPLACE(content, 'Taweel', 'Taskeen');
 
-INSERT IGNORE INTO schema_migrations (version, name) VALUES (4, 'the bike is Taskeen, not Taweel');
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (4, 'the bike is Taskeen, written تسکین');
 
 INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '4');
 

@@ -906,20 +906,20 @@ const JOURNEY: JourneyData = {
 const MACHINE: MachineData = {
   eyebrow: "The machine",
   titleA: "Meet ",
-  titleHi: "तस्कीन",
+  titleHi: "تسکین",
   titleB: " (Taskeen) — Himalayan 450, Hanle Black.",
   sub: "32,000 km together across 19 states. One seized chain, zero regrets. Tap the + markers to highlight each accessory.",
   // Served from public/media, so a build never needs the internet to show the
   // bike. Swapping that file keeps every existing pointer position.
   mainImage: "/media/himalayan-450.png",
-  mainImageAlt: "तस्कीन (Taskeen) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
+  mainImageAlt: "تسکین (Taskeen) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
   km: 32000,
   odometer: { extraMilestones: [], updatedAt: "" },
-  namePlate: "तस्कीन",
+  namePlate: "تسکین",
   namePlateEn: "Taskeen",
-  plateSub: "Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind",
+  plateSub: "Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind",
   whyTitle: "Why Hanle Black?",
-  whyText: "Hanle, Ladakh — home to India's highest observatory and its darkest skies. PB shot the Milky Way timelapse of EP. 187 there, then ordered the matte-black तस्कीन (Taskeen) the same week. Zero chrome. All intent.",
+  whyText: "Hanle, Ladakh — home to India's highest observatory and its darkest skies. PB shot the Milky Way timelapse of EP. 187 there, then ordered the matte-black تسکین (Taskeen) the same week. Zero chrome. All intent.",
   whyFoot: "32.78° N · 78.96° E · BORTLE 1 SKIES",
   mods: [
     "Engine crash guards", "74L aluminium panniers", "Aux LED fog lamps",
@@ -930,8 +930,8 @@ const MACHINE: MachineData = {
   pdfFile: "",
   serviceLine: "Service log public · 11 services · chain+sprocket at 24k",
   gallery: [
-    { src: "", alt: "PB riding तस्कीन (Taskeen) on a Himalayan mountain road in Uttarakhand", cap: "Pithoragarh climb · 7,200 ft" },
-    { src: "", alt: "तस्कीन (Taskeen) parked before a Himalayan glacier backdrop", cap: "Glacier run · Day 9" },
+    { src: "", alt: "PB riding تسکین (Taskeen) on a Himalayan mountain road in Uttarakhand", cap: "Pithoragarh climb · 7,200 ft" },
+    { src: "", alt: "تسکین (Taskeen) parked before a Himalayan glacier backdrop", cap: "Glacier run · Day 9" },
     { src: "", alt: "Close-up of Taskeen's TripperDash console and gauges", cap: "TripperDash · full-map nav" },
   ],
   hotspots: [
@@ -1215,7 +1215,7 @@ const FAQ: FaqData = {
   email: "hello@pbfrompb.in",
   emailMeta: "Replies within 72 hours",
   items: [
-    { q: "How does the live tracker work?", a: "While PB is riding, a GPS ping lands every hour between 6:00 AM and 9:00 PM IST. Tap the blinking LIVE sign or the hero banner to open the live map page — it shows तस्कीन (Taskeen)'s real position with a pulsing marker. After 9 PM the tracker goes off-duty and wakes up again at 6 AM the next morning." },
+    { q: "How does the live tracker work?", a: "While PB is riding, a GPS ping lands every hour between 6:00 AM and 9:00 PM IST. Tap the blinking LIVE sign or the hero banner to open the live map page — it shows تسکین (Taskeen)'s real position with a pulsing marker. After 9 PM the tracker goes off-duty and wakes up again at 6 AM the next morning." },
     { q: "Who is PB, really?", a: "Parul Bedi ('PB') — a creator, rider and storyteller hailing from the scenic town of Nangal Dam, Punjab. In 2017, he hit the road to document India unfiltered. 8 years, all 28 states, 1.4 lakh kilometres and 380+ films later, the mission hasn't changed: make India feel reachable, one honest story at a time." },
     { q: "Do I need my own bike or car to follow the routes?", a: "No. Every route guide lists rental partners (with member discounts in 20+ cities), self-drive options and even public-transport alternates. Half the tribe does these trips on rented Himalayans, scooters and overnight buses." },
     { q: "Are the routes beginner-friendly?", a: "Each route carries a difficulty tag from 'Chill' to 'Expert', with daily distance caps, tarmac-vs-offroad ratios and bailout exits marked on the map. If a section needs experience, the guide says so in caps — I promise." },
@@ -1241,7 +1241,7 @@ const MAINTENANCE: MaintenanceData = {
 const COUNTDOWN: CountdownData = {
   badge: "Expedition drops in",
   title: "Spiti Circuit — Episode 214",
-  sub: "Twelve days over the world's highest villages, filmed on तस्कीन (Taskeen). Mark your calendar.",
+  sub: "Twelve days over the world's highest villages, filmed on تسکین (Taskeen). Mark your calendar.",
   targetDate: "",
   doneMessage: "The wait is over — it's live now.",
   ctaLabel: "Watch the teaser",
@@ -1286,7 +1286,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     { id: "sec-live", type: "live", label: "Live Tracker", enabled: true, data: { ...LIVE } },
     { id: "sec-features", type: "features", label: "Why PB (Features)", enabled: true, data: { ...FEATURES } },
     { id: "sec-journey", type: "journey", label: "Journey Showcase", enabled: true, data: { ...JOURNEY } },
-    { id: "sec-machine", type: "machine", label: "The Machine (तस्कीन / Taskeen)", enabled: true, data: { ...MACHINE } },
+    { id: "sec-machine", type: "machine", label: "The Machine (تسکین / Taskeen)", enabled: true, data: { ...MACHINE } },
     { id: "sec-gears", type: "gears", label: "Riding Gear & Wardrobe", enabled: true, data: { ...GEARS } },
     { id: "sec-riderkit", type: "riderkit", label: "The Gear", enabled: true, data: { ...RIDERKIT } },
     { id: "sec-benefits", type: "benefits", label: "Benefits & Showreel", enabled: true, data: { ...BENEFITS } },

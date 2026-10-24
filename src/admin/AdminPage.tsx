@@ -318,7 +318,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     IMG("mainImage", "Main bike image", "URL of the image"),
     T("mainImageAlt", "Main image alt text"),
     { path: "km", label: "Kilometres ridden (odometer)", kind: "number" },
-    T("namePlate", "Name plate (Hindi)", "e.g. तस्कीन"),
+    T("namePlate", "Name plate (Urdu)", "e.g. تسکین"),
     T("namePlateEn", "Name plate (English)", "e.g. Taskeen"),
     T("plateSub", "Name plate subtext"),
     T("whyTitle", "Story card title"),

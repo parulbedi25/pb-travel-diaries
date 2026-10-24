@@ -87,15 +87,18 @@ export const MIGRATIONS = [
   },
   {
     version: 4,
-    name: "the bike is Taskeen, not Taweel",
+    name: "the bike is Taskeen, written تسکین",
     // The machine's name lives inside the saved site document, so a rename is
     // a data change rather than a schema one — the owner would otherwise have
-    // to retype every field in the dashboard. The long sentence goes first so
-    // the blanket swap below cannot leave "तस्कीन means long" behind. Saved
-    // revisions are history and are deliberately left alone.
+    // to retype every field in the dashboard. The subtext sentence goes first
+    // so the blanket swaps below cannot leave "تسکین means long" behind. The
+    // Devanagari spelling is swept up too, in case a document was saved while
+    // the site briefly used it. Saved revisions are history and are untouched.
     up: sql(
-      "UPDATE site_content SET content = REPLACE(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind')",
-      "UPDATE site_content SET content = REPLACE(content, 'طویل', 'तस्कीन')",
+      "UPDATE site_content SET content = REPLACE(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind')",
+      "UPDATE site_content SET content = REPLACE(content, 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind')",
+      "UPDATE site_content SET content = REPLACE(content, 'طویل', 'تسکین')",
+      "UPDATE site_content SET content = REPLACE(content, 'तस्कीन', 'تسکین')",
       "UPDATE site_content SET content = REPLACE(content, 'Taweel', 'Taskeen')",
     ),
   },

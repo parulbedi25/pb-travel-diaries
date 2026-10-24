@@ -1,15 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  /* Devanagari sits in the fallback chain so the Hindi name reads correctly
-     wherever it appears — name plate, headings, or a sentence of body copy. */
-  --font-sans: "Inter", "Noto Sans Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Space Grotesk", var(--font-sans);
   --font-urdu: "Noto Nastaliq Urdu", "Noto Naskh Arabic", serif;
-  /* The bike's name is written in Hindi, so it needs a Devanagari face;
-     Noto Nastaliq Urdu has no Devanagari glyphs. */
-  --font-hindi: "Noto Sans Devanagari", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
-
   /* ── Hanle Black · matte black bodywork ── */
   --color-ink-950: #070707;
   --color-ink-900: #0d0d0d;
