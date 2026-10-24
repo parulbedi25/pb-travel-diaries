@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Gauge,
   Crosshair,
@@ -5412,7 +5413,7 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
 ];
 
 export default function AdminPage() {
-  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions } = useSite();
+  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions, previewAsVisitor, setPreviewAsVisitor } = useSite();
   const { account, setAccount } = useSite();
   const authed = Boolean(account);
   const [tab, setTab] = useState<Tab>("sections");
@@ -5575,6 +5576,38 @@ export default function AdminPage() {
                 >
                   <Eye className="h-3.5 w-3.5" /> View Website
                 </a>
+                {/* The editor is the one place an admin is already looking at
+                    when they want the visitor's view, so the switch lives here
+                    and not only behind the site header's toolbar. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewAsVisitor(!previewAsVisitor);
+                    window.location.hash = "#/";
+                  }}
+                  title={
+                    previewAsVisitor
+                      ? "You are previewing the site as a normal user. Click to return to Admin Edit Mode."
+                      : "Open the website with every editor toolbar hidden, exactly as a visitor sees it."
+                  }
+                  aria-pressed={previewAsVisitor}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-bold transition-all duration-300 active:scale-95",
+                    previewAsVisitor
+                      ? "border-amber-400/50 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+                      : "border-emerald-400/50 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25",
+                  )}
+                >
+                  {previewAsVisitor ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" /> Exit Preview
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" /> Preview as User
+                    </>
+                  )}
+                </button>
               </div>
             )}
 

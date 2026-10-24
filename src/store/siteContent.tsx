@@ -2053,6 +2053,9 @@ const SiteContext = createContext<SiteContextValue | null>(null);
    storage now, so the tabs tell each other directly and then re-read from the
    server. */
 
+/** Session key for the admin's "preview as a normal user" switch. */
+const PREVIEW_AS_USER_KEY = "pb_preview_as_user_v1";
+
 const CHANNEL_NAME = "pb-site";
 let channel: BroadcastChannel | null = null;
 
@@ -2085,7 +2088,36 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const [editedActions, setEditedActions] = useState<string[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [previewAsVisitor, setPreviewAsVisitor] = useState(false);
+  /**
+   * Preview mode outlives a route change and a reload. An admin who opens the
+   * site from the dashboard should land on the visitor's page, not on the
+   * editor with its toolbars back on; and a reload while previewing should not
+   * quietly drop them into edit mode. Session-scoped, so closing the tab ends
+   * it and it never leaks into a later visit.
+   */
+  const [previewAsVisitor, setPreviewState] = useState<boolean>(() => {
+    try {
+      return window.sessionStorage.getItem(PREVIEW_AS_USER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const setPreviewAsVisitor = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      setPreviewState((prev) => {
+        const next = typeof v === "function" ? v(prev) : v;
+        try {
+          if (next) window.sessionStorage.setItem(PREVIEW_AS_USER_KEY, "1");
+          else window.sessionStorage.removeItem(PREVIEW_AS_USER_KEY);
+        } catch {
+          /* private mode: the preview still works for this page */
+        }
+        return next;
+      });
+    },
+    [],
+  );
   const [theme, setThemeState] = useState<Theme>("dark");
   const [account, setAccountState] = useState<Account | null>(null);
   const accountRef = useRef<Account | null>(null);

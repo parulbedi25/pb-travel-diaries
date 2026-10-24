@@ -179,6 +179,8 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={() => setPreviewAsVisitor((v) => !v)}
+                aria-label={previewAsVisitor ? "Exit user preview" : "Preview as user"}
+                aria-pressed={previewAsVisitor}
                 className={cn(
                   "hidden sm:inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-300 shadow-md active:scale-95",
                   previewAsVisitor
@@ -194,12 +196,12 @@ export default function Navbar() {
                 {previewAsVisitor ? (
                   <>
                     <EyeOff className="h-3.5 w-3.5" />
-                    <span>Exit User View</span>
+                    <span className="site-preview-label">Exit User View</span>
                   </>
                 ) : (
                   <>
                     <Eye className="h-3.5 w-3.5" />
-                    <span>Preview as User</span>
+                    <span className="site-preview-label">Preview as User</span>
                   </>
                 )}
               </button>
