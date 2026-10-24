@@ -1,25 +1,90 @@
 import { useMemo } from "react";
 import {
   MapPin,
+  MapPinned,
   Mountain,
   Thermometer,
   Fuel,
   Navigation,
-  BellPlus,
+  Compass,
+  Route,
   Flag,
   ArrowUpRight,
+  Sparkles,
+  Images,
+  type LucideIcon,
 } from "lucide-react";
-import { resolveFooter, useSite, type LiveData } from "../store/siteContent";
+import type { LiveButton, LiveData } from "../store/siteContent";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
-import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
-import { ageLabel, useLiveLocation } from "../hooks/useLiveLocation";
+import { externalLinkProps } from "./ui/SocialIcons";
+import { ageLabel, useLiveLocation, type LiveLocationSeed } from "../hooks/useLiveLocation";
+import { currentStopIndex } from "../utils/liveRoute";
 import TrackerMap from "./TrackerMap";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
+/**
+ * The icons a tracker button may draw. The dashboard stores the key, so the
+ * copy of a button is a text field rather than a code change; anything
+ * unrecognised falls back to a pin instead of leaving the button blank.
+ */
+const TRACKER_ICONS: Record<string, LucideIcon> = {
+  "map-pin": MapPin,
+  "map-pinned": MapPinned,
+  navigation: Navigation,
+  compass: Compass,
+  route: Route,
+  flag: Flag,
+  "arrow-up-right": ArrowUpRight,
+  sparkles: Sparkles,
+  images: Images,
+};
+
+function TrackerButton({
+  cfg,
+  fallback,
+  primary,
+}: {
+  cfg: LiveButton | undefined;
+  fallback: LiveButton;
+  primary?: boolean;
+}) {
+  const button = { ...fallback, ...(cfg ?? {}) };
+  if (!button.visible) return null;
+  const Icon = TRACKER_ICONS[button.icon] ?? (primary ? MapPin : Navigation);
+  const href = button.href.trim() || fallback.href;
+  const external = /^https?:\/\//i.test(href);
+  return (
+    <a
+      href={href}
+      {...(external ? externalLinkProps(href) : {})}
+      className={cn(
+        "inline-flex flex-1 items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-300 active:scale-95",
+        primary
+          ? "bg-white text-ink-950 hover:shadow-[0_0_28px_rgba(255,255,255,0.25)]"
+          : "border border-white/15 text-white hover:border-white/30 hover:bg-white/[0.06]",
+      )}
+    >
+      <Icon className={cn("h-4 w-4", !primary && "text-saffron-300")} />
+      {button.label.trim() || fallback.label}
+    </a>
+  );
+}
+
 export default function LiveTracker({ data }: { data: LiveData }) {
-  const { location, status, ageSec, istTime } = useLiveLocation();
+  // Where the bike is comes from the route the dashboard owns: the stop marked
+  // "Here now". The bundled LIVE_LOCATION is only the last resort, for a site
+  // whose route has been emptied out.
+  const here = useMemo(() => {
+    const stops = data.stops ?? [];
+    if (!stops.length) return null;
+    const stop = stops[currentStopIndex(stops)];
+    return stop
+      ? ({ lat: stop.lat, lng: stop.lng, name: stop.name, state: stop.state, altitude: stop.altitude, note: stop.note } as LiveLocationSeed)
+      : null;
+  }, [data.stops]);
+  const { location, status, ageSec, istTime } = useLiveLocation(here);
   const lat = location.lat.toFixed(4);
   const lng = location.lng.toFixed(4);
   const note = data.note.trim() ? data.note : location.note;
@@ -47,12 +112,9 @@ export default function LiveTracker({ data }: { data: LiveData }) {
       : status === "stale"
         ? `Last ping ${ageLabel(ageSec)}`
         : "Window closed · 6 AM IST";
-  const { live: content } = useSite();
-  const instagramHref = useMemo(() => {
-    const instagram = resolveFooter(content.footer).socials.find((s) => s.label === "Instagram");
-    return instagram?.enabled && instagram.href.trim() ? instagram.href.trim() : "";
-  }, [content.footer]);
-  const storyHref = status === "live" ? instagramHref : "";
+  // Both calls to action are dashboard content now — label, link, icon and
+  // whether they show at all — so the fallbacks below only matter for a site
+  // saved before the buttons were configurable.
 
   return (
     <section id="live" aria-labelledby="live-title" className="relative py-24 sm:py-32">
@@ -247,21 +309,15 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <a
-                    href="#/live-map"
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-ink-950 transition-all duration-300 hover:shadow-[0_0_28px_rgba(255,255,255,0.25)] active:scale-95"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    Open live map
-                  </a>
-                  <a
-                    href={storyHref || "#cta"}
-                    {...(storyHref ? externalLinkProps(storyHref) : {})}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white transition-all duration-300 hover:border-white/30 hover:bg-white/[0.06] active:scale-95"
-                  >
-                    {storyHref ? <InstagramIcon className="h-4 w-4" /> : <BellPlus className="h-4 w-4 text-saffron-300" />}
-                    {storyHref ? "Follow live stories" : "Get ping alerts"}
-                  </a>
+                  <TrackerButton
+                    primary
+                    cfg={data.buttons?.map}
+                    fallback={{ label: "Open live map", href: "#/live-map", icon: "map-pin", visible: true }}
+                  />
+                  <TrackerButton
+                    cfg={data.buttons?.nearby}
+                    fallback={{ label: "Nearby places", href: "#/nearby", icon: "navigation", visible: true }}
+                  />
                 </div>
               </div>
             </Item>

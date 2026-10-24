@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 export const LIVE_MAP_PATH = "/live-map";
+export const NEARBY_PATH = "/nearby";
 export const SHOP_PATH = "/shop";
 export const ADMIN_PATH = "/admin";
 export const COMMAND_CENTER_PATH = "/commandcenter";
@@ -15,7 +16,7 @@ export const ADMIN_PATHS = new Set<string>([ADMIN_PATH, COMMAND_CENTER_PATH, "/p
 
 /**
  * Minimal hash router.
- * "#/live-map" and "#/shop" are full pages; "#journey", "#pricing" etc.
+ * "#/live-map", "#/nearby" and "#/shop" are full pages; "#journey", "#pricing" etc.
  * stay in-page anchors. Works when the built single-file app is served statically.
  */
 export function getHashRoute(): string {

@@ -461,6 +461,41 @@ export interface LiveStop {
   status: "done" | "live" | "next";
   lat: number;
   lng: number;
+  /** "Punjab, India" — shown under the current location. Optional. */
+  state?: string;
+  /** "1,150 ft" — the altitude tile on the tracker. Optional. */
+  altitude?: string;
+}
+
+/**
+ * One of the two buttons under the live tracker's detail card.
+ *
+ * Both are dashboard-owned now: the label, where it points, which icon it
+ * draws and whether it shows at all. `icon` is a key from TRACKER_ICONS in
+ * components/LiveTracker; an unknown key falls back to the default icon rather
+ * than leaving a button with a hole in it.
+ */
+export interface LiveButton {
+  label: string;
+  href: string;
+  icon: string;
+  visible: boolean;
+}
+
+/**
+ * Settings for the nearby-places page the second tracker button opens.
+ *
+ * The page itself asks Wikipedia for the places — no key, no bill — so all
+ * that is configured here is the shape of the search: how far out to look, how
+ * many places to show and what to call the page.
+ */
+export interface NearbySettings {
+  heading: string;
+  intro: string;
+  /** Search radius in kilometres. */
+  radiusKm: number;
+  /** How many places to list, 5–10. */
+  count: number;
 }
 
 export interface LiveData {
@@ -478,6 +513,10 @@ export interface LiveData {
    * tracker falls back to straight segments between the stops.
    */
   routeGeometry: [number, number][];
+  /** The two calls to action under the detail card. */
+  buttons: { map: LiveButton; nearby: LiveButton };
+  /** What the nearby-places page asks Wikipedia for, and what it says. */
+  nearby: NearbySettings;
 }
 export interface FeatureItem {
   icon: string;
@@ -863,14 +902,25 @@ const LIVE: LiveData = {
   // the way. Nangal is the start, so it also carries the live marker until the
   // ride moves. Every coordinate is editable in the dashboard.
   stops: [
-    { name: "Nangal", note: "Start · tank full, first light roll-out", status: "live", lat: 31.369, lng: 76.3729 },
-    { name: "Anandpur Sahib", note: "First halt · Kesgarh Sahib", status: "next", lat: 31.2394, lng: 76.5017 },
-    { name: "Bharatgarh", note: "Tea stop in the Shivalik foothills", status: "next", lat: 31.096, lng: 76.6154 },
-    { name: "Ropar", note: "Rupnagar · across the Sutlej", status: "next", lat: 30.9667, lng: 76.5236 },
-    { name: "Mohali", note: "Last stretch before the city", status: "next", lat: 30.7046, lng: 76.7179 },
-    { name: "Chandigarh", note: "Destination · Sector 17", status: "next", lat: 30.7333, lng: 76.7794 },
+    { name: "Nangal", note: "Start · tank full, first light roll-out", status: "live", lat: 31.369, lng: 76.3729, state: "Punjab, India", altitude: "1,150 ft" },
+    { name: "Anandpur Sahib", note: "First halt · Kesgarh Sahib", status: "next", lat: 31.2394, lng: 76.5017, state: "Punjab, India", altitude: "1,100 ft" },
+    { name: "Bharatgarh", note: "Tea stop in the Shivalik foothills", status: "next", lat: 31.096, lng: 76.6154, state: "Punjab, India", altitude: "1,020 ft" },
+    { name: "Ropar", note: "Rupnagar · across the Sutlej", status: "next", lat: 30.9667, lng: 76.5236, state: "Punjab, India", altitude: "850 ft" },
+    { name: "Mohali", note: "Last stretch before the city", status: "next", lat: 30.7046, lng: 76.7179, state: "Punjab, India", altitude: "1,000 ft" },
+    { name: "Chandigarh", note: "Destination · Sector 17", status: "next", lat: 30.7333, lng: 76.7794, state: "Chandigarh, India", altitude: "1,053 ft" },
   ],
   routeGeometry: [],
+  buttons: {
+    map: { label: "Open live map", href: "#/live-map", icon: "map-pin", visible: true },
+    nearby: { label: "Nearby places", href: "#/nearby", icon: "navigation", visible: true },
+  },
+  nearby: {
+    heading: "Nearby places",
+    intro:
+      "Pulled live from Wikipedia around wherever PB is right now — the temples, forts, lakes and viewpoints worth a detour.",
+    radiusKm: 10,
+    count: 8,
+  },
 };
 
 const FEATURES: FeaturesData = {

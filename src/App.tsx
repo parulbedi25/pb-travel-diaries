@@ -57,7 +57,7 @@ import CountdownSection, {
 import { EASE } from "./components/ui/motion";
 import { useAnchorScroll } from "./hooks/useAnchorScroll";
 import { useRouteScroll } from "./hooks/useRouteScroll";
-import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, NEARBY_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
 import ShopPage from "./components/ShopPage";
 import LockedSection from "./components/LockedSection";
 import MembersPage from "./members/MembersPage";
@@ -68,6 +68,7 @@ import { describeApiError } from "./api/client";
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
 const LiveMapPage = lazy(() => import("./components/LiveMapPage"));
+const NearbyPlacesPage = lazy(() => import("./components/NearbyPlacesPage"));
 
 function RouteFallback() {
   return (
@@ -290,6 +291,13 @@ function Shell() {
     return (
       <Suspense fallback={<RouteFallback />}>
         <LiveMapPage />
+      </Suspense>
+    );
+  }
+  if (route === NEARBY_PATH) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <NearbyPlacesPage />
       </Suspense>
     );
   }
