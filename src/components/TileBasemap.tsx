@@ -37,8 +37,20 @@ export default function TileBasemap({
   );
 
   return (
-    <div className={className} data-raster-theme={theme} aria-hidden="true"
-      style={{ filter: theme === "light" ? "none" : "invert(1) hue-rotate(180deg) brightness(0.75) saturate(0.65)" }}>
+    <div
+      className={className}
+      data-raster-theme={theme}
+      aria-hidden="true"
+      // OSM only publishes one drawing, drawn for a white page. In dark mode it
+      // is inverted so the map follows the theme instead of glowing white
+      // behind white text; in light mode it is left exactly as published.
+      style={{
+        filter:
+          theme === "light"
+            ? "none"
+            : "invert(1) hue-rotate(180deg) brightness(0.72) saturate(0.7)",
+      }}
+    >
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}

@@ -407,8 +407,6 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("titleHi", "Title — highlighted"),
     T("titleB", "Title — after highlight"),
     TA("sub", "Subtitle"),
-    T("videoUrl", "Drone video URL", "Optional: paste the /media/ URL of your uploaded MP4. Leave empty to use the bundled loop."),
-    IMG("videoPoster", "Video poster image"),
     T("videoLine", "Showreel headline line"),
     STR("videoChips", "Showreel chips", "One per line"),
     TA("quote", "PB portrait quote"),
@@ -4389,10 +4387,10 @@ function MediaPanel() {
         <h3 className="mt-3 font-display text-lg font-semibold text-white">Media folder</h3>
         <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
           Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG) and documents (PDF, Word, Excel,
-          PowerPoint, CSV, TXT, ZIP) from your computer. They are saved on the server in media/ and can be
+          PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
           picked on any image or file field. You can also drop files into{" "}
           <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-saffron-300">
-            media/
+            public/media/
           </code>{" "}
           and use <code className="font-mono text-[11px] text-zinc-300">/media/filename.pdf</code>.
         </p>
@@ -4485,8 +4483,6 @@ function MediaPanel() {
                     <button
                       type="button"
                       onClick={() => setPendingDelete(m)}
-                      disabled={m.bundled}
-                      title={m.bundled ? "Bundled photo — select a replacement in the section editor" : "Delete file"}
                       aria-label={`Delete ${m.name}`}
                       className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
                     >

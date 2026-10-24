@@ -252,7 +252,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
   const pointForEntry = (entry: GearEntry) =>
     mapPointerEntries.find((pointer) => pointer.entry.index === entry.index)?.point ?? ZONE_ZOOM_POINTS[entry.zone];
   const bubblePoint = bubbleEntry ? zoomPoint ?? pointForEntry(bubbleEntry) : null;
-  const zoomed = Boolean(zoomPoint && bubbleEntry) && window.matchMedia("(min-width: 768px) and (hover: hover) and (pointer: fine)").matches;
+  const zoomed = Boolean(zoomPoint && bubbleEntry);
   const sameZoneEntries = mapFocusedEntry ? entries.filter((entry) => entry.zone === mapFocusedEntry.zone) : [];
   const orderedEntries = mapFocusedEntry
     ? [
@@ -329,7 +329,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
     else setZoomPoint(null);
   };
   const handleMapPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "mouse" || !window.matchMedia("(min-width: 768px)").matches) return;
+    if (event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
     const point = {
       x: Math.max(0, Math.min(100, Math.round(((event.clientX - rect.left) / rect.width) * 100))),
@@ -444,8 +444,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                             clearMapHover(entry.index);
                             setZoomPoint(pinnedIndex === entry.index ? point : null);
                           }}
-                          onPointerEnter={(event) => {
-                            if (event.pointerType !== "mouse" || !window.matchMedia("(min-width: 768px)").matches) return;
+                          onPointerEnter={() => {
                             if (!focused) focusMapEntry(entry.index, point);
                           }}
                           onClick={(event) => {

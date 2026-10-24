@@ -2,8 +2,6 @@ import { siteApi } from "../api/siteApi";
 
 export interface MediaItem {
   id: string;
-  /** Included with the website; selectable but protected from deletion. */
-  bundled?: boolean;
   name: string;
   type: string;
   size: number;

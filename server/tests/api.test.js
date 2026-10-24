@@ -237,37 +237,8 @@ test("an image upload lands on disk and is served back", async () => {
   assert.equal((await served.arrayBuffer()).byteLength, png.length);
 
   const list = await call("GET", "/api/media");
-  assert.equal(list.json.media.filter(item => !item.bundled).length, 1);
+  assert.equal(list.json.media.length, 1);
   assert.equal(list.json.media[0].name, "helmet.png");
-});
-
-test("new travel collection appears in the dashboard library and remains selectable with custom MEDIA_DIR", async () => {
-  const first = await call("GET", "/api/media");
-  assert.equal(first.status, 200);
-  const bundled = first.json.media.filter(item => item.bundled && item.kind === "image");
-  const video = first.json.media.find(item => item.ext === "mp4" && item.bundled);
-  assert.equal(video?.type, "video/mp4");
-  assert.equal(video?.kind, "video");
-  assert.equal(video?.dataUrl, "/media/starter/drone-city-loop.mp4");
-  assert.equal(bundled.length, 8);
-  assert.equal(new Set(bundled.map(item => item.id)).size, 8);
-  assert.deepEqual((await call("GET", "/api/media")).json.media, first.json.media);
-  for (const item of bundled) {
-    assert.match(item.name, /bundled/);
-    assert.equal(item.kind, "image");
-    assert.equal(item.type, "image/webp");
-    const response = await fetch(base + item.dataUrl);
-    assert.equal(response.status, 200, item.name);
-    assert.equal((await response.arrayBuffer()).byteLength, item.size);
-  }
-  const deletion = await call("DELETE", `/api/media/${encodeURIComponent(bundled[0].id)}`);
-  assert.equal(deletion.status, 403);
-  assert.match(deletion.json.error, /Bundled photos/);
-  assert.equal((await call("GET", "/api/media")).json.media.filter(item => item.bundled && item.kind === "image").length, 8);
-  const saved = cookies.session;
-  delete cookies.session;
-  assert.equal((await call("GET", "/api/media")).status, 401);
-  cookies.session = saved;
 });
 
 test("unsupported upload types are refused", async () => {
@@ -293,7 +264,7 @@ test("deleting media removes the row and the file", async () => {
   const filename = item.dataUrl.replace("/media/", "");
 
   assert.equal((await call("DELETE", `/api/media/${item.id}`)).status, 200);
-  assert.equal((await call("GET", "/api/media")).json.media.filter(item => !item.bundled).length, 0);
+  assert.equal((await call("GET", "/api/media")).json.media.length, 0);
   await assert.rejects(fs.access(path.join(mediaDir, filename)), "the file is gone from disk");
 });
 
@@ -678,46 +649,4 @@ test("unlisted commandcenter opens the login route without authenticating visito
   }
   const protectedResponse = await fetch(base + "/api/auth/users");
   assert.equal(protectedResponse.status, 401, "recovery URL must not bypass authentication");
-});
-
-test("optional studio skin is served as CSS rather than the SPA document", async () => {
-  const response = await fetch(base + "/studio-skin.css");
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /text\/css/);
-  assert.equal(response.headers.get("cache-control"), "no-cache");
-  const css = await response.text();
-  assert.match(css, /body:has\(main #top\)/);
-  assert.match(css, /prefers-reduced-motion/);
-  assert.match(css, /var\(--color-saffron-400\)/);
-});
-
-test("Hero and Journey starter photos are local, including with a custom upload folder", async () => {
-  for (const name of ["ladakh", "nubra", "spiti", "rajasthan", "varanasi", "meghalaya", "kerala", "goa"]) {
-    const response = await fetch(base + `/media/starter/${name}.webp`);
-    assert.equal(response.status, 200, name);
-    assert.match(response.headers.get("content-type"), /image\/webp/);
-    assert.ok((await response.arrayBuffer()).byteLength > 1000);
-  }
-  const response = await fetch(base + "/media/starter/credits.html");
-  assert.equal(response.status, 200);
-  assert.match(await response.text(), /Creative Commons/);
-});
-
-
-test("drone footage is locally streamed with range support and includes a poster", async () => {
-  const full = await fetch(base + "/media/starter/drone-city-loop.mp4");
-  assert.equal(full.status, 200);
-  assert.match(full.headers.get("content-type"), /video\/mp4/);
-  const bytes = Buffer.from(await full.arrayBuffer());
-  assert.equal(bytes.subarray(4, 8).toString(), "ftyp");
-  assert.ok(bytes.indexOf(Buffer.from("moov")) < bytes.indexOf(Buffer.from("mdat")), "fast-start metadata precedes video bytes");
-  const partial = await fetch(base + "/media/starter/drone-city-loop.mp4", { headers: { Range: "bytes=0-1023" } });
-  assert.equal(partial.status, 206);
-  assert.equal((await partial.arrayBuffer()).byteLength, 1024);
-  assert.match(partial.headers.get("content-range"), /^bytes 0-1023\//);
-  const poster = await fetch(base + "/media/starter/drone-city-poster.webp");
-  assert.equal(poster.status, 200);
-  assert.match(poster.headers.get("content-type"), /image\/webp/);
-  const credits = await fetch(base + "/media/starter/credits.html?v=drone-loop-1");
-  assert.match(await credits.text(), /ArtHouse Studio/);
 });

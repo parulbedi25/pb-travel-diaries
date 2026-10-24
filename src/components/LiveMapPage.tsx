@@ -3,7 +3,6 @@ import { ArrowLeft, Clock, Compass, MapPin, Mountain } from "lucide-react";
 import { useLiveLocation, type LiveStatus } from "../hooks/useLiveLocation";
 import VectorBasemap from "./VectorBasemap";
 import ThemeToggle from "./ThemeToggle";
-import { useSite } from "../store/siteContent";
 import { makeMercatorProjector } from "../utils/mercator";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
@@ -134,7 +133,7 @@ function PositionMap({
         width={width}
         height={height}
         className="absolute inset-0"
-        attributionClassName="pointer-events-none absolute bottom-3 right-3 text-[9px] text-zinc-500"
+        attributionClassName="live-map-attribution pointer-events-none absolute right-3 top-3 z-20 text-[9px]"
       />
       <div
         className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
@@ -176,7 +175,6 @@ function PositionMap({
 }
 
 export default function LiveMapPage() {
-  const { theme } = useSite();
   const {
     location,
     status,
@@ -207,6 +205,8 @@ export default function LiveMapPage() {
           <span className="sm:ml-1">
             <StatusChip status={status} />
           </span>
+          {/* The map, the card and the badges all follow the site theme, so the
+              switch belongs on this page and not only on the homepage. */}
           <ThemeToggle className="ml-auto shrink-0" />
         </div>
       </header>
@@ -222,8 +222,7 @@ export default function LiveMapPage() {
 
         {/* ---------- Info Card ---------- */}
         <div className="absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">
-          <div className="live-location-card w-full max-w-sm rounded-3xl border p-5 shadow-2xl shadow-black/50 sm:p-6"
-            style={{ backgroundColor: theme === "light" ? "#fffdf7" : "#111112", color: theme === "light" ? "#242019" : "#f4f4f5", opacity: 1, backdropFilter: "none" }}>
+          <div className="live-location-card w-full max-w-sm rounded-3xl border p-5 sm:p-6">
             <p
               className={cn(
                 "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em]",
@@ -301,7 +300,7 @@ export default function LiveMapPage() {
 
         {/* Machine info badge */}
         <div className="absolute bottom-5 right-14 z-10 hidden lg:block">
-          <span className="inline-flex items-center gap-2 rounded-full glass px-4 py-2 text-[11px] font-medium text-zinc-400">
+          <span className="live-map-badge inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-medium">
             <Compass className="h-3.5 w-3.5 text-saffron-400" />
             طویل (Taweel) · Royal Enfield Himalayan 450 · Hanle Black
           </span>

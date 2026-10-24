@@ -110,11 +110,6 @@ export function createApp() {
     }),
   );
 
-  // Curated starters remain available even when MEDIA_DIR points elsewhere.
-  app.use("/media/starter", express.static(path.join(config.root, "media/starter"), {
-    index: false, dotfiles: "deny", maxAge: "1d",
-  }));
-
   // Shipped media has one canonical copy in public/. Uploads still win.
   app.use(
     "/media",
@@ -139,13 +134,6 @@ export function createApp() {
   app.get("/mobile-layout.css", (req, res, next) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(config.root, "public/mobile-layout.css"),
-      (error) => { if (error) next(error); });
-  });
-
-  // Optional homepage skin; fixed asset path, never a request-controlled file.
-  app.get("/studio-skin.css", (req, res, next) => {
-    res.setHeader("Cache-Control", "no-cache");
-    res.sendFile(path.join(config.root, "public/studio-skin.css"),
       (error) => { if (error) next(error); });
   });
 
