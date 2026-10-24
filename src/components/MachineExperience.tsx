@@ -1332,10 +1332,14 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   };
 
   return (
-    <section id="machine" aria-labelledby="machine-title" className="relative py-24 sm:py-32">
+    // The Urdu name reaches well above its line box, so the heading gets extra
+    // headroom and the section gives up the same amount at the top — the word
+    // clears the eyebrow without the section growing taller.
+    <section id="machine" aria-labelledby="machine-title" className="relative pb-24 pt-16 sm:pb-32 sm:pt-24">
       <SectionHeader
         eyebrow={data.eyebrow}
         id="machine-title"
+        titleClassName="mt-10"
         title={<>{data.titleA}<span className="text-gradient font-urdu urdu-inline" dir="rtl" lang="ur">{data.titleHi}</span>{data.titleB}</>}
         sub={data.sub}
       />
