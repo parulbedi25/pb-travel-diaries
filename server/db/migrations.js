@@ -85,6 +85,20 @@ export const MIGRATIONS = [
       `ALTER TABLE auth_events MODIFY event ENUM(${AUTH_EVENTS.map((e) => `'${e}'`).join(",")}) NOT NULL`,
     ),
   },
+  {
+    version: 4,
+    name: "the bike is Taskeen, not Taweel",
+    // The machine's name lives inside the saved site document, so a rename is
+    // a data change rather than a schema one — the owner would otherwise have
+    // to retype every field in the dashboard. The long sentence goes first so
+    // the blanket swap below cannot leave "तस्कीन means long" behind. Saved
+    // revisions are history and are deliberately left alone.
+    up: sql(
+      "UPDATE site_content SET content = REPLACE(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind')",
+      "UPDATE site_content SET content = REPLACE(content, 'طویل', 'तस्कीन')",
+      "UPDATE site_content SET content = REPLACE(content, 'Taweel', 'Taskeen')",
+    ),
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

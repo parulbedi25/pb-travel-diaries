@@ -15,6 +15,19 @@
    its words when there is room; the header's own 1599px rule hides title-only
    buttons outright, which is why this one carries an aria-label. */
 @media (max-width: 1535px) { .site-preview-label { display: none; } }
+/* Devanagari in the fallback chain, not a class: the name also turns up inside
+   ordinary sentences (hero copy, FAQ answers, the live map). Latin text keeps
+   Inter and Space Grotesk exactly as before — a browser only reaches for a
+   fallback when the glyph is missing. */
+:root {
+  --font-sans: "Inter", "Noto Sans Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* The bike's name is written in Hindi now (तस्कीन), and the display faces this
+   site loads are Latin-only, so the name plate asks for a Devanagari family
+   explicitly instead of leaving it to whatever the device happens to have. */
+.font-hindi { font-family: "Noto Sans Devanagari", "Noto Sans", ui-sans-serif, system-ui, sans-serif; }
+
 .site-mobile-menu-content > a,
 .site-mobile-menu-content > div > a { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
 .site-mobile-menu-content svg { flex-shrink: 0; }

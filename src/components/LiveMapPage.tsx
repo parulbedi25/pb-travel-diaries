@@ -200,7 +200,7 @@ export default function LiveMapPage() {
           <Logo compact />
           <span className="hidden h-6 w-px bg-white/10 sm:block" aria-hidden />
           <h1 className="font-display text-sm font-semibold tracking-tight text-white sm:text-base">
-            طویل (Taweel) · Live Map
+            तस्कीन (Taskeen) · Live Map
           </h1>
           <span className="sm:ml-1">
             <StatusChip status={status} />
@@ -283,7 +283,7 @@ export default function LiveMapPage() {
                 <span className="font-semibold text-saffron-300">
                   {formatCountdown(windowCloseMs - now.getTime())}
                 </span>{" "}
-                (9:00 PM IST) — then طویل (Taweel) goes off-grid till morning.
+                (9:00 PM IST) — then तस्कीन (Taskeen) goes off-grid till morning.
               </p>
             )}
             {status === "stale" && (
@@ -302,7 +302,7 @@ export default function LiveMapPage() {
         <div className="absolute bottom-5 right-14 z-10 hidden lg:block">
           <span className="live-map-badge inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-medium">
             <Compass className="h-3.5 w-3.5 text-saffron-400" />
-            طویل (Taweel) · Royal Enfield Himalayan 450 · Hanle Black
+            तस्कीन (Taskeen) · Royal Enfield Himalayan 450 · Hanle Black
           </span>
         </div>
       </div>
