@@ -8,6 +8,11 @@ import { isOn } from "../utils/enabled";
 import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
 
 export default function Benefits({ data }: { data: BenefitsData }) {
+  // The section film is a content field, so the owner can swap the drone shot
+  // for their own from the dashboard. The old constant stays as a last resort
+  // for content saved before the field existed.
+  const videoSrc = data.videoSrc || SHOWREEL_VIDEO;
+  const videoPoster = data.videoPoster || IMAGES.videoPoster;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
   const { content } = useSite();
@@ -69,12 +74,12 @@ export default function Benefits({ data }: { data: BenefitsData }) {
             <video
               ref={videoRef}
               className="aspect-[16/10] w-full object-cover sm:aspect-[21/9]"
-              {...(SHOWREEL_VIDEO ? { src: SHOWREEL_VIDEO, poster: IMAGES.videoPoster } : {})}
+              {...(videoSrc ? { src: videoSrc, poster: videoPoster } : {})}
               muted
               loop
               playsInline
               preload="none"
-              aria-label="Aerial showreel of Himalayan valleys"
+              aria-label="Drone film of a green Himalayan valley"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950/90 via-ink-950/20 to-ink-950/30" />
 

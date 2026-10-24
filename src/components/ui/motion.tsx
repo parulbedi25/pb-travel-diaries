@@ -134,12 +134,15 @@ export function SectionHeader({
   sub,
   align = "center",
   id,
+  titleClassName,
 }: {
   eyebrow: string;
   title: ReactNode;
   sub?: string;
   align?: "center" | "left";
   id?: string;
+  /** Extra classes on the h2 — e.g. more headroom above a Nastaliq title. */
+  titleClassName?: string;
 }) {
   return (
     // data-section-anchor: the block a jump aims at. Not the section's top,
@@ -160,7 +163,10 @@ export function SectionHeader({
       <Reveal delay={0.08}>
         <h2
           id={id}
-          className="mt-5 font-display text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-[2.75rem] text-balance"
+          className={cn(
+            "mt-5 font-display text-3xl font-semibold leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-[2.75rem] text-balance",
+            titleClassName
+          )}
         >
           {title}
         </h2>

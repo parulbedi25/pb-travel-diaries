@@ -19,6 +19,22 @@ export const SQLITE_MIGRATIONS = [{
     `CREATE TABLE settings (setting_key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at ${timestamp})`,
     `INSERT INTO settings (setting_key,value) VALUES ('theme','"dark"'),('schema_version','1')`,
   ],
+}, {
+  version: 2,
+  name: "the bike is Taskeen, written تسکین",
+  // Same rename as the MySQL side: the machine's name is stored inside the
+  // saved site document, so it is rewritten here rather than left for the
+  // owner to retype in the dashboard. The subtext sentence goes first so the
+  // blanket swaps cannot leave "تسکین means long" behind, and the Devanagari
+  // spelling is swept up in case a document was saved while it was in use.
+  // Revisions keep the name they were saved with — they are history.
+  statements: [
+    `UPDATE site_content SET content = replace(content, 'Named for the long roads out of Nangal Dam — طویل means long', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind')`,
+    `UPDATE site_content SET content = replace(content, 'Named for the calm of the long roads out of Nangal Dam — तस्कीन means peace of mind', 'Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind')`,
+    `UPDATE site_content SET content = replace(content, 'طویل', 'تسکین')`,
+    `UPDATE site_content SET content = replace(content, 'तस्कीन', 'تسکین')`,
+    `UPDATE site_content SET content = replace(content, 'Taweel', 'Taskeen')`,
+  ],
 }];
 export const SQLITE_VERSION = SQLITE_MIGRATIONS.at(-1).version;
 export function migrateSqlite(db) {

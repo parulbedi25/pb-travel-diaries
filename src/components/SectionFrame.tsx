@@ -227,9 +227,11 @@ export default function SectionFrame({
 
       {/* Pale pill with a gold rule and dark glyphs, so the controls read
           the same over a black section or a cream one. z-[70] keeps it above
-          section content (some sections own z-30 controls in this corner) and
-          above the fixed header, which used to swallow every click but Edit. */}
-      <div className="section-chrome section-chrome-plate section-chrome-toolbar pointer-events-none absolute right-3 top-3 z-[70] flex items-center gap-0.5 rounded-full p-1">
+          section content (some sections own z-30 controls in this corner).
+          It sits *below* the fixed header rather than under it: the header is
+          the only place the Preview toggle lives, and a toolbar parked on top
+          of it swallowed those clicks on the first section of the page. */}
+      <div className="section-chrome section-chrome-plate section-chrome-toolbar pointer-events-none section-chrome-anchor absolute right-3 z-[70] flex items-center gap-0.5 rounded-full p-1">
         <button
           type="button"
           onClick={() => setEditing(true)}
@@ -303,7 +305,7 @@ export default function SectionFrame({
         />
       ))}
 
-      <span className="section-chrome section-chrome-plate pointer-events-none absolute left-3 top-3 z-[70] inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px]">
+      <span className="section-chrome section-chrome-plate pointer-events-none section-chrome-anchor absolute left-3 z-[70] inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px]">
         <SlidersHorizontal className="h-3 w-3" />
         <span className="font-mono">
           {layout.height ? `${layout.height}px` : "auto"}

@@ -4,7 +4,6 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Space Grotesk", var(--font-sans);
   --font-urdu: "Noto Nastaliq Urdu", "Noto Naskh Arabic", serif;
-
   /* ── Hanle Black · matte black bodywork ── */
   --color-ink-950: #070707;
   --color-ink-900: #0d0d0d;
@@ -210,6 +209,14 @@
 
   .font-urdu {
     font-family: var(--font-urdu);
+  }
+
+  /* Nastaliq draws much taller than the Latin beside it, so an Urdu word set at
+     the same size reads oversized and stretches the line. A touch smaller, with
+     a line box that does not add height. */
+  .urdu-inline {
+    font-size: 0.84em;
+    line-height: 1;
   }
 
   /* Ambient glow blobs: promote to their own layer so the blur is composited once */

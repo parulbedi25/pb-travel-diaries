@@ -645,7 +645,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       <div className="absolute inset-x-5 bottom-5 z-10 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="flex flex-wrap items-baseline gap-x-2 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            <span className="font-urdu text-3xl sm:text-4xl" dir="rtl" lang="ur">{data.namePlate}</span>
+            <span className="font-urdu text-2xl leading-none sm:text-3xl" dir="rtl" lang="ur">{data.namePlate}</span>
             {data.namePlateEn && <span className="text-lg font-medium text-zinc-400 sm:text-xl">({data.namePlateEn})</span>}
           </p>
           <p className="text-xs text-zinc-400 sm:text-sm">{data.plateSub}</p>
@@ -898,7 +898,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const review = (
-    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
+    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">Take <span className="font-urdu urdu-inline" dir="rtl" lang="ur">{data.namePlate}</span> ({data.namePlateEn}) for a spin</h3><p className="mt-1 text-xs text-zinc-500">The full review + setup sheet</p><div className="mt-5 flex flex-1 flex-col gap-3"><a href="#showreel" className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-saffron-400 px-5 py-4 font-display text-sm font-semibold text-on-gold shadow-xl shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"><Play className="h-4 w-4 fill-current" />{data.filmCta}</a><button type="button" onClick={() => void downloadSheet()} className="group inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-4 font-display text-sm font-semibold text-white transition-all duration-300 hover:bg-white hover:text-ink-950 active:scale-95"><Download className="h-4 w-4" />{data.pdfCta}</button></div><p className="mt-4 text-center text-[11px] text-zinc-500">{data.serviceLine}</p></div>
   );
 
   const galleryBlocks = gallery.map(({ photo: g, sourceIndex }) => ({
@@ -1332,11 +1332,15 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   };
 
   return (
-    <section id="machine" aria-labelledby="machine-title" className="relative py-24 sm:py-32">
+    // The Urdu name reaches well above its line box, so the heading gets extra
+    // headroom and the section gives up the same amount at the top — the word
+    // clears the eyebrow without the section growing taller.
+    <section id="machine" aria-labelledby="machine-title" className="relative pb-24 pt-16 sm:pb-32 sm:pt-24">
       <SectionHeader
         eyebrow={data.eyebrow}
         id="machine-title"
-        title={<>{data.titleA}<span className="text-gradient font-urdu" dir="rtl" lang="ur">{data.titleHi}</span>{data.titleB}</>}
+        titleClassName="mt-10"
+        title={<>{data.titleA}<span className="text-gradient font-urdu urdu-inline" dir="rtl" lang="ur">{data.titleHi}</span>{data.titleB}</>}
         sub={data.sub}
       />
 

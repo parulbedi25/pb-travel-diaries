@@ -665,6 +665,10 @@ export interface BenefitsData {
   titleHi: string;
   titleB: string;
   sub: string;
+  /** Looping background film for the section. Empty falls back to the old showreel constant. */
+  videoSrc: string;
+  /** Still shown before the film starts, and instead of it on a slow connection. */
+  videoPoster: string;
   videoLine: string;
   videoChips: string[];
   quote: string;
@@ -853,7 +857,7 @@ const LIVE: LiveData = {
   titleA: "PB is ",
   titleHi: "on the road",
   titleB: " right now.",
-  sub: "A live GPS window into the current expedition. Location pings land every hour between 6:00 AM and 9:00 PM IST — straight from Taweel's handlebar mount to this page.",
+  sub: "A live GPS window into the current expedition. Location pings land every hour between 6:00 AM and 9:00 PM IST — straight from Taskeen's handlebar mount to this page.",
   note: "Rolling out of Nangal at first light — the Shivalik foothills all the way down to Chandigarh.",
   // Nangal down to Chandigarh: Anandpur Sahib, Bharatgarh, Ropar and Mohali on
   // the way. Nangal is the start, so it also carries the live marker until the
@@ -906,33 +910,33 @@ const JOURNEY: JourneyData = {
 const MACHINE: MachineData = {
   eyebrow: "The machine",
   titleA: "Meet ",
-  titleHi: "طویل",
-  titleB: " (Taweel) — Himalayan 450, Hanle Black.",
+  titleHi: "تسکین",
+  titleB: " (Taskeen) — Himalayan 450, Hanle Black.",
   sub: "32,000 km together across 19 states. One seized chain, zero regrets. Tap the + markers to highlight each accessory.",
   // Served from public/media, so a build never needs the internet to show the
   // bike. Swapping that file keeps every existing pointer position.
   mainImage: "/media/himalayan-450.png",
-  mainImageAlt: "طویل (Taweel) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
+  mainImageAlt: "تسکین (Taskeen) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
   km: 32000,
   odometer: { extraMilestones: [], updatedAt: "" },
-  namePlate: "طویل",
-  namePlateEn: "Taweel",
-  plateSub: "Named for the long roads out of Nangal Dam — طویل means long",
+  namePlate: "تسکین",
+  namePlateEn: "Taskeen",
+  plateSub: "Named for the calm of the long roads out of Nangal Dam — تسکین means peace of mind",
   whyTitle: "Why Hanle Black?",
-  whyText: "Hanle, Ladakh — home to India's highest observatory and its darkest skies. PB shot the Milky Way timelapse of EP. 187 there, then ordered the matte-black طویل (Taweel) the same week. Zero chrome. All intent.",
+  whyText: "Hanle, Ladakh — home to India's highest observatory and its darkest skies. PB shot the Milky Way timelapse of EP. 187 there, then ordered the matte-black تسکین (Taskeen) the same week. Zero chrome. All intent.",
   whyFoot: "32.78° N · 78.96° E · BORTLE 1 SKIES",
   mods: [
     "Engine crash guards", "74L aluminium panniers", "Aux LED fog lamps",
     "Tail rack + Rotopax", "Tubeless conversion", "Tank bag + 3-cam rig",
   ],
-  filmCta: "Watch the Taweel film",
+  filmCta: "Watch the Taskeen film",
   pdfCta: "Free setup sheet (PDF)",
   pdfFile: "",
   serviceLine: "Service log public · 11 services · chain+sprocket at 24k",
   gallery: [
-    { src: "", alt: "PB riding طویل (Taweel) on a Himalayan mountain road in Uttarakhand", cap: "Pithoragarh climb · 7,200 ft" },
-    { src: "", alt: "طویل (Taweel) parked before a Himalayan glacier backdrop", cap: "Glacier run · Day 9" },
-    { src: "", alt: "Close-up of Taweel's TripperDash console and gauges", cap: "TripperDash · full-map nav" },
+    { src: "", alt: "PB riding تسکین (Taskeen) on a Himalayan mountain road in Uttarakhand", cap: "Pithoragarh climb · 7,200 ft" },
+    { src: "", alt: "تسکین (Taskeen) parked before a Himalayan glacier backdrop", cap: "Glacier run · Day 9" },
+    { src: "", alt: "Close-up of Taskeen's TripperDash console and gauges", cap: "TripperDash · full-map nav" },
   ],
   hotspots: [
     {
@@ -1141,6 +1145,10 @@ const BENEFITS: BenefitsData = {
   titleHi: "Three ways to live it.",
   titleB: "",
   sub: "Whether you shoot, ride, or just itch to get out of the city — there's a lane for you here.",
+  // A drone pass over a green Kangra valley. Ships with the site, but it is an
+  // ordinary media field: swap in your own film from the dashboard.
+  videoSrc: "/media/starter/valley-drone.mp4",
+  videoPoster: "/media/starter/valley-drone-poster.webp",
   videoLine: "8 years · 28 states · 140,000 km — in 40 seconds",
   videoChips: ["140K km", "380+ films", "28 states"],
   quote: "I packed my saddlebags in Nangal Dam in 2017 with one backpack and a secondhand camera. The road has been my home ever since.",
@@ -1215,7 +1223,7 @@ const FAQ: FaqData = {
   email: "hello@pbfrompb.in",
   emailMeta: "Replies within 72 hours",
   items: [
-    { q: "How does the live tracker work?", a: "While PB is riding, a GPS ping lands every hour between 6:00 AM and 9:00 PM IST. Tap the blinking LIVE sign or the hero banner to open the live map page — it shows طویل (Taweel)'s real position with a pulsing marker. After 9 PM the tracker goes off-duty and wakes up again at 6 AM the next morning." },
+    { q: "How does the live tracker work?", a: "While PB is riding, a GPS ping lands every hour between 6:00 AM and 9:00 PM IST. Tap the blinking LIVE sign or the hero banner to open the live map page — it shows تسکین (Taskeen)'s real position with a pulsing marker. After 9 PM the tracker goes off-duty and wakes up again at 6 AM the next morning." },
     { q: "Who is PB, really?", a: "Parul Bedi ('PB') — a creator, rider and storyteller hailing from the scenic town of Nangal Dam, Punjab. In 2017, he hit the road to document India unfiltered. 8 years, all 28 states, 1.4 lakh kilometres and 380+ films later, the mission hasn't changed: make India feel reachable, one honest story at a time." },
     { q: "Do I need my own bike or car to follow the routes?", a: "No. Every route guide lists rental partners (with member discounts in 20+ cities), self-drive options and even public-transport alternates. Half the tribe does these trips on rented Himalayans, scooters and overnight buses." },
     { q: "Are the routes beginner-friendly?", a: "Each route carries a difficulty tag from 'Chill' to 'Expert', with daily distance caps, tarmac-vs-offroad ratios and bailout exits marked on the map. If a section needs experience, the guide says so in caps — I promise." },
@@ -1241,7 +1249,7 @@ const MAINTENANCE: MaintenanceData = {
 const COUNTDOWN: CountdownData = {
   badge: "Expedition drops in",
   title: "Spiti Circuit — Episode 214",
-  sub: "Twelve days over the world's highest villages, filmed on طویل (Taweel). Mark your calendar.",
+  sub: "Twelve days over the world's highest villages, filmed on تسکین (Taskeen). Mark your calendar.",
   targetDate: "",
   doneMessage: "The wait is over — it's live now.",
   ctaLabel: "Watch the teaser",
@@ -1286,7 +1294,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     { id: "sec-live", type: "live", label: "Live Tracker", enabled: true, data: { ...LIVE } },
     { id: "sec-features", type: "features", label: "Why PB (Features)", enabled: true, data: { ...FEATURES } },
     { id: "sec-journey", type: "journey", label: "Journey Showcase", enabled: true, data: { ...JOURNEY } },
-    { id: "sec-machine", type: "machine", label: "The Machine (طویل / Taweel)", enabled: true, data: { ...MACHINE } },
+    { id: "sec-machine", type: "machine", label: "The Machine (تسکین / Taskeen)", enabled: true, data: { ...MACHINE } },
     { id: "sec-gears", type: "gears", label: "Riding Gear & Wardrobe", enabled: true, data: { ...GEARS } },
     { id: "sec-riderkit", type: "riderkit", label: "The Gear", enabled: true, data: { ...RIDERKIT } },
     { id: "sec-benefits", type: "benefits", label: "Benefits & Showreel", enabled: true, data: { ...BENEFITS } },
@@ -2053,6 +2061,9 @@ const SiteContext = createContext<SiteContextValue | null>(null);
    storage now, so the tabs tell each other directly and then re-read from the
    server. */
 
+/** Session key for the admin's "preview as a normal user" switch. */
+const PREVIEW_AS_USER_KEY = "pb_preview_as_user_v1";
+
 const CHANNEL_NAME = "pb-site";
 let channel: BroadcastChannel | null = null;
 
@@ -2085,7 +2096,36 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const [editedActions, setEditedActions] = useState<string[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [previewAsVisitor, setPreviewAsVisitor] = useState(false);
+  /**
+   * Preview mode outlives a route change and a reload. An admin who opens the
+   * site from the dashboard should land on the visitor's page, not on the
+   * editor with its toolbars back on; and a reload while previewing should not
+   * quietly drop them into edit mode. Session-scoped, so closing the tab ends
+   * it and it never leaks into a later visit.
+   */
+  const [previewAsVisitor, setPreviewState] = useState<boolean>(() => {
+    try {
+      return window.sessionStorage.getItem(PREVIEW_AS_USER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const setPreviewAsVisitor = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      setPreviewState((prev) => {
+        const next = typeof v === "function" ? v(prev) : v;
+        try {
+          if (next) window.sessionStorage.setItem(PREVIEW_AS_USER_KEY, "1");
+          else window.sessionStorage.removeItem(PREVIEW_AS_USER_KEY);
+        } catch {
+          /* private mode: the preview still works for this page */
+        }
+        return next;
+      });
+    },
+    [],
+  );
   const [theme, setThemeState] = useState<Theme>("dark");
   const [account, setAccountState] = useState<Account | null>(null);
   const accountRef = useRef<Account | null>(null);

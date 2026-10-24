@@ -9,7 +9,9 @@ import {
   Copy,
   Download,
   Eye,
+  EyeOff,
   FileText,
+  Video,
   Gauge,
   Crosshair,
   DatabaseBackup,
@@ -317,8 +319,8 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     IMG("mainImage", "Main bike image", "URL of the image"),
     T("mainImageAlt", "Main image alt text"),
     { path: "km", label: "Kilometres ridden (odometer)", kind: "number" },
-    T("namePlate", "Name plate (Urdu)", "e.g. طویل"),
-    T("namePlateEn", "Name plate (English)", "e.g. Taweel"),
+    T("namePlate", "Name plate (Urdu)", "e.g. تسکین"),
+    T("namePlateEn", "Name plate (English)", "e.g. Taskeen"),
     T("plateSub", "Name plate subtext"),
     T("whyTitle", "Story card title"),
     TA("whyText", "Story card text"),
@@ -407,6 +409,8 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("titleHi", "Title — highlighted"),
     T("titleB", "Title — after highlight"),
     TA("sub", "Subtitle"),
+    FILE("videoSrc", "Section film (loops, muted)", "MP4 or WebM. Leave empty for no film. Pick the bundled drone shot or upload your own."),
+    IMG("videoPoster", "Film poster", "Shown before the film starts, and instead of it on a slow connection."),
     T("videoLine", "Showreel headline line"),
     STR("videoChips", "Showreel chips", "One per line"),
     TA("quote", "PB portrait quote"),
@@ -697,7 +701,9 @@ export function FieldRow({
           className={inputCls}
         />
       )}
-      {field.kind !== "image" && field.hint && (
+      {/* Image, images and file fields print their own hint, so a generic one
+          here would show every such note twice. */}
+      {field.kind !== "image" && field.kind !== "images" && field.kind !== "file" && field.hint && (
         <p className="mt-1.5 text-[11px] text-zinc-600">{field.hint}</p>
       )}
     </div>
@@ -4312,6 +4318,7 @@ function KindIcon({ kind, broken }: { kind: MediaKind; broken?: boolean }) {
     case "powerpoint": return <Presentation className={cls} />;
     case "archive": return <FileArchive className={cls} />;
     case "pdf": return <FileType className={cls} />;
+    case "video": return <Video className={cls} />;
     default: return <FileText className={cls} />;
   }
 }
@@ -4386,8 +4393,8 @@ function MediaPanel() {
         <FolderOpen className="mx-auto h-8 w-8 text-saffron-300" />
         <h3 className="mt-3 font-display text-lg font-semibold text-white">Media folder</h3>
         <p className="mx-auto mt-2 max-w-lg text-sm text-zinc-400">
-          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG) and documents (PDF, Word, Excel,
-          PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
+          Upload photos (PNG, JPG, WEBP, GIF, AVIF, SVG), videos (MP4, WEBM) and documents
+          (PDF, Word, Excel, PowerPoint, CSV, TXT, ZIP) from your computer. They stay in this browser and can be
           picked on any image or file field. You can also drop files into{" "}
           <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[11px] text-saffron-300">
             public/media/
@@ -4429,6 +4436,7 @@ function MediaPanel() {
             const kind = kindOf(m);
             const meta = KIND_META[kind];
             const isImage = kind === "image" && !broken[m.id];
+            const isVideo = kind === "video";
             const inUse = usageCount(m);
             return (
               <figure
@@ -4443,6 +4451,15 @@ function MediaPanel() {
                       loading="lazy"
                       onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
                       className="aspect-[4/3] w-full object-cover"
+                    />
+                  ) : isVideo ? (
+                    <video
+                      src={m.dataUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="aspect-[4/3] w-full bg-black object-cover"
+                      aria-label={m.name}
                     />
                   ) : (
                     <span className="grid aspect-[4/3] w-full place-items-center bg-white/[0.04]">
@@ -5412,7 +5429,7 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
 ];
 
 export default function AdminPage() {
-  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions } = useSite();
+  const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions, previewAsVisitor, setPreviewAsVisitor } = useSite();
   const { account, setAccount } = useSite();
   const authed = Boolean(account);
   const [tab, setTab] = useState<Tab>("sections");
@@ -5575,6 +5592,38 @@ export default function AdminPage() {
                 >
                   <Eye className="h-3.5 w-3.5" /> View Website
                 </a>
+                {/* The editor is the one place an admin is already looking at
+                    when they want the visitor's view, so the switch lives here
+                    and not only behind the site header's toolbar. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewAsVisitor(!previewAsVisitor);
+                    window.location.hash = "#/";
+                  }}
+                  title={
+                    previewAsVisitor
+                      ? "You are previewing the site as a normal user. Click to return to Admin Edit Mode."
+                      : "Open the website with every editor toolbar hidden, exactly as a visitor sees it."
+                  }
+                  aria-pressed={previewAsVisitor}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-bold transition-all duration-300 active:scale-95",
+                    previewAsVisitor
+                      ? "border-amber-400/50 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+                      : "border-emerald-400/50 bg-emerald-400/15 text-emerald-300 hover:bg-emerald-400/25",
+                  )}
+                >
+                  {previewAsVisitor ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" /> Exit Preview
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" /> Preview as User
+                    </>
+                  )}
+                </button>
               </div>
             )}
 

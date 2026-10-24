@@ -82,7 +82,7 @@ test("the schema creates tables, records its version and upgrades only once", as
   const first = await applySchema(fresh);
   assert.equal(first.version, LATEST_VERSION);
   assert.equal(first.upgradedFrom, 0);
-  assert.deepEqual(first.applied, [1, 2, 3], "a new database replays every migration in order");
+  assert.deepEqual(first.applied, [1, 2, 3, 4], "a new database replays every migration in order");
 
   const statements = fresh.seen.map((entry) => entry.sql);
   assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS users")));
@@ -96,6 +96,10 @@ test("the schema creates tables, records its version and upgrades only once", as
   assert.ok(
     statements.some((sql) => sql.includes("ADD COLUMN disabled_at")),
     "a fresh schema applies the disabled-account migration",
+  );
+  assert.ok(
+    statements.some((sql) => sql.includes("REPLACE(content")),
+    "a fresh schema also carries the Taskeen rename for saved documents",
   );
   assert.ok(
     statements.some((sql) => sql.includes("'user_disabled'")),
@@ -122,7 +126,7 @@ test("a database from before the ledger is adopted, not re-migrated", async () =
   const result = await applySchema(legacy);
 
   assert.equal(result.upgradedFrom, 2);
-  assert.deepEqual(result.applied, [3], "only the new migration runs");
+  assert.deepEqual(result.applied, [3, 4], "only the new migrations run");
 
   const statements = legacy.seen.map((entry) => entry.sql);
   assert.ok(
@@ -133,7 +137,7 @@ test("a database from before the ledger is adopted, not re-migrated", async () =
 
   const adopted = legacy.seen.filter((entry) => entry.sql.includes("INSERT IGNORE INTO schema_migrations"));
   assert.equal(adopted.length, 2, "versions 1 and 2 are recorded as adopted");
-  assert.deepEqual(legacy.applied, new Set([1, 2, 3]));
+  assert.deepEqual(legacy.applied, new Set([1, 2, 3, 4]));
 });
 
 test("a restore can stop at the backup's schema version and catch up afterwards", async () => {
@@ -147,7 +151,7 @@ test("a restore can stop at the backup's schema version and catch up afterwards"
   );
 
   const rest = await applySchema(executor);
-  assert.deepEqual(rest.applied, [2, 3]);
+  assert.deepEqual(rest.applied, [2, 3, 4]);
 });
 
 test("setup input is validated before any connection is opened", () => {

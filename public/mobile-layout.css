@@ -7,6 +7,15 @@
 .site-header-actions { flex: 0 0 auto; }
 .site-header-actions > * { flex-shrink: 0; }
 .site-header-actions > a:not([aria-label]) { max-width: 10rem; overflow-wrap: anywhere; }
+/* The per-section editor toolbar used to sit at the very top of the section,
+   which on the first section means directly under the fixed header — on top of
+   the header's own controls. Park it clear of the header instead. */
+.section-chrome-anchor { top: calc(var(--header-h, 80px) + 12px); }
+/* The preview pill keeps its icon on narrow screens and only spends width on
+   its words when there is room; the header's own 1599px rule hides title-only
+   buttons outright, which is why this one carries an aria-label. */
+@media (max-width: 1535px) { .site-preview-label { display: none; } }
+
 .site-mobile-menu-content > a,
 .site-mobile-menu-content > div > a { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
 .site-mobile-menu-content svg { flex-shrink: 0; }
