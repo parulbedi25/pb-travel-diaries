@@ -967,7 +967,7 @@ const MACHINE: MachineData = {
   // bike. Swapping that file keeps every existing pointer position.
   mainImage: "/media/himalayan-450.png",
   mainImageAlt: "تسکین (Taskeen) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
-  km: 32000,
+  km: 36,
   odometer: { extraMilestones: [], updatedAt: "" },
   namePlate: "تسکین",
   namePlateEn: "Taskeen",
