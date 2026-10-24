@@ -67,3 +67,5 @@ media/*
 
 # Persistent embedded SQLite storage
 /server/data/
+/build.html
+/vite.config.mjs

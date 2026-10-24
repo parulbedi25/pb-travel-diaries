@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Clock, Compass, MapPin, Mountain } from "lucide-react";
-import { useLiveLocation, type LiveStatus } from "../hooks/useLiveLocation";
+import { type LiveStatus } from "../hooks/useLiveLocation";
+import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import VectorBasemap from "./VectorBasemap";
 import ThemeToggle from "./ThemeToggle";
 import { makeMercatorProjector } from "../utils/mercator";
@@ -183,7 +184,7 @@ export default function LiveMapPage() {
     istTime,
     nextWindowOpenMs,
     windowCloseMs,
-  } = useLiveLocation();
+  } = useSiteLiveLocation();
 
   return (
     <div className="flex min-h-screen flex-col bg-ink-950">

@@ -16,6 +16,7 @@ import { fetchRoadGeometry, type LatLng } from "../utils/routing";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
+import { cascadeHereNow } from "../utils/liveRoute";
 
 /**
  * Editor for the live tracker's route.
@@ -158,6 +159,23 @@ export default function RouteStopsEditor({
       onChange([...stops, next]);
     },
     [onChange, stops],
+  );
+
+  /**
+   * Statuses are not independent. "Here now" is a statement about the whole
+   * route — everything behind it has been ridden, everything ahead is still to
+   * come — so choosing it rewrites the other stops rather than leaving the
+   * route claiming two current positions.
+   */
+  const setStatus = useCallback(
+    (index: number, status: LiveStop["status"]) => {
+      if (status === "live") {
+        onChange(cascadeHereNow(stops, index));
+        return;
+      }
+      patch(index, { status });
+    },
+    [onChange, patch, stops],
   );
 
   const move = useCallback(
@@ -475,7 +493,7 @@ export default function RouteStopsEditor({
                 <select
                   id={`stop-status-${index}`}
                   value={stop.status}
-                  onChange={(event) => patch(index, { status: event.target.value as LiveStop["status"] })}
+                  onChange={(event) => setStatus(index, event.target.value as LiveStop["status"])}
                   className={inputCls}
                 >
                   {STATUSES.map((value) => (
@@ -508,6 +526,30 @@ export default function RouteStopsEditor({
                   step="0.0001"
                   value={stop.lng}
                   onChange={(event) => patch(index, { lng: Number(event.target.value) })}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls} htmlFor={`stop-state-${index}`}>
+                  State / region
+                </label>
+                <input
+                  id={`stop-state-${index}`}
+                  value={stop.state ?? ""}
+                  placeholder="Punjab, India"
+                  onChange={(event) => patch(index, { state: event.target.value })}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls} htmlFor={`stop-altitude-${index}`}>
+                  Altitude
+                </label>
+                <input
+                  id={`stop-altitude-${index}`}
+                  value={stop.altitude ?? ""}
+                  placeholder="1,150 ft"
+                  onChange={(event) => patch(index, { altitude: event.target.value })}
                   className={inputCls}
                 />
               </div>
