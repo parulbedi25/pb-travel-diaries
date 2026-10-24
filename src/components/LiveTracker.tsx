@@ -14,6 +14,7 @@ import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { InstagramIcon, externalLinkProps } from "./ui/SocialIcons";
 import { ageLabel, useLiveLocation } from "../hooks/useLiveLocation";
 import TrackerMap from "./TrackerMap";
+import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
@@ -131,6 +132,9 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   </span>
                   <ArrowUpRight className="live-plate-arrow h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
+                {/* The tracker map redraws with the theme, so the switch sits
+                    on the map it changes rather than only in the site header. */}
+                <ThemeToggle className="ml-auto shrink-0" />
               </div>
 
               <div className="absolute right-5 top-24 grid h-11 w-11 place-items-center rounded-full glass" aria-hidden>
