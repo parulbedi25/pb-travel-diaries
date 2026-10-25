@@ -20,7 +20,6 @@ import { externalLinkProps } from "./ui/SocialIcons";
 import { ageLabel, useLiveLocation, type LiveLocationSeed } from "../hooks/useLiveLocation";
 import { currentStopIndex } from "../utils/liveRoute";
 import TrackerMap from "./TrackerMap";
-import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
@@ -194,16 +193,6 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   </span>
                   <ArrowUpRight className="live-plate-arrow h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </a>
-                {/* The tracker map redraws with the theme, so the switch sits
-                    on the map it changes rather than only in the site header. */}
-                <ThemeToggle className="ml-auto shrink-0" />
-              </div>
-
-              <div className="absolute right-5 top-24 grid h-11 w-11 place-items-center rounded-full glass" aria-hidden>
-                <span className="flex flex-col items-center leading-none">
-                  <Navigation className="h-3.5 w-3.5 fill-saffron-400 text-saffron-400" />
-                  <span className="mt-0.5 text-[9px] font-bold text-zinc-400">N</span>
-                </span>
               </div>
 
               <div className="absolute inset-x-0 bottom-0 border-t border-white/[0.07] bg-ink-950/70 p-4 backdrop-blur-xl sm:p-5">

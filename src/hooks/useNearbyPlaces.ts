@@ -137,7 +137,9 @@ export function useNearbyPlaces({ lat, lng, radiusKm, count }: NearbyQuery) {
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
-    const radius = Math.max(1, Math.min(50, Math.round(radiusKm) || 10));
+    // Ten kilometres is the ceiling: a nearby list that reaches 40 km out is
+    // a different page, and the map around a single point stops being useful.
+    const radius = Math.max(1, Math.min(10, Math.round(radiusKm) || 10));
     const limit = Math.max(5, Math.min(10, Math.round(count) || 8));
     const key = `${lat.toFixed(3)},${lng.toFixed(3)},${radius},${limit}#${attempt}`;
     if (key === cacheKey.current) return;

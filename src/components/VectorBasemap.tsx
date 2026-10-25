@@ -11,11 +11,18 @@
  * drawn, nothing is blurred, covered or watermarked, and the map underneath is
  * untouched.
  *
- * Every style below is keyless — no sign-up, no API key, no request limits —
- * and all of them draw OpenStreetMap's data, so its credit is owed whichever
- * one answers (see MapAttribution in TileBasemap). Tried in order: a provider
+ * Which styles are tried, and in what order, is the dashboard's "Map look"
+ * setting (see MapSettings in store/siteContent):
+ *
+ *  - CARTO's vector basemaps, with the site's own key. They are the default.
+ *  - The keyless styles the site used before CARTO — OpenFreeMap, then
+ *    VersaTiles — which are also what CARTO falls back to if its key is ever
+ *    refused. That way the map is never lost to a revoked or exhausted key.
+ *
+ * All of them draw OpenStreetMap's data, so its credit is owed whichever one
+ * answers (see MapAttribution in TileBasemap). Tried in order: a provider
  * having a slow day costs a few seconds rather than the map. (Maptoolkit would
- * be a third, and is not here on purpose: its styles are proprietary and may
+ * be another, and is not here on purpose: its styles are proprietary and may
  * only be used with its own tile server.)
  *
  * Patience is the whole difficulty. Too little and a nameless map gets thrown
@@ -47,33 +54,10 @@ import {
   type MapStyleDataEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useSite } from "../store/siteContent";
+import { resolveMapSettings, useSite } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
-
-/**
- * Keyless vector styles, best first. Every text layer in each of them is a
- * symbol layer, so whichever one answers first, the map comes out nameless.
- */
-const STYLE_CHAINS: Record<"dark" | "light", string[]> = {
-  // OpenFreeMap's Positron and Dark are the styles CARTO's were forked from,
-  // so the look barely changes.
-  light: [
-    "https://tiles.openfreemap.org/styles/positron",
-    "https://tiles.versatiles.org/assets/styles/gray/style.json",
-  ],
-  dark: [
-    "https://tiles.openfreemap.org/styles/dark",
-    "https://tiles.versatiles.org/assets/styles/colorful-dark/style.json",
-  ],
-};
-
-/** Named in the credit, so it is always possible to tell who drew the map. */
-function providerLabel(styleUrl: string): string | undefined {
-  if (styleUrl.includes("openfreemap.org")) return "OpenFreeMap";
-  if (styleUrl.includes("versatiles.org")) return "VersaTiles";
-  return undefined;
-}
+import { providerLabel, styleChain } from "../utils/basemapStyles";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
 const STYLE_TIMEOUT_MS = 15000;
@@ -111,7 +95,7 @@ export default function VectorBasemap({
   /** Where to put the credit. Omit and none is shown — but the licence wants one. */
   attributionClassName?: string;
 }) {
-  const { theme } = useSite();
+  const { theme, content } = useSite();
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
@@ -123,13 +107,19 @@ export default function VectorBasemap({
   const [placeholder, setPlaceholder] = useState(false);
   const sized = width > 1 && height > 1;
 
-  const chain = STYLE_CHAINS[theme] ?? STYLE_CHAINS.dark;
+  const mapSettings = resolveMapSettings(content.map);
+  const chain = styleChain(mapSettings, theme === "light" ? "light" : "dark");
   const gaveUp = candidate >= chain.length;
   const styleUrl = chain[Math.min(candidate, chain.length - 1)];
 
-  // A fresh theme is a fresh start: whatever went wrong with the last one says
-  // nothing about the next.
-  useEffect(() => setCandidate(0), [theme]);
+  // A fresh theme or a fresh map look is a fresh start: whatever went wrong
+  // with the last one says nothing about the next.
+  useEffect(() => setCandidate(0), [
+    theme,
+    mapSettings.provider,
+    mapSettings.cartoStyle,
+    mapSettings.cartoKey,
+  ]);
 
   useEffect(() => {
     if (!host.current || !sized || gaveUp) return;
@@ -277,18 +267,22 @@ export default function VectorBasemap({
   }, [width, height]);
 
   const showingRaster = gaveUp || placeholder;
-  const credit = attributionClassName ? (
-    <MapAttribution
-      className={attributionClassName}
-      source={showingRaster ? "raster" : providerLabel(styleUrl)}
-    />
+  // Whichever raster ends up on screen credits itself, because only it knows
+  // whether it settled on the nameless drawing or the labelled last resort.
+  const credit = attributionClassName && !showingRaster ? (
+    <MapAttribution className={attributionClassName} source={providerLabel(styleUrl)} />
   ) : null;
 
   if (gaveUp) {
     return (
       <>
-        <TileBasemap view={view} width={width} height={height} className={className} />
-        {credit}
+        <TileBasemap
+          view={view}
+          width={width}
+          height={height}
+          className={className}
+          attributionClassName={attributionClassName}
+        />
       </>
     );
   }
@@ -297,7 +291,13 @@ export default function VectorBasemap({
     <>
       {/* Underneath, so the nameless map covers it as soon as it arrives. */}
       {placeholder && (
-        <TileBasemap view={view} width={width} height={height} className={className} />
+        <TileBasemap
+          view={view}
+          width={width}
+          height={height}
+          className={className}
+          attributionClassName={attributionClassName}
+        />
       )}
       <div ref={host} className={className} aria-hidden="true" />
       {credit}

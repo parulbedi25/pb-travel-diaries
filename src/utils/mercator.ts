@@ -119,6 +119,60 @@ export function fitView(
   return { ...box, zoom: clamp(Math.floor(box.zoom), 3, 17) };
 }
 
+/** Pixels reserved along each edge of a panel. */
+export interface MapInsets {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+}
+
+/**
+ * The exact view that fits `points` into what is left of a panel once some of
+ * it is covered — a list drawn over the map, a badge strip, anything.
+ *
+ * `fitViewExact` fits into the whole panel and cannot help here: with a list
+ * covering the right third, a route fitted to the panel puts half its pins
+ * under the list. This fits into the uncovered box and then slides the map's
+ * centre so that same box sits exactly where it belongs, which is a shift in
+ * geography, not a shift of the drawing — so the tiles underneath and the pins
+ * on top stay in step, and the next pan or zoom starts from a true view.
+ */
+export function fitViewInset(
+  points: readonly { lat: number; lng: number }[],
+  width: number,
+  height: number,
+  insets: MapInsets = {},
+  options: { fit?: number; padX?: number; padY?: number } = {},
+): MapView {
+  const w = Math.max(width || 600, 1);
+  const h = Math.max(height || 400, 1);
+  const left = Math.max(insets.left ?? 0, 0);
+  const right = Math.max(insets.right ?? 0, 0);
+  const top = Math.max(insets.top ?? 0, 0);
+  const bottom = Math.max(insets.bottom ?? 0, 0);
+  const innerW = Math.max(w - left - right, 40);
+  const innerH = Math.max(h - top - bottom, 40);
+
+  const inner = fitBox(points, innerW, innerH, {
+    fit: options.fit ?? 1,
+    padX: options.padX ?? 12,
+    padY: options.padY ?? 12,
+  });
+  const zoom = clamp(inner.zoom, 3, 17);
+  const world = TILE * 2 ** zoom;
+
+  // Where the fitted centre must land, and where the panel's own centre is.
+  const targetX = left + innerW / 2;
+  const targetY = top + innerH / 2;
+  const shiftX = targetX - w / 2;
+  const shiftY = targetY - h / 2;
+
+  const centre = project(inner.lat, inner.lng, world);
+  const centreOfPanel = unproject(centre.x - shiftX, centre.y - shiftY, world);
+  return { lat: centreOfPanel.lat, lng: centreOfPanel.lng, zoom };
+}
+
 export interface Projector {
   /** Percentage across / down the box, for `left` and `top`. */
   toXY: (point: { lat: number; lng: number }) => { x: number; y: number };

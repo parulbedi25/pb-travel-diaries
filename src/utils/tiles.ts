@@ -104,10 +104,37 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
 }
 
 /**
- * OpenStreetMap's own tiles. Keyless, which is why they are the fallback when
- * MapLibre cannot start — but they are labelled, because raster tiles carry
- * their names in the image. There is no double-density variant.
+ * The raster basemaps, best first.
+ *
+ * CARTO's `*_nolabels` rasters are the point of this list: they are drawn from
+ * OpenStreetMap's data with every place name left out, which is the same thing
+ * the vector styles are asked for by switching their symbol layers off. They
+ * need no key, they come in a light and a dark drawing so each theme gets the
+ * map it asks for, and they serve an `Access-Control-Allow-Origin: *` header.
+ *
+ * OpenStreetMap's own tiles stay at the end as a genuine last resort — keyless
+ * too, but *labelled*, because a raster tile has its names painted into the
+ * picture and there is no way to ask for it without. If they ever end up on
+ * screen the credit says so (see MapAttribution), because a labelled map where
+ * a nameless one belongs should not pass as a success.
  */
-export function osmTileUrl(tileZoom: number, tile: PlacedTile): string {
+export type RasterSource = "carto" | "osm";
+
+/** Each raster's own drawing, so the map follows the site's theme. */
+export function rasterTileUrl(
+  source: RasterSource,
+  theme: "light" | "dark",
+  tileZoom: number,
+  tile: PlacedTile,
+): string {
+  if (source === "carto") {
+    const drawing = theme === "light" ? "light_nolabels" : "dark_nolabels";
+    return `https://a.basemaps.cartocdn.com/${drawing}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+  }
   return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+}
+
+/** OpenStreetMap's own tiles, kept for the labelled last resort. */
+export function osmTileUrl(tileZoom: number, tile: PlacedTile): string {
+  return rasterTileUrl("osm", "light", tileZoom, tile);
 }

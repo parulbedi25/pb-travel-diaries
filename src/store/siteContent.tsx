@@ -221,7 +221,53 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
   };
 }
 
-export type RestoreScope = "header" | "footer" | "theme";
+/**
+ * Which map the site draws on.
+ *
+ * Two looks, chosen from the dashboard:
+ *
+ *  - `carto` — CARTO's vector basemaps, keyed, drawn from OpenStreetMap data.
+ *    They are the ones that can have their labels switched off properly, and
+ *    the key is a *basemap* key: it only unlocks tiles, so it is safe to ship
+ *    in the bundle the way a map provider's public token always is.
+ *  - `openstreetmap` — the look the site had before CARTO: OpenFreeMap's free
+ *    vector styles, falling through to raster tiles. Keyless, so it keeps
+ *    working if the CARTO key is ever revoked or its quota is reached.
+ *
+ * Whichever is chosen, the other stays as the fallback underneath it: a map
+ * that cannot load is worse than a map in the other style.
+ */
+export type MapProvider = "carto" | "openstreetmap";
+
+/** CARTO's vector drawings. "auto" follows the site's dark/light theme. */
+export type CartoStyle = "auto" | "voyager" | "positron" | "dark-matter";
+
+export interface MapSettings {
+  provider: MapProvider;
+  cartoStyle: CartoStyle;
+  /** CARTO basemap key. Blank falls back to the keyless OpenStreetMap look. */
+  cartoKey: string;
+}
+
+export const DEFAULT_MAP_SETTINGS: MapSettings = {
+  provider: "carto",
+  cartoStyle: "auto",
+  cartoKey: "cb1_4u3q_1_dc135904c1fc4472cf673c4d",
+};
+
+/** Fills in anything a site saved before the map setting existed. */
+export function resolveMapSettings(map?: Partial<MapSettings> | null): MapSettings {
+  const provider: MapProvider =
+    map?.provider === "openstreetmap" ? "openstreetmap" : "carto";
+  const cartoStyle: CartoStyle =
+    map?.cartoStyle === "voyager" || map?.cartoStyle === "positron" || map?.cartoStyle === "dark-matter"
+      ? map.cartoStyle
+      : "auto";
+  const key = typeof map?.cartoKey === "string" ? map.cartoKey.trim() : DEFAULT_MAP_SETTINGS.cartoKey;
+  return { provider, cartoStyle, cartoKey: key };
+}
+
+export type RestoreScope = "header" | "footer" | "theme" | "map";
 
 /* ── Header call-to-action buttons (e.g. "Join the Tribe") ── */
 export interface HeaderButton {
@@ -410,6 +456,8 @@ export interface SiteContent {
   footer?: FooterSettings;
   headerButtons?: HeaderButton[];
   themeColors?: ThemeColors;
+  /** Which map look the tracker and the nearby page draw on. */
+  map?: MapSettings;
 }
 
 export interface Revision {
@@ -967,7 +1015,7 @@ const MACHINE: MachineData = {
   // bike. Swapping that file keeps every existing pointer position.
   mainImage: "/media/himalayan-450.png",
   mainImageAlt: "تسکین (Taskeen) — PB's Royal Enfield Himalayan 450 in Hanle Black, parked in the mountains",
-  km: 32000,
+  km: 36,
   odometer: { extraMilestones: [], updatedAt: "" },
   namePlate: "تسکین",
   namePlateEn: "Taskeen",
@@ -1140,7 +1188,7 @@ const GEARS: GearsData = {
       brand: "Royal Enfield",
       model: "TAS250003 · Black",
       description: "Royal Enfield lists these as Class A certified trousers for urban, touring, adventure and cruising, in summer and rain.",
-      image: "",
+      image: "/images/gear/gravel-riding-trouser-black.webp",
       imageAlt: "Royal Enfield Gravel riding trousers in black",
       highlights: ["Class A certified", "Urban, touring, adventure & cruising", "Summer & rain"],
       fit: "Sizes 28–44 listed",
@@ -1355,6 +1403,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     { id: "sec-faq", type: "faq", label: "FAQ", enabled: true, data: { ...FAQ } },
     { id: "sec-cta", type: "cta", label: "Final CTA", enabled: true, data: { ...CTA } },
   ],
+  map: { ...DEFAULT_MAP_SETTINGS },
 };
 
 /* ═══════════════════════ Merge + persistence ═══════════════════════ */
@@ -2019,7 +2068,7 @@ function toRevisions(
 const REVISION_LIMIT = 15;
 
 function withSettingsDefaults(value: SiteContent): SiteContent {
-  const { loaderLogo, loaderAnimation, brand, footer, headerButtons, themeColors, ...page } = value;
+  const { loaderLogo, loaderAnimation, brand, footer, headerButtons, themeColors, map, ...page } = value;
   return {
     ...page,
     loaderLogo: loaderLogo ?? "",
@@ -2028,6 +2077,9 @@ function withSettingsDefaults(value: SiteContent): SiteContent {
     footer: resolveFooter(footer),
     headerButtons: resolveHeaderButtons(headerButtons),
     themeColors: resolveThemeColors(themeColors),
+    // A site saved before the map setting existed gets the shipped look, so
+    // the maps never have to guess.
+    map: resolveMapSettings(map),
   };
 }
 
@@ -2520,7 +2572,14 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   /** Restores one settings group to its original defaults. Goes into the draft. */
   const restoreScope = useCallback(
     (scope: RestoreScope) => {
-      const label = scope === "header" ? "header navigation" : scope === "footer" ? "footer" : "theme colours";
+      const label =
+        scope === "header"
+          ? "header navigation"
+          : scope === "footer"
+            ? "footer"
+            : scope === "map"
+              ? "map look"
+              : "theme colours";
       logAction(`Restored ${label} to defaults`);
       updateDraft((c) => {
         if (scope === "header") {
@@ -2531,6 +2590,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
           };
         }
         if (scope === "footer") return { ...c, footer: structuredClone(DEFAULT_FOOTER) };
+        if (scope === "map") return { ...c, map: structuredClone(DEFAULT_MAP_SETTINGS) };
         return { ...c, themeColors: structuredClone(DEFAULT_THEME_COLORS) };
       });
     },

@@ -3,59 +3,99 @@
  *
  * The tracker and the dashboard both use VectorBasemap, which can switch
  * labels off properly. This exists for the browsers where MapLibre cannot
- * start at all: OpenStreetMap's own tiles need no key and no WebGL, so the map
- * still shows. They are labelled, because raster tiles have their names painted
- * into the picture and there is no way to ask for them without.
+ * start at all, and it draws the same thing: a map with no place names on it.
+ * CARTO's `*_nolabels` rasters are keyless, need no WebGL, and are drawn from
+ * OpenStreetMap's data with every label left out — so the fallback is no longer
+ * the labelled compromise it used to be.
+ *
+ * OpenStreetMap's own tiles are still behind that, for the day CARTO cannot be
+ * reached. They *are* labelled — a raster tile carries its names in the
+ * picture — so they are a genuine last resort, and the credit on screen
+ * changes to say "labels shown" when they are the ones drawing.
  *
  * Tiles are placed by hand rather than with a map library, so the arithmetic
  * lives in utils/tiles alongside the mercator projector that places the pins —
  * one idea of where the map is, not two that can drift apart.
  */
 
-import { useMemo } from "react";
-import { useSite } from "../store/siteContent";
-import { osmTileUrl, tilesForView, type TileView } from "../utils/tiles";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveMapSettings, useSite } from "../store/siteContent";
+import { rasterTileUrl, tilesForView, type RasterSource, type TileView } from "../utils/tiles";
 
 export type { TileView };
+
+/** Enough failures to mean the host is out, not one stuttering tile. */
+const FAILURES_BEFORE_FALLBACK = 3;
 
 export default function TileBasemap({
   view,
   width,
   height,
   className,
+  attributionClassName,
 }: {
   view: TileView;
   width: number;
   height: number;
   className?: string;
+  /** Where to put the credit. The licence wants one whenever tiles are on screen. */
+  attributionClassName?: string;
 }) {
-  const { theme } = useSite();
+  const { theme, content } = useSite();
+  // The dashboard's map look decides which raster is tried first: CARTO's
+  // nameless drawing, or OpenStreetMap's own labelled tiles. Each keeps the
+  // other behind it, so a host having a bad day never empties the panel.
+  const provider = resolveMapSettings(content.map).provider;
+  const [source, setSource] = useState<RasterSource>(
+    provider === "openstreetmap" ? "osm" : "carto",
+  );
+  const failures = useRef(0);
+
+  useEffect(() => {
+    setSource(provider === "openstreetmap" ? "osm" : "carto");
+    failures.current = 0;
+  }, [provider]);
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [view.lat, view.lng, view.zoom, width, height],
   );
 
+  // A tile that will not load is the only signal that a host is not answering.
+  // The last resort is the labelled map, so it is reached only after several
+  // failures — and the credit then says so rather than passing silently.
+  const onTileError = () => {
+    if (failures.current >= FAILURES_BEFORE_FALLBACK) return;
+    failures.current += 1;
+    if (failures.current < FAILURES_BEFORE_FALLBACK) return;
+    // CARTO's rasters falling over leaves OpenStreetMap's labelled tiles; the
+    // reverse has nowhere else to go, so it stays put rather than flickering.
+    if (source === "carto") setSource("osm");
+  };
+
   return (
+    <>
     <div
       className={className}
       data-raster-theme={theme}
+      data-raster-source={source}
       aria-hidden="true"
-      // OSM only publishes one drawing, drawn for a white page. In dark mode it
-      // is inverted so the map follows the theme instead of glowing white
-      // behind white text; in light mode it is left exactly as published.
-      style={{
-        filter:
-          theme === "light"
-            ? "none"
-            : "invert(1) hue-rotate(180deg) brightness(0.72) saturate(0.7)",
-      }}
+      // CARTO publishes a drawing per theme, so nothing is recoloured. Only the
+      // labelled OSM last resort has a single white-page drawing, and that one
+      // is inverted in dark mode so it does not glow behind white text.
+      style={
+        source === "osm" && theme !== "light"
+          ? { filter: "invert(1) hue-rotate(180deg) brightness(0.72) saturate(0.7)" }
+          : undefined
+      }
     >
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}
-          src={osmTileUrl(tile.tileZoom, tile)}
+          src={rasterTileUrl(source, theme === "light" ? "light" : "dark", tile.tileZoom, tile)}
           alt=""
+          loading="eager"
+          onError={onTileError}
           width={Math.round(tile.size)}
           height={Math.round(tile.size)}
           draggable={false}
@@ -70,6 +110,13 @@ export default function TileBasemap({
         />
       ))}
     </div>
+    {attributionClassName && (
+      <MapAttribution
+        className={attributionClassName}
+        source={source === "osm" ? "raster" : "CARTO"}
+      />
+    )}
+    </>
   );
 }
 
@@ -86,6 +133,7 @@ export default function TileBasemap({
 const PROVIDER_LINKS: Record<string, string> = {
   OpenFreeMap: "https://openfreemap.org",
   VersaTiles: "https://versatiles.org",
+  CARTO: "https://carto.com/attributions",
 };
 
 export function MapAttribution({

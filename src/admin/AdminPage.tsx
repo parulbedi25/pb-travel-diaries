@@ -27,6 +27,7 @@ import {
   Images,
   KeyRound,
   LayoutList,
+  Map as MapIcon,
   Palette,
   Link2,
   Power,
@@ -100,7 +101,7 @@ import {
   getActiveCountdownTargets,
   resetActiveTargetsForCountdown,
 } from "./countdownSetup";
-import { ThemePanel, HeaderButtonsEditor, RestoreBar } from "./SettingsExtras";
+import { ThemePanel, MapPanel, HeaderButtonsEditor, RestoreBar } from "./SettingsExtras";
 import { isOn } from "../utils/enabled";
 import {
   cascadeAllSections,
@@ -288,7 +289,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
       path: "nearby.radiusKm",
       label: "Nearby page — search radius (km)",
       kind: "number",
-      hint: "How far around the current location to look. 1–50 km.",
+      hint: "How far around the current location to look. 1–10 km; 10 is the maximum.",
     },
     {
       path: "nearby.count",
@@ -5445,7 +5446,7 @@ function BackupsPanel() {
 
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "media" | "settings" | "backups";
+type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "map" | "media" | "settings" | "backups";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
@@ -5454,6 +5455,7 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "menu", label: "Header", icon: Link2 },
   { id: "footer", label: "Footer", icon: LayoutList },
   { id: "theme", label: "Theme colours", icon: Palette },
+  { id: "map", label: "Map look", icon: MapIcon },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "backups", label: "Backups", icon: DatabaseBackup },
@@ -5697,6 +5699,7 @@ export default function AdminPage() {
           {tab === "menu" && <MenuPanel />}
           {tab === "footer" && <FooterPanel />}
           {tab === "theme" && <ThemePanel />}
+          {tab === "map" && <MapPanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
           {tab === "backups" && <BackupsPanel />}
