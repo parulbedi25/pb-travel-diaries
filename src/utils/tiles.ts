@@ -118,13 +118,18 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
  * with no key the CARTO raster is skipped rather than drawn as a grey hole
  * (see TileBasemap).
  *
+ * Where the ground is a landscape rather than a diagram, the satellite tiles
+ * are Esri's World Imagery — keyless, CORS-open, and photographic, so there is
+ * no name printed anywhere on them. They are the "Satellite" layout in the
+ * dashboard, and they suit the Himalaya better than any Street drawing does.
+ *
  * OpenStreetMap's own tiles stay at the end as a genuine last resort — keyless
  * too, but *labelled*, because a raster tile has its names painted into the
  * picture and there is no way to ask for it without. If they ever end up on
  * screen the credit says so (see MapAttribution), because a labelled map where
  * a nameless one belongs should not pass as a success.
  */
-export type RasterSource = "carto" | "osm";
+export type RasterSource = "carto" | "satellite" | "osm";
 
 /**
  * Each raster's own drawing, so the map follows the site's theme.
@@ -146,6 +151,11 @@ export function rasterTileUrl(
     const base = `https://a.basemaps.cartocdn.com/${drawing}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
     const trimmed = (key ?? "").trim();
     return trimmed ? `${base}?key=${encodeURIComponent(trimmed)}` : base;
+  }
+  if (source === "satellite") {
+    // Esri's imagery is a photograph of the ground, so there is nothing to
+    // switch off: no names, no road shield, no label layer at all.
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
   }
   return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
 }

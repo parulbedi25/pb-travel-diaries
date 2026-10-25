@@ -122,6 +122,9 @@ export default function VectorBasemap({
   ]);
 
   useEffect(() => {
+    // Nothing to load for satellite: the tiles are the map, and asking a style
+    // server anyway would be a request whose answer is never drawn.
+    if (mapSettings.provider === "satellite") return;
     if (!host.current || !sized || gaveUp) return;
 
     let created: MapLibreMap;
@@ -265,6 +268,20 @@ export default function VectorBasemap({
   useEffect(() => {
     map.current?.resize();
   }, [width, height]);
+
+  // Satellite is a photograph of the ground, not a style with layers to draw,
+  // so there is nothing for MapLibre to do: the tiles are the whole map.
+  if (mapSettings.provider === "satellite") {
+    return (
+      <TileBasemap
+        view={view}
+        width={width}
+        height={height}
+        className={className}
+        attributionClassName={attributionClassName}
+      />
+    );
+  }
 
   const showingRaster = gaveUp || placeholder;
   // Whichever raster ends up on screen credits itself, because only it knows
