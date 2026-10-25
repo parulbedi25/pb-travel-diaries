@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Navigation } from "lucide-react";
+import { Check, Satellite } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
@@ -63,6 +63,63 @@ function useBandInsets(): { top: number; bottom: number } {
     return () => wide?.removeEventListener?.("change", apply);
   }, []);
   return insets;
+}
+
+/**
+ * North is up, and says so.
+ *
+ * The map is drawn north-up on purpose — the bearing is pinned to 0 so the
+ * overlay's mercator placement and MapLibre's drawing can never disagree — so
+ * this is not a control but a statement: a compass rose with a saffron north
+ * needle, a muted south one and the cardinal ticks. It sits in the top-right
+ * of the map panel, under the tile credit, where a compass belongs and where
+ * it collides with nothing: the live plate owns the top-left, the route strip
+ * owns the bottom.
+ */
+function MapCompass() {
+  return (
+    <div
+      className="pointer-events-none absolute right-4 top-8 z-10 sm:right-5 sm:top-9"
+      role="img"
+      aria-label="Compass: north is up"
+    >
+      <div className="rounded-full border border-white/15 bg-ink-950/70 shadow-lg shadow-black/40 backdrop-blur-md">
+        <svg viewBox="0 0 44 44" className="h-11 w-11" aria-hidden="true">
+          {/* The ring, and a dotted inner line so it reads as an instrument. */}
+          <circle cx="22" cy="22" r="21" fill="none" stroke="rgba(255,255,255,0.16)" />
+          <circle
+            cx="22"
+            cy="22"
+            r="16.5"
+            fill="none"
+            stroke="rgba(255,255,255,0.10)"
+            strokeDasharray="1 3"
+          />
+          {/* The four cardinal ticks. */}
+          <g stroke="rgba(255,255,255,0.35)" strokeWidth="1.2" strokeLinecap="round">
+            <line x1="22" y1="2.5" x2="22" y2="5" />
+            <line x1="22" y1="39" x2="22" y2="41.5" />
+            <line x1="2.5" y1="22" x2="5" y2="22" />
+            <line x1="39" y1="22" x2="41.5" y2="22" />
+          </g>
+          {/* Needle: saffron for north, muted steel for south. */}
+          <polygon points="22,12 25,22.5 19,22.5" fill="#f5b301" />
+          <polygon points="22,32 19,22.5 25,22.5" fill="rgba(255,255,255,0.40)" />
+          <text
+            x="22"
+            y="10"
+            textAnchor="middle"
+            fontSize="6.5"
+            fontWeight="700"
+            fill="#ffdf8a"
+            fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+          >
+            N
+          </text>
+        </svg>
+      </div>
+    </div>
+  );
 }
 
 const ROAD_CACHE_PREFIX = "pb_road_v1:";
@@ -295,6 +352,8 @@ export default function TrackerMap({
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
       <div className="tracker-map-veil pointer-events-none absolute inset-0" aria-hidden="true" />
 
+      {count > 0 && <MapCompass />}
+
 
       {/* PB's route: covered solid, still to come dashed and marching on. */}
       <svg
@@ -431,13 +490,15 @@ export default function TrackerMap({
                 {formatKm(totals[totals.length - 1] ?? 0)}
               </p>
               <div className="flex items-center gap-1">
-                {/* The compass belongs here, beside the ping it describes,
-                    rather than floating loose in the corner of the map. */}
+                {/* A satellite, blinking while the ping is live — it is the
+                    antenna talking, not a direction. It stops blinking when
+                    the signal is stale or the tracker is asleep, so a still
+                    icon means there is nothing arriving. */}
                 <span className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-300">
-                  <Navigation
+                  <Satellite
                     className={cn(
-                      "h-3 w-3 fill-current",
-                      status === "live" ? "text-emerald-300" : "text-amber-300",
+                      "h-3 w-3",
+                      status === "live" ? "text-emerald-300 animate-blink" : "text-amber-300",
                     )}
                     aria-hidden="true"
                   />
