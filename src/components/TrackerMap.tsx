@@ -38,10 +38,12 @@ export interface TrackerMapProps {
   /** "Ping 2m ago" / "Window closed · 6 AM IST" — shown on the strip. */
   pingLabel: string;
   /**
-   * Draw each stop's name under its checkpoint. Off unless asked for: the map
-   * is meant to be read by the pins, and a name on every one of them turns the
-   * middle of it into a wall of text. The pins keep their tooltips and their
-   * labels for screen readers either way.
+   * Draw each stop's name under its checkpoint.
+   *
+   * On by default, and the name is the one the rider typed into the dashboard —
+   * Nangal, Anandpur Sahib, Ropar — never a name the basemap happens to have
+   * for that ground. Those basemap names stay switched off (see VectorBasemap):
+   * the map carries the rider's own checkpoints, and nothing else.
    */
   labels?: boolean;
 }
@@ -142,7 +144,7 @@ export default function TrackerMap({
   liveState,
   status,
   pingLabel,
-  labels = false,
+  labels = true,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -402,7 +404,7 @@ export default function TrackerMap({
               {labels && (
                 <span
                   className={cn(
-                    "map-label absolute top-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
+                    "map-label absolute top-6 max-w-[9rem] truncate whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
                     isStart
                       ? "text-start-label"
                       : isEnd
