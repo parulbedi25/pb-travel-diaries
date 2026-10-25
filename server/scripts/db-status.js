@@ -21,7 +21,10 @@ async function main() {
     try {
       const installed = Number(db.prepare("SELECT COALESCE(MAX(version),0) AS v FROM pb_schema_migrations").get().v);
       console.log(`[db:status] SQLite installed v${installed}, latest v${SQLITE_VERSION}`);
-      for (const m of SQLITE_MIGRATIONS.filter(m => m.version > installed)) console.log(`  v${m.version} ${m.name}`);
+      for (const m of SQLITE_MIGRATIONS.filter(m => m.version > installed)) {
+        console.log(`  v${m.version} ${m.name} (${m.statements.length} statement${m.statements.length === 1 ? "" : "s"})`);
+      }
+      if (SQLITE_VERSION <= installed) console.log("[db:status] nothing to do — the database is up to date.");
     } finally { db.close(); }
     return;
   }
@@ -45,7 +48,9 @@ async function main() {
     }
     console.log(`[db:status] ${pending.length} migration(s) waiting:`);
     for (const migration of pending) {
-      console.log(`  v${migration.version}  ${migration.name}`);
+      const statements = migration.up?.statements?.length;
+      const size = statements ? ` (${statements} statement${statements === 1 ? "" : "s"})` : "";
+      console.log(`  v${migration.version}  ${migration.name}${size}`);
     }
     console.log("[db:status] apply them with `npm run db:migrate` (or restart the server).");
   } finally {

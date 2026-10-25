@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 import { createSqlRepository } from "./sqlRepository.js";
-import { migrateSqlite } from "./sqliteMigrations.js";
+import { migrateSqlite, sqliteMigrationStatus } from "./sqliteMigrations.js";
 
 /** Fixed by server code, never derived from a request or uploaded backup path. */
 export const SQLITE_FILE = path.resolve(import.meta.dirname, "../data/pbfrompb.sqlite");
@@ -49,7 +49,13 @@ export async function createSqliteRepo(file = path.join(config.root, "server/dat
     try { const result = await fn(pool); db.exec("COMMIT"); return result; }
     catch (error) { db.exec("ROLLBACK"); throw error; }
   }
-  const repo = createSqlRepository({ pool, transaction, kind: "sqlite", migrate: () => migrateSqlite(db) });
+  const repo = createSqlRepository({
+    pool,
+    transaction,
+    kind: "sqlite",
+    migrate: () => migrateSqlite(db),
+    schemaStatus: () => sqliteMigrationStatus(db),
+  });
   const exportAll = repo.exportAll;
   repo.exportAll = () => transaction(() => exportAll.call(repo));
   repo.importAll = data => transaction(async () => {

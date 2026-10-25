@@ -1,4 +1,5 @@
 /** SQLite has its own append-only migration ledger; never edit shipped entries. */
+import { isAlreadyApplied } from "./migrationErrors.js";
 const timestamp = "TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))";
 export const SQLITE_MIGRATIONS = [{
   version: 1,
@@ -47,8 +48,42 @@ export const SQLITE_MIGRATIONS = [{
     `CREATE TABLE IF NOT EXISTS member_journeys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL DEFAULT '', bike_id INTEGER, stops TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', gallery TEXT NOT NULL DEFAULT '[]', round_trip INTEGER NOT NULL DEFAULT 0, created_at ${timestamp}, updated_at ${timestamp})`,
     `CREATE INDEX IF NOT EXISTS member_journeys_user ON member_journeys(user_id)`,
   ],
+}, {
+  version: 4,
+  name: "member garage lookups",
+  // The same index the MySQL side adds in version 6: finding the rides that
+  // used a bike, before the bike can be removed.
+  statements: [
+    `CREATE INDEX IF NOT EXISTS member_journeys_bike ON member_journeys(bike_id)`,
+  ],
 }];
 export const SQLITE_VERSION = SQLITE_MIGRATIONS.at(-1).version;
+
+/**
+ * What an upgrade would do to a SQLite database, without doing it.
+ *
+ * Read-only and used by `npm run db:status`, `db:migrate --dry-run` and the
+ * health endpoint, so an operator can see the gap between the code and the
+ * database before anything changes.
+ */
+export function sqliteMigrationStatus(db) {
+  let installed = 0;
+  try {
+    const row = db.prepare("SELECT COALESCE(MAX(version),0) AS v FROM pb_schema_migrations").get();
+    installed = Number(row?.v ?? 0);
+  } catch {
+    installed = 0;
+  }
+  return {
+    installed,
+    latest: SQLITE_VERSION,
+    pending: SQLITE_MIGRATIONS.filter((m) => m.version > installed).map((m) => ({
+      version: m.version,
+      name: m.name,
+      statements: m.statements.length,
+    })),
+  };
+}
 export function migrateSqlite(db) {
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -57,8 +92,17 @@ export function migrateSqlite(db) {
     if (from > SQLITE_VERSION) throw new Error("This SQLite database needs a newer application version.");
     const applied = [];
     for (const m of SQLITE_MIGRATIONS.filter(m => m.version > from)) {
-      for (const statement of m.statements) db.exec(statement);
-      db.prepare("INSERT INTO pb_schema_migrations VALUES (?, ?)").run(m.version, m.name);
+      // A statement that is already in place is not a failure: an interrupted
+      // migration is resumed by re-running it, and the first statements will
+      // meet their own work. See migrationErrors.js.
+      for (const statement of m.statements) {
+        try {
+          db.exec(statement);
+        } catch (error) {
+          if (!isAlreadyApplied(error)) throw error;
+        }
+      }
+      db.prepare("INSERT OR IGNORE INTO pb_schema_migrations VALUES (?, ?)").run(m.version, m.name);
       applied.push(m.version);
     }
     db.exec("COMMIT");

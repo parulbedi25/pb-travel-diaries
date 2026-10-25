@@ -23,6 +23,58 @@
 // importing it from the schema module.
 export { LATEST_VERSION } from "./migrations.js";
 
+/**
+ * The advisory lock every upgrade takes before touching a schema.
+ *
+ * Two copies of the site can boot at the same moment — a rolling deploy, a
+ * Passenger worker restart, a staging box pointed at the same database — and
+ * without this both would read "version 4" and both would start applying
+ * version 5. MySQL's named lock makes the second one wait, then find the work
+ * already done. SQLite needs nothing here: `migrateSqlite` opens an immediate
+ * transaction, which is the same guarantee.
+ */
+const MIGRATION_LOCK = "pb_travel_diaries_schema";
+const LOCK_WAIT_SECONDS = 30;
+
+/**
+ * Run `work` holding the schema lock. Drivers without `GET_LOCK` (the test
+ * executor, or a database that refuses the function) simply run it — the
+ * ledger is still what decides whether a version has happened.
+ */
+async function withMigrationLock(executor, work) {
+  let held = false;
+  try {
+    const [rows] = await executor.query("SELECT GET_LOCK(?, ?) AS ok", [
+      MIGRATION_LOCK,
+      LOCK_WAIT_SECONDS,
+    ]);
+    const answer = Number(rows?.[0]?.ok);
+    if (answer === 1) held = true;
+    else if (answer === 0) {
+      const busy = new Error(
+        "Another upgrade is running on this database. Try again in a minute.",
+      );
+      busy.code = "SCHEMA_LOCK_TIMEOUT";
+      throw busy;
+    }
+  } catch (error) {
+    if (error?.code === "SCHEMA_LOCK_TIMEOUT") throw error;
+    // No lock support here; carry on. The ledger is the real guard.
+  }
+
+  try {
+    return await work();
+  } finally {
+    if (held) {
+      try {
+        await executor.query("SELECT RELEASE_LOCK(?) AS ok", [MIGRATION_LOCK]);
+      } catch {
+        // The connection is closing anyway; the lock dies with it.
+      }
+    }
+  }
+}
+
 /** Tables every installation needs. `IF NOT EXISTS` makes this idempotent. */
 export const BASE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS site_content (
@@ -177,6 +229,19 @@ async function adoptLegacyVersions(executor, migrations) {
  * happens.
  */
 export async function applySchema(executor, { migrations, upTo = Infinity } = {}) {
+  return withMigrationLock(executor, () => applyPending(executor, { migrations, upTo }));
+}
+
+/**
+ * The body of `applySchema`, run while the schema lock is held.
+ *
+ * Every step here is safe to repeat: the base tables are `IF NOT EXISTS`, a
+ * version already in the ledger is skipped, and a statement whose object is
+ * already there is counted as done rather than raising. That is what makes an
+ * upgrade survivable on a live database — interrupted halfway, it is finished
+ * by simply running it again.
+ */
+async function applyPending(executor, { migrations, upTo = Infinity } = {}) {
   const all = migrations ?? (await import("./migrations.js")).MIGRATIONS;
   // `upTo` stops partway: a restore has to build the tables as the backup
   // remembers them, load the rows, and only then run anything newer — so a
@@ -194,7 +259,9 @@ export async function applySchema(executor, { migrations, upTo = Infinity } = {}
   for (const migration of list) {
     if (migration.version <= from) continue;
     await migration.up(executor);
-    await executor.query("INSERT INTO schema_migrations (version, name) VALUES (?, ?)", [
+    // IGNORE: if a previous attempt recorded the row and then failed on
+    // something after it, this is not a conflict — the version is done.
+    await executor.query("INSERT IGNORE INTO schema_migrations (version, name) VALUES (?, ?)", [
       migration.version,
       migration.name,
     ]);
@@ -219,8 +286,14 @@ export async function applySchema(executor, { migrations, upTo = Infinity } = {}
   return { version: latest, upgradedFrom: from, applied };
 }
 
-/** What `npm run db:status` prints: installed, latest, and what is waiting. */
-export async function migrationStatus(executor, { migrations } = {}) {
+/**
+ * What an upgrade would do, without doing any of it.
+ *
+ * Used by `npm run db:migrate -- --dry-run`, by `db:status`, and by anything
+ * that wants to know whether the code is ahead of the database before deciding
+ * to change one of them. Read-only.
+ */
+export async function planMigrations(executor, { migrations, upTo = Infinity } = {}) {
   const list = migrations ?? (await import("./migrations.js")).MIGRATIONS;
   let installed = 0;
   try {
@@ -232,6 +305,27 @@ export async function migrationStatus(executor, { migrations } = {}) {
   return {
     installed,
     latest,
-    pending: list.filter((m) => m.version > installed),
+    pending: list
+      .filter((migration) => migration.version > installed && migration.version <= upTo)
+      .map((migration) => ({
+        version: migration.version,
+        name: migration.name,
+        // How many statements the step is made of, when it says so. Handy for
+        // judging whether an upgrade is a moment or a coffee.
+        statements: migration.up.statements?.length ?? null,
+      })),
+  };
+}
+
+/** What `npm run db:status` prints: installed, latest, and what is waiting. */
+export async function migrationStatus(executor, { migrations, upTo = Infinity } = {}) {
+  const plan = await planMigrations(executor, { migrations, upTo });
+  const list = migrations ?? (await import("./migrations.js")).MIGRATIONS;
+  return {
+    installed: plan.installed,
+    latest: plan.latest,
+    // Full entries, for callers that want the `up` function itself.
+    pending: plan.pending.map((entry) => list.find((migration) => migration.version === entry.version)),
+    plan: plan.pending,
   };
 }

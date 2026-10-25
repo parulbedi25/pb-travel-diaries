@@ -11,7 +11,7 @@ import mysql from "mysql2/promise";
 import { config } from "../config.js";
 import { createSqlRepository } from "./sqlRepository.js";
 export { REVISION_LIMIT } from "./sqlRepository.js";
-import { applySchema } from "./schema.js";
+import { applySchema, planMigrations } from "./schema.js";
 
 
 export async function createMysqlRepo() {
@@ -49,5 +49,11 @@ export async function createMysqlRepo() {
     }
   }
 
-  return createSqlRepository({ pool, transaction, kind: "mysql", migrate: () => applySchema(pool) });
+  return createSqlRepository({
+    pool,
+    transaction,
+    kind: "mysql",
+    migrate: () => applySchema(pool),
+    schemaStatus: () => planMigrations(pool),
+  });
 }

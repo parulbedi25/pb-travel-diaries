@@ -14,6 +14,7 @@ import { mapsRouter } from "./routes/maps.js";
 import { memberRouter } from "./routes/member.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
+import { isMissingSchema } from "./db/migrationErrors.js";
 
 /**
  * Builds the Express app without starting a listener, so tests can drive the
@@ -74,11 +75,31 @@ export function createApp() {
     });
   }
 
+  /**
+   * Liveness, plus where the schema stands.
+   *
+   * `schema` is the useful half during an upgrade: `installed` is what the
+   * database has, `latest` what this code expects, and `pending` names the
+   * versions still to run. A deploy can wait on it, and an operator can see
+   * from outside whether an upgrade has finished — without the site having to
+   * stop serving while it does.
+   */
   api.get("/health", async (req, res) => {
     try {
       const repo = await getRepo();
       await repo.ping();
-      res.json({ ok: true, database: repo.kind, time: new Date().toISOString() });
+      let schema = null;
+      try {
+        schema = await repo.schemaStatus();
+      } catch (error) {
+        schema = { error: "Schema status is unavailable right now." };
+      }
+      res.json({
+        ok: true,
+        database: repo.kind,
+        schema,
+        time: new Date().toISOString(),
+      });
     } catch (error) {
       res.status(503).json({ ok: false, error: "Database unreachable." });
     }
@@ -202,6 +223,19 @@ export function createApp() {
     }
     if (error?.type === "entity.too.large") {
       return res.status(413).json({ error: "That request was too large." });
+    }
+
+    // The code is ahead of the database: this deploy arrived before its
+    // migration, or an upgrade is still running. The rest of the site is
+    // untouched and still serving, so this is a "not yet", not a failure —
+    // 503 with a sentence a person can act on, instead of a 500 that suggests
+    // something is broken.
+    if (isMissingSchema(error)) {
+      console.warn(`[${req.method} ${req.originalUrl}] schema is behind the code:`, error.message);
+      return res.status(503).json({
+        error: "The database is still being upgraded for this feature. Try again in a minute.",
+        code: "schema_pending",
+      });
     }
 
     console.error(`[${req.method} ${req.originalUrl}]`, error);

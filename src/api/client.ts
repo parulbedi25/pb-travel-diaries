@@ -8,10 +8,19 @@
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /**
+   * The server's machine-readable reason, when it sent one.
+   *
+   * `schema_pending` is the one callers check today: the database is still
+   * being upgraded for the feature that was asked for, so the right response is
+   * to wait and try again rather than to report a fault.
+   */
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -58,7 +67,7 @@ async function request<T>(
       (response.status === 401
         ? "Sign in to continue."
         : `The server answered ${response.status}.`);
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, (payload as { code?: string } | null)?.code);
   }
 
   return payload as T;

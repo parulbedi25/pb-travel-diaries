@@ -29,6 +29,10 @@ const header = `-- ────────────────────�
 -- table, and the server applies pending migrations at boot. It is kept for
 -- people who prefer phpMyAdmin or Adminer (open the database, then Import).
 --
+-- Importing it into a database that has already run some of these statements
+-- reports "duplicate column" or "duplicate key" for those and carries on; those
+-- two messages are safe to ignore. The app's own upgrader skips them silently.
+--
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK
 -- constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in the
 -- application. Schema version: ${LATEST_VERSION}.

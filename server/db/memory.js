@@ -39,6 +39,11 @@ export function createMemoryRepo() {
       return { version: LATEST_VERSION, upgradedFrom: LATEST_VERSION, applied: [] };
     },
 
+    /** Memory is created at the current version every time, so nothing waits. */
+    async schemaStatus() {
+      return { installed: LATEST_VERSION, latest: LATEST_VERSION, pending: [] };
+    },
+
     async getContent() {
       return state.content ? clone(state.content) : null;
     },
