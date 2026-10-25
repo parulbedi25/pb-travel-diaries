@@ -92,6 +92,7 @@ import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
 import SocialIconsEditor from "./SocialIconsEditor";
 import RouteStopsEditor from "./RouteStopsEditor";
+import type { MapLinkSource } from "../utils/mapLinks";
 import Switch from "./Switch";
 import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
@@ -2808,8 +2809,10 @@ function SectionsPanel() {
                       key="stops"
                       stops={(getAt(selected.data, "stops") as LiveStop[]) ?? []}
                       routeGeometry={(getAt(selected.data, "routeGeometry") as LatLng[]) ?? []}
+                      mapSource={(getAt(selected.data, "mapSource") as MapLinkSource) ?? "google"}
                       onChange={(value) => setSectionData(selected.id, "stops", value)}
                       onGeometryChange={(value) => setSectionData(selected.id, "routeGeometry", value)}
+                      onMapSourceChange={(value) => setSectionData(selected.id, "mapSource", value)}
                     />
                   );
                 }
