@@ -111,12 +111,24 @@ export default function RideMap({
         onPick && "cursor-crosshair",
         className,
       )}
-      style={{ height: drawHeight }}
+      style={{ height: drawHeight, minHeight: 220 }}
       onClick={handleClick}
       role={onPick ? "application" : "img"}
       aria-label={onPick ? "Ride map — click to drop a stop" : "Ride map"}
     >
-      <VectorBasemap view={view} width={width} height={drawHeight} />
+      {/*
+        The basemap fills the frame from the inside and takes no pointer
+        events: this map is for placing stops, and a camera the member could
+        pan would slide out from under the pins, which are drawn from a view
+        of our own. Clicks have to reach the frame, not the canvas.
+      */}
+      <VectorBasemap
+        view={view}
+        width={width}
+        height={drawHeight}
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        attributionClassName="pointer-events-none absolute bottom-1 right-2 text-[9px] leading-none text-zinc-400/70"
+      />
 
       <svg
         className="pointer-events-none absolute inset-0"
