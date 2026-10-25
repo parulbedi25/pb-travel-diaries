@@ -24,6 +24,14 @@ import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 
 /**
+ * The two distances on the card, in whole numbers once they are long enough
+ * to need a comma. `formatKm` is shared with the stop list, where a decimal
+ * matters; a journey of 1,552 km does not want to read as "1552 km".
+ */
+const journeyKm = (km: number): string =>
+  km >= 100 ? `${Math.round(km).toLocaleString("en-IN")} km` : formatKm(km);
+
+/**
  * The icons a tracker button may draw. The dashboard stores the key, so the
  * copy of a button is a text field rather than a code change; anything
  * unrecognised falls back to a pin instead of leaving the button blank.
@@ -103,6 +111,11 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   const progressPct = stops.length > 1 ? (progressIndex / (stops.length - 1)) * 100 : 0;
   const currentStop = stops[progressIndex];
   const nextStop = stops[progressIndex + 1];
+  // What is left of the leg being ridden: the distance to the next stop, along
+  // the same measure the totals use — road geometry when the dashboard has
+  // fetched it, straight lines between stops when it has not.
+  const toNextKm = nextStop ? Math.max(0, (totals[progressIndex + 1] ?? 0) - coveredKm) : 0;
+  const byRoad = (data.routeGeometry?.length ?? 0) >= 2;
   const upcoming = stops.slice(progressIndex + 1, progressIndex + 4);
   // Shown on the tracker's stop strip rather than floating over the map.
   const pingLabel =
@@ -249,6 +262,45 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   <span className="rounded-full bg-white/[0.06] px-3.5 py-1.5 font-mono text-[11px] text-zinc-300">
                     IST {istTime}
                   </span>
+                </div>
+
+                {/* The two distances that answer "how long is this ride?" and
+                    "how far to the next stop?" — the numbers a rider looks for
+                    first, kept apart from the small facts below. */}
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
+                    <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                      <Route className="h-3.5 w-3.5 text-saffron-300" aria-hidden="true" />
+                      Whole journey
+                    </p>
+                    <p className="mt-2 font-display text-3xl font-bold tracking-tight text-white">
+                      {journeyKm(totalKm)}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                      {stops[0]?.name ?? "Start"} → {stops[stops.length - 1]?.name ?? "Destination"}
+                      {byRoad ? " · by road" : " · between the stops"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-saffron-400/25 bg-saffron-400/[0.06] p-4">
+                    <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-saffron-300/80">
+                      <MapPinned className="h-3.5 w-3.5 text-saffron-300" aria-hidden="true" />
+                      To next stop
+                    </p>
+                    <p
+                      className={cn(
+                        "mt-2 font-display text-3xl font-bold tracking-tight",
+                        nextStop ? "text-saffron-300" : "text-zinc-400",
+                      )}
+                    >
+                      {nextStop ? journeyKm(toNextKm) : "—"}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                      {nextStop
+                        ? `Left before ${nextStop.name}`
+                        : "The last stop on this route — nothing left to ride."}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
