@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { siteApi, type Account } from "../api/siteApi";
+import type { MapLinkSource as MapSource } from "../utils/mapLinks";
 import { describeApiError } from "../api/client";
 import { liftAll, normalizeLoaded, withChildrenOn } from "../utils/cascadeRules";
 import { setAt } from "../utils/objectPath";
@@ -555,6 +556,11 @@ export interface NearbySettings {
 }
 
 export interface LiveData {
+  /**
+   * Which map service the route was last imported from — Google Maps, Bing and
+   * so on. Chosen by pasting a link in the dashboard, never typed by hand.
+   */
+  mapSource?: MapSource;
   eyebrow: string;
   titleA: string;
   titleHi: string;
@@ -966,6 +972,7 @@ const LIVE: LiveData = {
     { name: "Chandigarh", note: "Destination · Sector 17", status: "next", lat: 30.7333, lng: 76.7794, state: "Chandigarh, India", altitude: "1,053 ft" },
   ],
   routeGeometry: [],
+  mapSource: "google",
   buttons: {
     map: { label: "Open live map", href: "#/live-map", icon: "map-pin", visible: true },
     nearby: { label: "Nearby places", href: "#/nearby", icon: "navigation", visible: true },

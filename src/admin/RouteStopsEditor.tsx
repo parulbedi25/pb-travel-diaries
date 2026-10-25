@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Link2,
   Loader2,
   MapPinned,
   Plus,
@@ -12,11 +13,19 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type { LiveStop } from "../store/siteContent";
+import {
+  SOURCE_LABELS,
+  describePoint,
+  parseRouteLink,
+  type MapLinkSource,
+  type RoutePoint,
+} from "../utils/mapLinks";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { cascadeHereNow } from "../utils/liveRoute";
+import { cn } from "../utils/cn";
 
 /**
  * Editor for the live tracker's route.
@@ -76,16 +85,49 @@ async function geocode(
   return Number.isFinite(lat) && Number.isFinite(lng) ? { lat: round(lat), lng: round(lng) } : null;
 }
 
+/**
+ * Turn a coordinate back into a name. A route link usually gives one end as
+ * coordinates and the other as a name, so the coordinate end would otherwise
+ * arrive on the tracker as "31.369, 76.3729" — true, and no use to a reader.
+ * Same service as the name lookup above, and just as optional: failing leaves
+ * the coordinates as the name.
+ */
+async function reverseLookup(
+  lat: number,
+  lng: number,
+): Promise<{ name: string; state?: string } | null> {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat=${lat}&lon=${lng}`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const json = (await response.json()) as {
+    name?: string;
+    display_name?: string;
+    address?: Record<string, string>;
+  };
+  const name = (json.name || json.display_name?.split(",")[0] || "").trim();
+  if (!name) return null;
+  const state = json.address?.state ?? json.address?.state_district;
+  return state ? { name, state } : { name };
+}
+
+/** The services this can name in the selector. */
+const LINK_SOURCES: MapLinkSource[] = ["google", "bing", "apple", "openstreetmap", "other"];
+
 export default function RouteStopsEditor({
   stops,
   routeGeometry,
+  mapSource,
   onChange,
   onGeometryChange,
+  onMapSourceChange,
 }: {
   stops: LiveStop[];
   routeGeometry: LatLng[];
+  /** Which map service the last pasted link came from — picked, never typed. */
+  mapSource: MapLinkSource;
   onChange: (stops: LiveStop[]) => void;
   onGeometryChange: (geometry: LatLng[]) => void;
+  onMapSourceChange: (source: MapLinkSource) => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -96,6 +138,11 @@ export default function RouteStopsEditor({
   const [fetchError, setFetchError] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoomStep, setZoomStep] = useState(0);
+  const [link, setLink] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importNote, setImportNote] = useState("");
+  const [replaceArmed, setReplaceArmed] = useState(false);
 
   // The projection has to match the map underneath pixel for pixel, so the
   // box is measured rather than assumed.
@@ -139,6 +186,14 @@ export default function RouteStopsEditor({
     return () => window.clearTimeout(timer);
   }, [view.lat, view.lng, zoom]);
   const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
+
+  // The replace button arms for a moment rather than asking with a dialog:
+  // it cannot fire by accident, and it cannot trap the operator behind a modal.
+  useEffect(() => {
+    if (!replaceArmed) return;
+    const timer = window.setTimeout(() => setReplaceArmed(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [replaceArmed]);
 
   const patch = useCallback(
     (index: number, part: Partial<LiveStop>) => {
@@ -239,6 +294,126 @@ export default function RouteStopsEditor({
     } finally {
       setLooking(false);
     }
+  };
+
+  // Read while typing: the service and the points are known before anything is
+  // added, so the operator can see what the link says without committing to it.
+  const parsedLink = useMemo(() => parseRouteLink(link), [link]);
+
+  /** Picked out of the link, not asked for by hand. */
+  const rememberSource = (source: MapLinkSource) => {
+    if (source !== "other" && source !== mapSource) onMapSourceChange(source);
+  };
+
+  const handleLinkChange = (value: string) => {
+    setLink(value);
+    setImportError("");
+    setImportNote("");
+    setReplaceArmed(false);
+    const detection = parseRouteLink(value).source;
+    if (value.trim() && detection !== "other") rememberSource(detection);
+  };
+
+  /**
+   * Turn what the link said into stops.
+   *
+   * A link can name an end or give it as coordinates, and either way the other
+   * half is looked up — the name from Nominatim's reverse lookup, the position
+   * from its search. Nothing is written until every point resolves, so a link
+   * half-read cannot leave the tracker with two stops and a hole.
+   */
+  const resolvePoint = async (
+    point: RoutePoint,
+    index: number,
+    total: number,
+    source: MapLinkSource,
+  ): Promise<LiveStop | null> => {
+    let lat = point.lat;
+    let lng = point.lng;
+    let name = point.label;
+    let state: string | undefined;
+
+    if (lat === undefined || lng === undefined) {
+      if (!name) return null;
+      const found = await geocode(name);
+      if (!found) return null;
+      lat = found.lat;
+      lng = found.lng;
+    } else if (!name) {
+      const looked = await reverseLookup(lat, lng);
+      if (looked) {
+        name = looked.name;
+        state = looked.state;
+      }
+    }
+
+    const role = index === 0 ? "Start" : index === total - 1 ? "Destination" : "On the way";
+    const status: LiveStop["status"] = index === 0 ? "live" : "next";
+    const stop: LiveStop = {
+      name: name ?? `${lat.toFixed(3)}, ${lng.toFixed(3)}`,
+      note: `${role} · from ${SOURCE_LABELS[source]}`,
+      status,
+      lat: round(lat),
+      lng: round(lng),
+    };
+    if (state) stop.state = state;
+    return stop;
+  };
+
+  const handleImport = async (mode: "add" | "replace") => {
+    if (!parsedLink.ok || importing) return;
+    setImporting(true);
+    setImportError("");
+    setImportNote("");
+
+    const built: LiveStop[] = [];
+    const unread: string[] = [];
+
+    for (const [index, point] of parsedLink.points.entries()) {
+      const resolved = await resolvePoint(point, index, parsedLink.points.length, parsedLink.source);
+      if (resolved) built.push(resolved);
+      else unread.push(point.label ?? `${point.lat}, ${point.lng}`);
+    }
+
+    setImporting(false);
+    if (unread.length) {
+      setImportError(`Could not place ${unread.join(", ")}. Add it by hand below and try the rest.`);
+      return;
+    }
+
+    const existing = mode === "replace" ? [] : stops;
+    // Bookkeeping, not paranoia: a route imported twice should not double every
+    // stop, and the same coordinate twice is the same place.
+    const seen = new Set(existing.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`));
+    let skipped = 0;
+    const fresh = built.filter((stop) => {
+      const key = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`;
+      if (seen.has(key)) {
+        skipped += 1;
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+
+    if (!fresh.length) {
+      setImportNote("Every point in that link is already a stop.");
+      return;
+    }
+
+    onChange([...existing, ...fresh]);
+    // The stored road geometry belongs to the old stops; leaving it would draw
+    // a route through points that are no longer on it.
+    if (routeGeometry.length) onGeometryChange([]);
+    setImportNote(
+      `${mode === "replace" ? "Route replaced with" : "Added"} ${fresh.length} ${
+        fresh.length === 1 ? "stop" : "stops"
+      } from ${SOURCE_LABELS[parsedLink.source]}${
+        skipped ? ` — ${skipped} already on the tracker` : ""
+      }.${routeGeometry.length ? " Fetch the road route again below." : ""}`,
+    );
+    setLink("");
+    setReplaceArmed(false);
   };
 
   const handleFetchRoad = async () => {
@@ -397,6 +572,127 @@ export default function RouteStopsEditor({
           </button>
         </div>
         {lookError && <p className="mt-2 text-[11px] text-amber-200">{lookError}</p>}
+      </div>
+
+      {/* ── From a map link ── */}
+      <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
+        <p className="flex items-center gap-2 text-xs font-bold text-white">
+          <Link2 className="h-4 w-4 text-saffron-300" aria-hidden="true" />
+          From a map link
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          Planned the ride in Google Maps or Bing Maps already? Paste the link here and its start and
+          destination become stops — the service is picked out of the link itself, and names are looked
+          up so the pins land in the right place.
+        </p>
+
+        <input
+          value={link}
+          onChange={(event) => handleLinkChange(event.target.value)}
+          onPaste={(event) => {
+            // Paste is the whole point of this box, so read it immediately
+            // rather than waiting for the change event to catch up.
+            const pasted = event.clipboardData.getData("text");
+            if (pasted) {
+              event.preventDefault();
+              handleLinkChange(pasted);
+            }
+          }}
+          placeholder="https://www.google.com/maps/dir/Nangal/Chandigarh"
+          aria-label="Paste a shared map route link"
+          aria-describedby="live-link-read"
+          spellCheck={false}
+          autoComplete="off"
+          className={cn(inputCls, "mt-3 font-mono text-[12px]")}
+        />
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-start">
+          <div>
+            <label className={labelCls} htmlFor="live-map-source">
+              Map service
+            </label>
+            <select
+              id="live-map-source"
+              value={mapSource}
+              onChange={(event) => onMapSourceChange(event.target.value as MapLinkSource)}
+              className={inputCls}
+            >
+              {LINK_SOURCES.map((source) => (
+                <option key={source} value={source} className="bg-ink-900">
+                  {SOURCE_LABELS[source]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p
+            id="live-link-read"
+            className={cn(
+              "text-[11px] leading-relaxed",
+              link.trim() && !parsedLink.ok ? "text-amber-200" : "text-zinc-500",
+            )}
+          >
+            {!link.trim()
+              ? "Selected automatically from whichever link you paste."
+              : parsedLink.message}
+          </p>
+        </div>
+
+        {parsedLink.ok && (
+          <ol className="mt-3 space-y-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+            {parsedLink.points.map((point, index) => (
+              <li key={`${index}-${point.label ?? ""}`} className="flex items-start gap-2 text-[11px] text-zinc-300">
+                <span
+                  className={cn(
+                    "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white",
+                    index === 0
+                      ? "bg-emerald-500"
+                      : index === parsedLink.points.length - 1
+                        ? "bg-red-500"
+                        : "bg-[#f5b301] text-ink-950",
+                  )}
+                  aria-hidden="true"
+                >
+                  {index + 1}
+                </span>
+                <span className="leading-relaxed">{describePoint(point, index, parsedLink.points.length)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (!replaceArmed) {
+                setReplaceArmed(true);
+                return;
+              }
+              void handleImport("replace");
+            }}
+            disabled={!parsedLink.ok || importing}
+            className={cn(
+              "flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all duration-300 disabled:opacity-40",
+              replaceArmed
+                ? "border-saffron-400/60 bg-saffron-400/15 text-saffron-300"
+                : "border-white/10 bg-white/[0.05] text-white hover:border-white/25",
+            )}
+          >
+            {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RouteIcon className="h-3.5 w-3.5" />}
+            {replaceArmed ? `Replace all ${stops.length} stops?` : "Use as the route"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleImport("add")}
+            disabled={!parsedLink.ok || importing}
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
+          >
+            {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Add to the end
+          </button>
+        </div>
+        {importError && <p className="mt-2 text-[11px] text-amber-200">{importError}</p>}
+        {importNote && <p className="mt-2 text-[11px] text-emerald-300">{importNote}</p>}
       </div>
 
       {/* ── Road ── */}
