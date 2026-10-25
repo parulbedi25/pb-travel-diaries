@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { resolveMapSettings, useSite } from "../store/siteContent";
+import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import { rasterTileUrl, tilesForView, type RasterSource, type TileView } from "../utils/tiles";
 
 export type { TileView };
@@ -39,6 +39,7 @@ export default function TileBasemap({
   height,
   className,
   attributionClassName,
+  settings,
 }: {
   view: TileView;
   width: number;
@@ -46,12 +47,18 @@ export default function TileBasemap({
   className?: string;
   /** Where to put the credit. The licence wants one whenever tiles are on screen. */
   attributionClassName?: string;
+  /**
+   * Draw this look instead of the published one. The dashboard's preview passes
+   * the draft, so the map on screen can show a choice that has not been saved
+   * yet — and still be the same component the site itself draws with.
+   */
+  settings?: MapSettings;
 }) {
   const { theme, content } = useSite();
   // The dashboard's map look decides which raster is tried first. Whatever is
   // chosen, the others queue behind it — a host having a bad day should cost a
   // different drawing, not the map.
-  const mapSettings = resolveMapSettings(content.map);
+  const mapSettings = settings ?? resolveMapSettings(content.map);
   const cartoKey = mapSettings.cartoKey.trim();
   const chain = useMemo<RasterSource[]>(() => {
     // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
