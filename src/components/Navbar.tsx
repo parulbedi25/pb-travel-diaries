@@ -12,6 +12,7 @@ import BrandLogo from "./BrandLogo";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "../utils/cn";
 import { ANCHOR_GAP_CSS } from "../utils/anchorScroll";
+import { navItemState } from "../utils/navSections";
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -64,7 +65,12 @@ export default function Navbar() {
   // before it is published.
   const { live: content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
   const isAdmin = canEditSite(account);
-  const nav = content.nav.filter((l) => l.enabled);
+  // A link whose section is switched off is a dead anchor, so it is shown
+  // disabled rather than clickable — and only the link: the section itself is
+  // untouched by anything the menu does (see utils/navSections).
+  const nav = content.nav
+    .filter((l) => l.enabled)
+    .map((link) => ({ link, state: navItemState(content, link) }));
   const ctas = resolveHeaderButtons(content.headerButtons)
     .filter((b) => b.enabled && b.label.trim())
     .slice(0, 2);
@@ -164,16 +170,29 @@ export default function Navbar() {
           </div>
 
           <nav aria-label="Primary" className="site-header-links relative z-10 hidden items-center gap-1 lg:flex">
-            {nav.map((link) => (
-              <a
-                key={link.id}
-                href={link.href}
-                className="group relative rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-colors duration-300 hover:text-white"
-              >
-                {link.label}
-                <span className="absolute inset-x-4 -bottom-px h-px origin-left scale-x-0 bg-saffron-400 transition-transform duration-300 group-hover:scale-x-100" />
-              </a>
-            ))}
+            {nav.map(({ link, state }) =>
+              state.available ? (
+                <a
+                  key={link.id}
+                  href={link.href}
+                  className="group relative rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-colors duration-300 hover:text-white"
+                >
+                  {link.label}
+                  <span className="absolute inset-x-4 -bottom-px h-px origin-left scale-x-0 bg-saffron-400 transition-transform duration-300 group-hover:scale-x-100" />
+                </a>
+              ) : (
+                // Its section is switched off, so there is nothing to jump to.
+                <span
+                  key={link.id}
+                  role="link"
+                  aria-disabled="true"
+                  title={`${state.section?.label ?? "That section"} is switched off in the dashboard`}
+                  className="relative cursor-not-allowed rounded-full px-4 py-2 text-sm font-medium text-zinc-600 line-through decoration-zinc-700 decoration-1"
+                >
+                  {link.label}
+                </span>
+              ),
+            )}
           </nav>
 
           <div className="site-header-actions relative z-10 flex items-center gap-2.5 sm:gap-3">
@@ -263,11 +282,16 @@ export default function Navbar() {
           >
             <div className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" />
             <div className="site-mobile-menu-content relative mt-28 flex flex-col gap-2 px-8">
-              {nav.map((link, i) => (
+              {nav.map(({ link, state }, i) => (
                 <motion.a
                   key={link.id}
-                  href={link.href}
-                  onClick={() => {
+                  href={state.available ? link.href : undefined}
+                  aria-disabled={state.available ? undefined : true}
+                  onClick={(event) => {
+                    if (!state.available) {
+                      event.preventDefault();
+                      return;
+                    }
                     setOpen(false);
                     // Unlock now rather than waiting for the effect: the jump
                     // that follows this click cannot move a locked body.
@@ -277,10 +301,21 @@ export default function Navbar() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -24 }}
                   transition={{ delay: 0.06 * i, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  className="group flex items-center justify-between border-b border-white/[0.06] py-5 font-display text-2xl font-semibold text-white"
+                  className={cn(
+                    "group flex items-center justify-between border-b border-white/[0.06] py-5 font-display text-2xl font-semibold",
+                    state.available
+                      ? "text-white"
+                      : "cursor-not-allowed text-zinc-600 line-through decoration-zinc-700",
+                  )}
                 >
                   {link.label}
-                  <ArrowUpRight className="h-5 w-5 text-zinc-600 transition-all duration-300 group-hover:text-saffron-400" />
+                  {state.available ? (
+                    <ArrowUpRight className="h-5 w-5 text-zinc-600 transition-all duration-300 group-hover:text-saffron-400" />
+                  ) : (
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600 no-underline">
+                      Section off
+                    </span>
+                  )}
                 </motion.a>
               ))}
               {ctas.map((b, i) => (

@@ -92,6 +92,7 @@ import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
 import SocialIconsEditor from "./SocialIconsEditor";
 import RouteStopsEditor from "./RouteStopsEditor";
+import { navStates } from "../utils/navSections";
 import type { MapLinkSource } from "../utils/mapLinks";
 import Switch from "./Switch";
 import { createBlock, type SectionBlock } from "../blocks/types";
@@ -2972,8 +2973,13 @@ function SectionsPanel() {
 
 /* ═══════════════ Header menu tab ═══════════════ */
 
-function MenuPanel() {
+export function MenuPanel() {
   const { draft, updateDraft, logAction } = useSite();
+  // Section-first, one way: a link whose section is switched off reads as
+  // disabled in the header. Hiding a link here never touches its section.
+  const states = navStates(draft);
+  const shownCount = draft.nav.filter((n) => states.get(n.id)?.shown).length;
+  const restingCount = draft.nav.filter((n) => !states.get(n.id)?.available).length;
 
   const setItem = (id: string, patch: Partial<{ label: string; href: string; enabled: boolean }>) => {
     logAction("Edited Header Menu links");
@@ -3008,8 +3014,17 @@ function MenuPanel() {
         <div className="min-w-0">
           <p className="text-xs font-semibold text-zinc-200">Header menu</p>
           <p className="mt-0.5 text-[11px] text-zinc-500">
-            {draft.nav.filter((n) => n.enabled).length} of {draft.nav.length} links shown · rename,
-            relink, reorder or hide any item
+            {shownCount} of {draft.nav.length} links shown · rename, relink, reorder or hide any item
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            A link whose section is switched off reads as disabled in the header.
+            {restingCount > 0 && (
+              <span className="text-amber-200/80">
+                {" "}
+                {restingCount} {restingCount === 1 ? "link is" : "links are"} waiting on a section.
+              </span>
+            )}{" "}
+            Hiding a link here never hides its section on the site — a menu is not the page.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -3022,12 +3037,16 @@ function MenuPanel() {
       <div className="flex flex-col gap-2.5">
         <RestoreBar scope="header" label="header navigation" />
         <HeaderButtonsEditor />
-        {draft.nav.map((n, i) => (
+        {draft.nav.map((n, i) => {
+          const state = states.get(n.id);
+          return (
           <div
             key={n.id}
             className={cn(
               "flex flex-wrap items-center gap-3 rounded-2xl border p-4 transition-colors",
-              n.enabled ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.05] bg-white/[0.01]"
+              n.enabled && state?.available
+                ? "border-white/[0.08] bg-white/[0.03]"
+                : "border-white/[0.05] bg-white/[0.01]"
             )}
           >
             <div className="flex items-center gap-1.5">
@@ -3061,6 +3080,14 @@ function MenuPanel() {
               placeholder="#anchor or /path or https://…"
               className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
             />
+            {!state?.available && (
+              <span
+                className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-200/90"
+                title="Its section is switched off, so the header link is disabled until the section is on again. This switch does not touch the section."
+              >
+                Section off
+              </span>
+            )}
             <Switch on={n.enabled} onChange={(v) => setItem(n.id, { enabled: v })} label={`Show ${n.label}`} />
             <button
               onClick={() => {
@@ -3073,7 +3100,8 @@ function MenuPanel() {
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
       <button
         onClick={() => {
