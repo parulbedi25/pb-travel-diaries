@@ -26,9 +26,22 @@
  * time (see RouteStopsEditor), not here. This file stays pure and synchronous so
  * the dashboard can show what it found while the link is still being typed.
  *
- * What cannot be read, and is said plainly rather than guessed at: short share
- * links (`maps.app.goo.gl/…`, `goo.gl/maps/…`). They are a redirect to the real
- * link, and a browser cannot follow it from here.
+ * Short share links (`maps.app.goo.gl/…`) are a redirect, and a page cannot read
+ * a cross-origin one. They come back flagged `shortLink`, and the dashboard asks
+ * the server to expand them (see server/routes/maps.js) before parsing the
+ * result here — so a link from the phone works as well as one from a laptop.
+ *
+ * Two details decide whether a shared route arrives intact, and both are easy
+ * to get wrong:
+ *
+ *  - **The last stop is not a duplicate.** Google writes a loop as
+ *    `…/dir/Nangal/…/Nangal/…`, so de-duplicating by name throws away the ride
+ *    home. Only *adjacent* repeats are collapsed here.
+ *  - **The coordinates are in the link.** A shared directions URL carries the
+ *    exact pin of every stop in its `data=…` blob (`!8m2!3d31.3832213!4d76.3765753`),
+ *    in the same order as the names in the path, so they are paired up instead
+ *    of leaving every stop to a name lookup — which is how a misspelt stop
+ *    ("Leh laddakh") used to fail the whole import.
  */
 
 /** Which service the link came from — and what the dashboard selects. */
@@ -53,6 +66,8 @@ export interface RoutePoint {
 export interface ParsedRouteLink {
   /** True when there is at least one point to import. */
   ok: boolean;
+  /** A short share link: it needs expanding server-side before it can be read. */
+  shortLink?: boolean;
   source: MapLinkSource;
   /** A start and a destination, a single pin, or nothing readable. */
   kind: "route" | "place" | "none";
@@ -165,17 +180,44 @@ function pointParam(params: URLSearchParams, names: string[]): RoutePoint | null
   return null;
 }
 
-/** Drop repeats and empty ends, keeping the order the link gave. */
+/**
+ * Drop empty ends, and collapse only repeats that sit next to each other.
+ *
+ * A round trip ends where it started — `Nangal → … → Nangal` — and deleting the
+ * second Nangal silently turns the ride into a one-way trip. Two identical
+ * points *in a row* are the only ones that are certainly a mistake.
+ */
 function tidy(points: RoutePoint[]): RoutePoint[] {
-  const seen = new Set<string>();
-  return points.filter((point) => {
-    const key = point.lat !== undefined && point.lng !== undefined
-      ? `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`
-      : `label:${(point.label ?? "").toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return Boolean(point.label || point.lat !== undefined);
-  });
+  const kept: RoutePoint[] = [];
+  for (const point of points) {
+    if (!point.label && point.lat === undefined) continue;
+    const previous = kept[kept.length - 1];
+    const key = (p: RoutePoint) => (p.lat !== undefined && p.lng !== undefined
+      ? `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`
+      : `label:${(p.label ?? "").toLowerCase()}`);
+    if (previous && key(previous) === key(point)) continue;
+    kept.push(point);
+  }
+  return kept;
+}
+
+/**
+ * The exact pin of each stop, out of Google's `data=` blob.
+ *
+ * The blob is a protobuf written as `!`-separated tags, and `!3d` / `!4d` are
+ * a latitude and the longitude that follows it — one pair per stop, in route
+ * order. Anything else in there (`!1s`, `!4m`, `!3e`) is skipped.
+ */
+export function coordsFromDataBlob(text: string): { lat: number; lng: number }[] {
+  const pairs: { lat: number; lng: number }[] = [];
+  const pattern = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const lat = Number(match[1]);
+    const lng = Number(match[2]);
+    if (inRange(lat, lng)) pairs.push({ lat, lng });
+  }
+  return pairs;
 }
 
 function parsed(source: MapLinkSource, points: RoutePoint[]): ParsedRouteLink {
@@ -214,18 +256,32 @@ function parseGoogle(url: URL): ParsedRouteLink {
   }
   if (queryPoints.length) return parsed("google", queryPoints);
 
-  // The share sheet's form: /maps/dir/<from>/<to>/data=!4m…
+  // The share sheet's form: /maps/dir/<from>/<to>/<…>/data=!4m…
   const segments = path.split("/").filter(Boolean).map(decode);
   const dirAt = segments.findIndex((segment) => segment === "dir" || segment === "dir/");
   if (dirAt >= 0) {
     const points = segments
       .slice(dirAt + 1)
-      // A segment that is still encoded (a name with a slash in it) is kept as
-      // one name rather than split — decode has already run, so only URL state
-      // is dropped here.
       .map(pointFromSegment)
       .filter((point): point is RoutePoint => Boolean(point));
-    if (points.length >= 2) return parsed("google", points);
+    // The names are in the path and the pins are in the data blob, in the same
+    // order — so a named stop keeps its name and gains its exact coordinate,
+    // and nothing needs looking up.
+    const pins = coordsFromDataBlob(url.href);
+    if (points.length >= 2) {
+      if (pins.length === points.length) {
+        return parsed(
+          "google",
+          points.map((point, index) => ({ ...point, lat: pins[index].lat, lng: pins[index].lng })),
+        );
+      }
+      // A pin the name already carries wins; the rest stay for a lookup.
+      const merged = points.map((point) => point);
+      for (let index = 0; index < Math.min(pins.length, merged.length); index += 1) {
+        if (merged[index].lat === undefined) merged[index] = { ...merged[index], ...pins[index] };
+      }
+      return parsed("google", merged);
+    }
   }
 
   // A single pin: /maps/place/<name>/@lat,lng,12z
@@ -389,13 +445,18 @@ export function parseRouteLink(raw: string): ParsedRouteLink {
 
   if (/^geo:/i.test(text)) return parseGeoUri(text);
 
-  // A shortened share link is a redirect, and a page cannot follow one. Saying
-  // so is better than blaming the link.
-  if (/(^|\/\/)(maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(`${text}/`)) {
-    return none(
-      "google",
-      "That is a shortened Google link — it only redirects. Open it, then copy the address from the browser bar.",
-    );
+  // A shortened share link is a redirect, and a page cannot read a cross-origin
+  // one. It is flagged rather than refused: the dashboard expands it through
+  // the server and parses the result with the code below.
+  if (/(^|\/\/)(maps\.app\.goo\.gl|goo\.gl|g\.co)\//i.test(`${text}/`)) {
+    return {
+      ok: false,
+      shortLink: true,
+      source: "google",
+      kind: "none",
+      points: [],
+      message: "Short link — expanding it to read the route…",
+    };
   }
 
   let url: URL;

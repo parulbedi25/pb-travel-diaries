@@ -20,6 +20,7 @@ import {
   type MapLinkSource,
   type RoutePoint,
 } from "../utils/mapLinks";
+import { siteApi } from "../api/siteApi";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
@@ -143,6 +144,9 @@ export default function RouteStopsEditor({
   const [importError, setImportError] = useState("");
   const [importNote, setImportNote] = useState("");
   const [replaceArmed, setReplaceArmed] = useState(false);
+  const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [expandError, setExpandError] = useState("");
 
   // The projection has to match the map underneath pixel for pixel, so the
   // box is measured rather than assumed.
@@ -296,9 +300,64 @@ export default function RouteStopsEditor({
     }
   };
 
+  // A short share link hides the route behind a redirect the browser cannot
+  // read, so it is expanded once through the server and the result is what gets
+  // parsed. The short link stays in the box — that is the thing they pasted.
+  const trimmedLink = link.trim();
+  const effectiveLink = expanded && expanded.link === trimmedLink ? expanded.url : trimmedLink;
+
   // Read while typing: the service and the points are known before anything is
   // added, so the operator can see what the link says without committing to it.
-  const parsedLink = useMemo(() => parseRouteLink(link), [link]);
+  const parsedLink = useMemo(() => parseRouteLink(effectiveLink), [effectiveLink]);
+
+  const linkStatus = !trimmedLink
+    ? "Selected automatically from whichever link you paste."
+    : resolving
+      ? "Short link — expanding it to read the route…"
+      : expandError
+        ? expandError
+        : parsedLink.message;
+
+  useEffect(() => {
+    if (!trimmedLink) {
+      setExpanded(null);
+      setExpandError("");
+      return;
+    }
+    if (expanded?.link === trimmedLink) return;
+    if (!parseRouteLink(trimmedLink).shortLink) {
+      setExpanded(null);
+      setExpandError("");
+      return;
+    }
+    // Debounced: a pasted link lands in one go, typing one is not a request
+    // per keystroke.
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setResolving(true);
+      setExpandError("");
+      void siteApi
+        .resolveMapLink(trimmedLink)
+        .then((url) => {
+          if (!cancelled) setExpanded({ link: trimmedLink, url });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setExpandError(
+            error instanceof Error
+              ? `${error.message} Open the short link and paste the address bar instead.`
+              : "That short link could not be expanded. Open it and copy the address bar instead.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setResolving(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [trimmedLink, expanded?.link]);
 
   /** Picked out of the link, not asked for by hand. */
   const rememberSource = (source: MapLinkSource) => {
@@ -382,13 +441,22 @@ export default function RouteStopsEditor({
     }
 
     const existing = mode === "replace" ? [] : stops;
+    // Only one stop can be "here now". Adding a route behind an existing one
+    // must not claim PB is in two places, so the imported stops join as still
+    // to come; a fresh route starts at its own start.
+    if (existing.length) {
+      for (const stop of built) stop.status = "next";
+    }
     // Bookkeeping, not paranoia: a route imported twice should not double every
     // stop, and the same coordinate twice is the same place.
     const seen = new Set(existing.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`));
     let skipped = 0;
-    const fresh = built.filter((stop) => {
+    const fresh = built.filter((stop, index) => {
       const key = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`;
-      if (seen.has(key)) {
+      // The first and last points define the journey — a round trip that comes
+      // back to a stop already on the tracker still needs its ride home.
+      const end = index === 0 || index === built.length - 1;
+      if (!end && seen.has(key)) {
         skipped += 1;
         return false;
       }
@@ -628,12 +696,10 @@ export default function RouteStopsEditor({
             id="live-link-read"
             className={cn(
               "text-[11px] leading-relaxed",
-              link.trim() && !parsedLink.ok ? "text-amber-200" : "text-zinc-500",
+              !trimmedLink || resolving ? "text-zinc-500" : parsedLink.ok && !expandError ? "text-zinc-400" : "text-amber-200",
             )}
           >
-            {!link.trim()
-              ? "Selected automatically from whichever link you paste."
-              : parsedLink.message}
+            {linkStatus}
           </p>
         </div>
 

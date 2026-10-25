@@ -162,6 +162,18 @@ export const siteApi = {
     await api.delete(`/api/revisions/${encodeURIComponent(id)}`);
   },
 
+  /**
+   * A shortened map link, expanded to the directions URL behind it.
+   *
+   * The redirect cannot be read from the browser — a cross-origin `Location`
+   * header is invisible to `fetch` — so the server follows it (see
+   * server/routes/maps.js) and hands back the address it ends at.
+   */
+  async resolveMapLink(url: string): Promise<string> {
+    const { url: expanded } = await api.post<{ url: string }>("/api/maps/resolve", { url });
+    return expanded;
+  },
+
   /* ── settings ────────────────────────────────────────────────────────── */
 
   async getTheme(): Promise<"dark" | "light"> {

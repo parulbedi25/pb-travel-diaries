@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth.js";
 import { contentRouter, settingsRouter } from "./routes/content.js";
 import { mediaRouter } from "./routes/media.js";
 import { backupsRouter } from "./routes/backups.js";
+import { mapsRouter } from "./routes/maps.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
 
@@ -91,6 +92,7 @@ export function createApp() {
   api.use(settingsRouter);
   api.use(mediaRouter);
   api.use(backupsRouter);
+  api.use(mapsRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
   app.use("/api", api);
