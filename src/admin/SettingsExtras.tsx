@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   resolveHeaderButtons,
+  resolveMapSettings,
   resolveThemeColors,
   useSite,
+  type CartoStyle,
   type HeaderButton,
+  type MapProvider,
   type RestoreScope,
   type ThemeTokens,
 } from "../store/siteContent";
@@ -340,6 +343,160 @@ export function ThemePanel() {
           <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
             Colours apply to the whole site once you Save Changes. Switching the site between dark and light uses each mode's own palette.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════ Map look ═══════════════ */
+
+const PROVIDERS: { id: MapProvider; label: string; hint: string }[] = [
+  {
+    id: "carto",
+    label: "CARTO",
+    hint: "Vector basemaps with your key. Positron in light mode, Dark Matter in dark — or pick one drawing for both.",
+  },
+  {
+    id: "openstreetmap",
+    label: "OpenStreetMap",
+    hint: "The keyless look this site had before CARTO. Free, and it needs nothing from you.",
+  },
+];
+
+const CARTO_DRAWINGS: { id: CartoStyle; label: string; hint: string }[] = [
+  { id: "auto", label: "Follow the theme", hint: "Positron by day, Dark Matter by night" },
+  { id: "voyager", label: "Voyager", hint: "Warm, colourful, suits both themes" },
+  { id: "positron", label: "Positron", hint: "Pale and quiet, made for light mode" },
+  { id: "dark-matter", label: "Dark Matter", hint: "Near-black, made for dark mode" },
+];
+
+export function MapPanel() {
+  const { draft, updateDraft, logAction } = useSite();
+  const map = resolveMapSettings(draft.map);
+
+  const set = (action: string, patch: Partial<typeof map>) => {
+    logAction(action);
+    updateDraft((c) => ({ ...c, map: { ...resolveMapSettings(c.map), ...patch } }));
+  };
+
+  return (
+    <div>
+      <RestoreBar scope="map" label="map look" />
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
+        <div className="rounded-3xl glass p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Basemap</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {PROVIDERS.map((p) => {
+              const on = map.provider === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => set(`Map look: ${p.label}`, { provider: p.id })}
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition-colors",
+                    on
+                      ? "border-saffron-400/60 bg-saffron-400/[0.08]"
+                      : "border-white/[0.08] bg-white/[0.02] hover:border-white/20"
+                  )}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-white">{p.label}</span>
+                    <span
+                      className={cn(
+                        "grid h-4 w-4 place-items-center rounded-full border",
+                        on ? "border-saffron-400 bg-saffron-400" : "border-white/25"
+                      )}
+                      aria-hidden="true"
+                    >
+                      {on && <span className="h-1.5 w-1.5 rounded-full bg-ink-950" />}
+                    </span>
+                  </span>
+                  <span className="mt-1.5 block text-[11px] leading-relaxed text-zinc-500">{p.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            className={cn(
+              "mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-opacity",
+              map.provider === "carto" ? "opacity-100" : "pointer-events-none opacity-40"
+            )}
+            aria-hidden={map.provider !== "carto"}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">CARTO drawing</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CARTO_DRAWINGS.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  aria-pressed={map.cartoStyle === d.id}
+                  onClick={() => set(`Map drawing: ${d.label}`, { cartoStyle: d.id })}
+                  title={d.hint}
+                  className={cn(
+                    "rounded-full px-3.5 py-2 text-xs font-semibold transition-colors",
+                    map.cartoStyle === d.id
+                      ? "bg-saffron-400 text-on-gold"
+                      : "bg-white/[0.06] text-zinc-400 hover:text-white"
+                  )}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              CARTO key
+            </label>
+            <input
+              value={map.cartoKey}
+              onChange={(e) => set("Changed the CARTO key", { cartoKey: e.target.value })}
+              placeholder="cb1_…"
+              spellCheck={false}
+              autoComplete="off"
+              className={cn(inputCls, "mt-2 font-mono text-[12px]")}
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+              A basemap key only unlocks tiles, so it is safe in the page — but it is public: anyone can read
+              it in the build. Leave it blank and the site draws the keyless OpenStreetMap look instead.
+            </p>
+          </div>
+        </div>
+
+        <div className="min-w-0 xl:sticky xl:top-28 xl:self-start">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            What this looks like
+          </p>
+          <div className="rounded-3xl border border-white/10 bg-ink-900 p-5">
+            {map.provider === "carto" ? (
+              <p className="text-sm leading-relaxed text-zinc-300">
+                The tracker map and the nearby page draw on{" "}
+                <span className="font-semibold text-white">
+                  CARTO {map.cartoStyle === "auto" ? "(by theme)" : map.cartoStyle}
+                </span>
+                , with every place name switched off.
+              </p>
+            ) : (
+              <p className="text-sm leading-relaxed text-zinc-300">
+                The maps draw on the{" "}
+                <span className="font-semibold text-white">keyless OpenStreetMap</span> styles — OpenFreeMap
+                first, raster tiles behind it.
+              </p>
+            )}
+            <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+              Either way, if the chosen one cannot load, the other is tried before anything is given up — a map
+              in the wrong style beats no map at all. Save Changes to publish this, then reload the page.
+            </p>
+            <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
+              {map.provider === "carto"
+                ? "basemaps.cartocdn.com/gl/…-gl-style/style.json"
+                : "tiles.openfreemap.org/styles/…"}
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -18,8 +18,8 @@
  * one idea of where the map is, not two that can drift apart.
  */
 
-import { useMemo, useRef, useState } from "react";
-import { useSite } from "../store/siteContent";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveMapSettings, useSite } from "../store/siteContent";
 import { rasterTileUrl, tilesForView, type RasterSource, type TileView } from "../utils/tiles";
 
 export type { TileView };
@@ -41,9 +41,20 @@ export default function TileBasemap({
   /** Where to put the credit. The licence wants one whenever tiles are on screen. */
   attributionClassName?: string;
 }) {
-  const { theme } = useSite();
-  const [source, setSource] = useState<RasterSource>("carto");
+  const { theme, content } = useSite();
+  // The dashboard's map look decides which raster is tried first: CARTO's
+  // nameless drawing, or OpenStreetMap's own labelled tiles. Each keeps the
+  // other behind it, so a host having a bad day never empties the panel.
+  const provider = resolveMapSettings(content.map).provider;
+  const [source, setSource] = useState<RasterSource>(
+    provider === "openstreetmap" ? "osm" : "carto",
+  );
   const failures = useRef(0);
+
+  useEffect(() => {
+    setSource(provider === "openstreetmap" ? "osm" : "carto");
+    failures.current = 0;
+  }, [provider]);
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,9 +65,12 @@ export default function TileBasemap({
   // The last resort is the labelled map, so it is reached only after several
   // failures — and the credit then says so rather than passing silently.
   const onTileError = () => {
-    if (source !== "carto") return;
+    if (failures.current >= FAILURES_BEFORE_FALLBACK) return;
     failures.current += 1;
-    if (failures.current >= FAILURES_BEFORE_FALLBACK) setSource("osm");
+    if (failures.current < FAILURES_BEFORE_FALLBACK) return;
+    // CARTO's rasters falling over leaves OpenStreetMap's labelled tiles; the
+    // reverse has nowhere else to go, so it stays put rather than flickering.
+    if (source === "carto") setSource("osm");
   };
 
   return (
