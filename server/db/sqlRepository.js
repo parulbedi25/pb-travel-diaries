@@ -33,7 +33,7 @@ const rowAsJourney = (row) => ({
   createdAt: row.createdAt ?? null,
   updatedAt: row.updatedAt ?? null,
 });
-export function createSqlRepository({ pool, transaction, kind, migrate }) {
+export function createSqlRepository({ pool, transaction, kind, migrate, schemaStatus }) {
   return {
     kind,
 
@@ -51,6 +51,17 @@ export function createSqlRepository({ pool, transaction, kind, migrate }) {
      */
     async migrate() {
       return migrate();
+    },
+
+    /**
+     * Where this database is against the code that is running.
+     *
+     * `{ installed, latest, pending }`, read from the ledger. The health
+     * endpoint reports it so an upgrade can be watched from outside, and a
+     * deploy that arrived before its migration is visible rather than guessing.
+     */
+    async schemaStatus() {
+      return schemaStatus ? schemaStatus() : { installed: null, latest: null, pending: [] };
     },
 
     /* ── site content ─────────────────────────────────────────────────── */

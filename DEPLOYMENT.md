@@ -335,14 +335,58 @@ needs. The next boot — or `npm run db:migrate` — applies it.
   ledger (it only has `settings.schema_version`) is adopted at that version, so
   the older `ALTER`s are not attempted again.
 
+### Upgrading a site that is already running
+
+The upgrade never needs the site to be taken down, and it is safe to start twice.
+Three things make that true:
+
+- **Every step is additive and repeatable.** New tables are `CREATE TABLE IF NOT
+  EXISTS`, new columns are nullable or carry a default, and a statement whose
+  column or index already exists is read as "this step is done" rather than as a
+  failure. The old code keeps working against the new shape, so the site serves
+  normally while the upgrade runs.
+- **An interrupted upgrade is finished by running it again.** If the process dies
+  (or the deploy restarts the app) halfway through a version, the next attempt
+  replays that version and steps over the parts that already landed. Nothing is
+  stuck, and no one has to fix the database by hand.
+- **Only one upgrade runs at a time.** The upgrader takes a MySQL named lock
+  (`pb_travel_diaries_schema`, 30-second wait) before it touches anything, so two
+  workers booting together — a rolling restart, a Passenger worker pool — do not
+  apply the same version twice. If the lock cannot be had within 30 seconds the
+  process says so (`SCHEMA_LOCK_TIMEOUT`) and leaves the database alone.
+
+What a member sees during the minute between "new code deployed" and "migration
+finished": a short notice that their tracker is being brought up to date, and the
+page tries again by itself. Behind it the API answers `503` with
+`{"code": "schema_pending"}` instead of a 500, because nothing is broken — the
+database is simply a step behind the code. Every other page, the owner's
+dashboard included, is untouched.
+
 Useful commands:
 
 | Command | What it does |
 | --- | --- |
 | `npm run db:status` | Prints the installed version and every migration waiting |
 | `npm run db:migrate` | Applies the waiting ones and says which |
+| `npm run db:migrate -- --dry-run` | Says what would be applied, changes nothing |
+| `npm run db:migrate -- --check` | Exits 1 if the database is behind the code — a deploy gate |
 | `npm run schema:sql` | Regenerates `server/schema.sql` for phpMyAdmin users |
 | `npm run db:init` | Creates the database and tables from scratch |
+
+### Rules for the next migration
+
+1. **Additive only.** Add tables, columns and indexes. Do not rename or drop
+   something the current release still reads in the same version — do that a
+   release later, once nothing refers to it.
+2. **Nullable or defaulted columns.** `ALTER TABLE ... ADD COLUMN x INT NULL` and
+   `... ADD COLUMN y VARCHAR(20) NOT NULL DEFAULT ''` are both fine on a table
+   that is being read; a `NOT NULL` column with no default is not.
+3. **Write it as a list of statements** (`up: sql(...)`) so `schema.sql` can
+   include it. A migration that must read rows and write new ones is allowed to
+   be a function, but it then only exists for the app, not for phpMyAdmin.
+4. **Move the version forward, never sideways.** `LATEST_VERSION` is the last
+   entry's version; a gap or a renumbered entry makes an installed database skip
+   a step. `server/tests/migrations.test.js` checks this.
 
 A restore replays migrations in two stages on purpose: it builds the tables at
 the backup's own version, loads the rows, and only then applies anything newer —

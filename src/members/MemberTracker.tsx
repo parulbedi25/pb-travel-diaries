@@ -60,6 +60,7 @@ import { useSite } from "../store/siteContent";
 import { parseRouteLink } from "../utils/mapLinks";
 import { cn } from "../utils/cn";
 import RideMap from "./RideMap";
+import { SchemaPendingNotice, useUpgradeRetry } from "./SchemaPending";
 import { rideMaths } from "./rideMath";
 
 const inputCls =
@@ -470,6 +471,8 @@ export default function MemberTracker() {
   const [journeys, setJourneys] = useState<MemberJourney[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  /** The database is still being upgraded; the page waits rather than scolds. */
+  const [upgrading, setUpgrading] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -493,7 +496,15 @@ export default function MemberTracker() {
   const [addingBike, setAddingBike] = useState(false);
   const [editingBike, setEditingBike] = useState<MemberBike | null>(null);
 
-  const load = useCallback(async () => {
+  /**
+   * Reads the catalogue and this member's garage.
+   *
+   * Returns what happened, because one of the three answers needs a different
+   * response from the page: `pending` means the database is still being
+   * upgraded for the member tables, so the honest thing is to wait a moment and
+   * try again rather than to show an error at someone whose data is fine.
+   */
+  const load = useCallback(async (): Promise<"ok" | "pending" | "error"> => {
     setLoading(true);
     setError("");
     try {
@@ -502,12 +513,19 @@ export default function MemberTracker() {
       setBikes(garage.bikes);
       setJourneys(garage.journeys);
       setBikeId((current) => current ?? garage.bikes[0]?.id ?? null);
+      setUpgrading(false);
+      return "ok";
     } catch (err) {
-      setError(describeApiError(err));
+      const pending = (err as { code?: string } | null)?.code === "schema_pending";
+      if (pending) setUpgrading(true);
+      else setError(describeApiError(err));
+      return pending ? "pending" : "error";
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useUpgradeRetry(load, upgrading);
 
   useEffect(() => {
     if (!account) return;
@@ -638,7 +656,7 @@ export default function MemberTracker() {
       }
       setStops(imported);
       setSelectedStop(null);
-      if (!title.trim()) setTitle(`${imported[0].name} → ${imported.at(-1)?.name ?? ""}`);
+      if (!title.trim()) setTitle(`${imported[0].name} → ${imported[imported.length - 1]?.name ?? ""}`);
       flash(`${imported.length} stops imported — check them on the map.`);
     } catch (err) {
       setLinkError(describeApiError(err));
@@ -657,7 +675,7 @@ export default function MemberTracker() {
     try {
       const saved = await memberApi.saveJourney(
         {
-          title: title.trim() || `${stops[0].name} → ${stops.at(-1)?.name ?? ""}`,
+          title: title.trim() || `${stops[0].name} → ${stops[stops.length - 1]?.name ?? ""}`,
           bikeId,
           stops,
           notes,
@@ -840,6 +858,7 @@ export default function MemberTracker() {
             <Check className="h-3.5 w-3.5" /> {notice}
           </p>
         )}
+        {upgrading && <SchemaPendingNotice onRetry={() => void load()} />}
         {error && (
           <p className="mb-4 rounded-xl border border-red-400/25 bg-red-500/[0.08] px-4 py-2.5 text-xs font-medium text-red-200">
             {error}

@@ -8,9 +8,13 @@
 -- table, and the server applies pending migrations at boot. It is kept for
 -- people who prefer phpMyAdmin or Adminer (open the database, then Import).
 --
+-- Importing it into a database that has already run some of these statements
+-- reports "duplicate column" or "duplicate key" for those and carries on; those
+-- two messages are safe to ignore. The app's own upgrader skips them silently.
+--
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK
 -- constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in the
--- application. Schema version: 5.
+-- application. Schema version: 6.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS site_content (
@@ -155,6 +159,10 @@ CREATE TABLE IF NOT EXISTS member_journeys (
 
 INSERT IGNORE INTO schema_migrations (version, name) VALUES (5, 'member garages and journeys');
 
-INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '5');
+CREATE INDEX member_journeys_bike ON member_journeys (bike_id);
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (6, 'member garage lookups');
+
+INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '6');
 
 INSERT IGNORE INTO settings (setting_key, value) VALUES ('theme', '"dark"');

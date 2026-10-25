@@ -28,15 +28,35 @@
  * like a database that has been running for years.
  */
 
+import { isAlreadyApplied } from "./migrationErrors.js";
+
 /**
  * A migration body made of plain statements, run in order.
  *
  * Note that MySQL has no `ADD COLUMN IF NOT EXISTS`, which is precisely why the
  * ledger exists: each version runs once and is never attempted again.
+ *
+ * A version can still be interrupted halfway — MySQL commits DDL as it goes, so
+ * a statement that fails leaves the earlier ones behind with no ledger row. The
+ * next run then replays the version from the top and meets its own work: a
+ * column that already exists, an index that is already there. Those specific
+ * errors are counted as "done" and the migration carries on (see
+ * migrationErrors.js); anything else stops it. That is what makes an upgrade
+ * resumable rather than stuck: fix the cause, run it again, and it finishes the
+ * job from where it stopped.
  */
 export function sql(...statements) {
   const run = async (executor) => {
-    for (const statement of statements) await executor.query(statement);
+    const skipped = [];
+    for (const statement of statements) {
+      try {
+        await executor.query(statement);
+      } catch (error) {
+        if (!isAlreadyApplied(error)) throw error;
+        skipped.push(statement);
+      }
+    }
+    return { skipped };
   };
   // `npm run schema:sql` reads this so the generated file matches the app.
   run.statements = statements;
@@ -138,6 +158,15 @@ export const MIGRATIONS = [
         KEY member_journeys_user (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     ),
+  },
+  {
+    version: 6,
+    name: "member garage lookups",
+    // Removing a bike has to find the rides that used it, and a member's ride
+    // list is read on every visit to the garage. Migration 5 indexed the owner
+    // columns; this adds the one lookup that was left scanning: journeys by
+    // bike. Additive and short — safe to run while the site is serving.
+    up: sql("CREATE INDEX member_journeys_bike ON member_journeys (bike_id)"),
   },
 ];
 
