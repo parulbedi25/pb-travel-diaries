@@ -109,8 +109,14 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
  * CARTO's `*_nolabels` rasters are the point of this list: they are drawn from
  * OpenStreetMap's data with every place name left out, which is the same thing
  * the vector styles are asked for by switching their symbol layers off. They
- * need no key, they come in a light and a dark drawing so each theme gets the
- * map it asks for, and they serve an `Access-Control-Allow-Origin: *` header.
+ * come in a light and a dark drawing, so each theme gets the map it asks for.
+ *
+ * They are **not** keyless, whatever the URL suggests. Asked without a key the
+ * tile answers 200 with a placeholder stamped "API KEY REQUIRED" — a 2 KB grey
+ * square where the map should be. Measured, not assumed: the same tile is
+ * 13.7 KB with the key and 2 KB without. So the key travels in the URL, and
+ * with no key the CARTO raster is skipped rather than drawn as a grey hole
+ * (see TileBasemap).
  *
  * OpenStreetMap's own tiles stay at the end as a genuine last resort — keyless
  * too, but *labelled*, because a raster tile has its names painted into the
@@ -120,16 +126,26 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
  */
 export type RasterSource = "carto" | "osm";
 
-/** Each raster's own drawing, so the map follows the site's theme. */
+/**
+ * Each raster's own drawing, so the map follows the site's theme.
+ *
+ * `key` is the CARTO basemap key, and a CARTO tile needs it to be a map at all:
+ * without it the tile is a grey "API KEY REQUIRED" placeholder that still
+ * answers 200 — the kind of failure that looks like a working map until you
+ * actually look at it.
+ */
 export function rasterTileUrl(
   source: RasterSource,
   theme: "light" | "dark",
   tileZoom: number,
   tile: PlacedTile,
+  key?: string,
 ): string {
   if (source === "carto") {
     const drawing = theme === "light" ? "light_nolabels" : "dark_nolabels";
-    return `https://a.basemaps.cartocdn.com/${drawing}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+    const base = `https://a.basemaps.cartocdn.com/${drawing}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+    const trimmed = (key ?? "").trim();
+    return trimmed ? `${base}?key=${encodeURIComponent(trimmed)}` : base;
   }
   return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
 }

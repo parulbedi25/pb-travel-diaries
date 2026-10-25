@@ -4,9 +4,15 @@
  * The tracker and the dashboard both use VectorBasemap, which can switch
  * labels off properly. This exists for the browsers where MapLibre cannot
  * start at all, and it draws the same thing: a map with no place names on it.
- * CARTO's `*_nolabels` rasters are keyless, need no WebGL, and are drawn from
- * OpenStreetMap's data with every label left out — so the fallback is no longer
- * the labelled compromise it used to be.
+ * CARTO's `*_nolabels` rasters need no WebGL and are drawn from OpenStreetMap's
+ * data with every label left out — so the fallback is no longer the labelled
+ * compromise it used to be.
+ *
+ * They do want the key, though. Without it they answer 200 with a grey
+ * "API KEY REQUIRED" placeholder, which is the worst kind of failure: a tile
+ * that loaded and a map that is empty. So the key rides along in the tile URL,
+ * and when there is no key the CARTO raster is skipped entirely and
+ * OpenStreetMap's tiles are used instead — labelled, but honest about it.
  *
  * OpenStreetMap's own tiles are still behind that, for the day CARTO cannot be
  * reached. They *are* labelled — a raster tile carries its names in the
@@ -45,16 +51,19 @@ export default function TileBasemap({
   // The dashboard's map look decides which raster is tried first: CARTO's
   // nameless drawing, or OpenStreetMap's own labelled tiles. Each keeps the
   // other behind it, so a host having a bad day never empties the panel.
-  const provider = resolveMapSettings(content.map).provider;
-  const [source, setSource] = useState<RasterSource>(
-    provider === "openstreetmap" ? "osm" : "carto",
-  );
+  const mapSettings = resolveMapSettings(content.map);
+  const cartoKey = mapSettings.cartoKey.trim();
+  // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
+  // are not asked for at all: the labelled map is the better of the two
+  // failures, and at least it says what it is.
+  const first: RasterSource = mapSettings.provider === "carto" && cartoKey ? "carto" : "osm";
+  const [source, setSource] = useState<RasterSource>(first);
   const failures = useRef(0);
 
   useEffect(() => {
-    setSource(provider === "openstreetmap" ? "osm" : "carto");
+    setSource(first);
     failures.current = 0;
-  }, [provider]);
+  }, [first]);
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,7 +101,7 @@ export default function TileBasemap({
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}
-          src={rasterTileUrl(source, theme === "light" ? "light" : "dark", tile.tileZoom, tile)}
+          src={rasterTileUrl(source, theme === "light" ? "light" : "dark", tile.tileZoom, tile, cartoKey)}
           alt=""
           loading="eager"
           onError={onTileError}
