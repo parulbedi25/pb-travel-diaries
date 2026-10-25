@@ -65,12 +65,17 @@ export default function Navbar() {
   // before it is published.
   const { live: content, previewAsVisitor, setPreviewAsVisitor, account } = useSite();
   const isAdmin = canEditSite(account);
-  // A link whose section is switched off is a dead anchor, so it is shown
-  // disabled rather than clickable — and only the link: the section itself is
-  // untouched by anything the menu does (see utils/navSections).
+  // A link whose section is switched off is a dead anchor. The admin sees it
+  // struck through, because for them it explains where the section went; a
+  // visitor and a member never see it at all — a menu is a list of places you
+  // can go, and offering one you cannot is not information, it is clutter.
+  // Either way only the link is affected; the section itself is untouched by
+  // anything the menu does (see utils/navSections).
+  const showDormant = isAdmin && !previewAsVisitor;
   const nav = content.nav
     .filter((l) => l.enabled)
-    .map((link) => ({ link, state: navItemState(content, link) }));
+    .map((link) => ({ link, state: navItemState(content, link) }))
+    .filter(({ state }) => state.available || showDormant);
   const ctas = resolveHeaderButtons(content.headerButtons)
     .filter((b) => b.enabled && b.label.trim())
     .slice(0, 2);
