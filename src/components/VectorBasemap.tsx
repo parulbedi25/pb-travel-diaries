@@ -54,7 +54,7 @@ import {
   type MapStyleDataEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { resolveMapSettings, useSite } from "../store/siteContent";
+import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
 import { providerLabel, styleChain } from "../utils/basemapStyles";
@@ -87,6 +87,7 @@ export default function VectorBasemap({
   height,
   className,
   attributionClassName,
+  settings,
 }: {
   view: TileView;
   width: number;
@@ -94,6 +95,11 @@ export default function VectorBasemap({
   className?: string;
   /** Where to put the credit. Omit and none is shown — but the licence wants one. */
   attributionClassName?: string;
+  /**
+   * Draw this look instead of the published one, so the dashboard's preview
+   * shows an unsaved choice. The site itself never passes it.
+   */
+  settings?: MapSettings;
 }) {
   const { theme, content } = useSite();
   const host = useRef<HTMLDivElement | null>(null);
@@ -107,7 +113,7 @@ export default function VectorBasemap({
   const [placeholder, setPlaceholder] = useState(false);
   const sized = width > 1 && height > 1;
 
-  const mapSettings = resolveMapSettings(content.map);
+  const mapSettings = settings ?? resolveMapSettings(content.map);
   const chain = styleChain(mapSettings, theme === "light" ? "light" : "dark");
   const gaveUp = candidate >= chain.length;
   const styleUrl = chain[Math.min(candidate, chain.length - 1)];
@@ -279,6 +285,7 @@ export default function VectorBasemap({
         height={height}
         className={className}
         attributionClassName={attributionClassName}
+        settings={settings}
       />
     );
   }
@@ -299,6 +306,7 @@ export default function VectorBasemap({
           height={height}
           className={className}
           attributionClassName={attributionClassName}
+          settings={settings}
         />
       </>
     );
@@ -314,6 +322,7 @@ export default function VectorBasemap({
           height={height}
           className={className}
           attributionClassName={attributionClassName}
+          settings={settings}
         />
       )}
       <div ref={host} className={className} aria-hidden="true" />

@@ -1,16 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   resolveHeaderButtons,
   resolveMapSettings,
   resolveThemeColors,
+  sectionData,
   useSite,
   type CartoStyle,
   type HeaderButton,
+  type LiveData,
   type MapProvider,
+  type MapSettings,
   type RestoreScope,
   type ThemeTokens,
 } from "../store/siteContent";
+import VectorBasemap from "../components/VectorBasemap";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -376,9 +380,83 @@ const CARTO_DRAWINGS: { id: CartoStyle; label: string; hint: string }[] = [
   { id: "dark-matter", label: "Dark Matter", hint: "Near-black, made for dark mode" },
 ];
 
+/**
+ * The map itself, in the dashboard, drawn from the draft.
+ *
+ * The panel used to describe the choice in a paragraph and leave you to save,
+ * reload and go look at the tracker to find out what you had picked. This is
+ * the same component the site draws with — VectorBasemap, so CARTO's vector
+ * styles and the keyless ones appear exactly as they will on the page, and
+ * satellite through the raster path it always takes — handed the *draft*
+ * settings rather than the published ones. Click a look and the map under your
+ * cursor changes; nothing is published until Save Changes.
+ *
+ * It is centred on wherever PB is now, because that is the ground the look
+ * will actually be judged on, and it carries the credit the real map carries,
+ * since a preview is still tiles on a screen.
+ */
+function MapPreview({ settings }: { settings: MapSettings }) {
+  const { draft } = useSite();
+  const host = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  // Tiles are placed by hand, so the panel has to be measured rather than
+  // guessed at — same rule the tracker map follows.
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.clientWidth;
+      const height = el.clientHeight;
+      if (width > 0 && height > 0) setSize({ width, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Where PB is now — the checkpoint marked "here now", else the first stop.
+  // The same place the tracker centres on, so this is the ground the look will
+  // actually be judged on rather than some arbitrary patch of map.
+  const { stops } = sectionData<LiveData>(draft, "live");
+  const here = stops.find((s) => s.status === "live") ?? stops[0];
+  const lat = here?.lat ?? 31.369;
+  const lng = here?.lng ?? 76.3729;
+  const place = here?.name ?? "Nangal";
+
+  return (
+    <div
+      ref={host}
+      className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-ink-900"
+      data-map-preview={settings.provider}
+    >
+      <VectorBasemap
+        settings={settings}
+        view={{ lat, lng, zoom: 12 }}
+        width={size.width}
+        height={size.height}
+        className="absolute inset-0"
+        attributionClassName="pointer-events-auto absolute bottom-2 right-2 max-w-[calc(100%-1rem)] text-right text-[9px] leading-snug text-white/60"
+      />
+      {/* The place the look is being judged on, and nothing else — the real
+          panel's route, pins and plates would only get in the way of seeing
+          the basemap. */}
+      <div className="pointer-events-none absolute inset-0">
+        <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400 shadow-[0_0_0_4px_rgba(245,179,1,0.25),0_0_16px_rgba(245,179,1,0.6)]" />
+        <span className="absolute left-1/2 top-1/2 mt-3 -translate-x-1/2 rounded-full bg-ink-950/80 px-2 py-0.5 text-[10px] font-semibold text-white">
+          {place}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function MapPanel() {
-  const { draft, updateDraft, logAction } = useSite();
+  const { draft, content, updateDraft, logAction, hasChanges } = useSite();
   const map = resolveMapSettings(draft.map);
+  const saved = resolveMapSettings(content.map);
+  const savedLabel = PROVIDERS.find((p) => p.id === saved.provider)?.label ?? "CARTO";
 
   const set = (action: string, patch: Partial<typeof map>) => {
     logAction(action);
@@ -474,9 +552,34 @@ export function MapPanel() {
 
         <div className="min-w-0 xl:sticky xl:top-28 xl:self-start">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            What this looks like
+            Preview
           </p>
-          <div className="rounded-3xl border border-white/10 bg-ink-900 p-5">
+          <div className="rounded-3xl border border-white/10 bg-ink-900 p-3">
+            <MapPreview settings={map} />
+
+            <div className="mt-3 flex items-start gap-2 px-1.5 pb-1.5">
+              <span
+                className={cn(
+                  "mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                  hasChanges ? "bg-saffron-400" : "bg-emerald-400"
+                )}
+                aria-hidden="true"
+              />
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                {hasChanges ? (
+                  <>
+                    This is the draft, drawn live — <span className="text-zinc-300">{savedLabel}</span> is
+                    still what the site shows. <span className="font-semibold text-saffron-400">Save
+                    Changes</span> publishes it.
+                  </>
+                ) : (
+                  <>This is what the site is showing. Pick another look and it changes here first.</>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-3xl border border-white/10 bg-ink-900 p-5">
             {map.provider === "carto" ? (
               <p className="text-sm leading-relaxed text-zinc-300">
                 The tracker map and the nearby page draw on{" "}
@@ -500,7 +603,8 @@ export function MapPanel() {
             )}
             <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
               Either way, if the chosen one cannot load, the other is tried before anything is given up — a map
-              in the wrong style beats no map at all. Save Changes to publish this, then reload the page.
+              in the wrong style beats no map at all. The preview above is the same basemap the tracker draws,
+              centred on PB's current checkpoint.
             </p>
             <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
               {map.provider === "carto"

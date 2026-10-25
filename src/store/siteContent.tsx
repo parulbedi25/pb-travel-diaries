@@ -2393,6 +2393,14 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   const hasFooterChanges = useMemo(() =>
     JSON.stringify(resolveFooter(draft.footer)) !== JSON.stringify(resolveFooter(content.footer)),
   [draft.footer, content.footer]);
+  // The map look is a setting like any other, and it has to be in here or the
+  // dashboard cannot tell that picking one changed anything: the Save button
+  // never appears, and saveDraft below short-circuits on !hasChanges and
+  // reports success without publishing a thing. That is exactly how a chosen
+  // basemap ends up stuck in the draft and never reaching the site.
+  const hasMapChanges = useMemo(() =>
+    JSON.stringify(resolveMapSettings(draft.map)) !== JSON.stringify(resolveMapSettings(content.map)),
+  [draft.map, content.map]);
   const hasSettingsChanges = useMemo(() =>
     JSON.stringify([
       resolveHeaderButtons(draft.headerButtons),
@@ -2407,7 +2415,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   [draft.headerButtons, draft.themeColors, draft.loaderAnimation,
    content.headerButtons, content.themeColors, content.loaderAnimation]);
   const hasChanges =
-    hasPageChanges || hasBrandChanges || hasFooterChanges || hasSettingsChanges || loaderDraft !== (content.loaderLogo ?? "");
+    hasPageChanges || hasBrandChanges || hasFooterChanges || hasSettingsChanges || hasMapChanges || loaderDraft !== (content.loaderLogo ?? "");
 
   // Another tab of this browser may publish while this one is open. The
   // channel only says "something changed"; the fresh copy comes from the
