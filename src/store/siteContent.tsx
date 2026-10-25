@@ -224,7 +224,7 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
 /**
  * Which map the site draws on.
  *
- * Two looks, chosen from the dashboard:
+ * Three maps, chosen from the dashboard:
  *
  *  - `carto` — CARTO's vector basemaps, keyed, drawn from OpenStreetMap data.
  *    They are the ones that can have their labels switched off properly, and
@@ -233,11 +233,15 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
  *  - `openstreetmap` — the look the site had before CARTO: OpenFreeMap's free
  *    vector styles, falling through to raster tiles. Keyless, so it keeps
  *    working if the CARTO key is ever revoked or its quota is reached.
+ *  - `satellite` — Esri's World Imagery: a photograph of the ground, keyless
+ *    and CORS-open, with no name printed anywhere on it because it is not a
+ *    drawing. The one to pick for the Himalaya, where the landscape is the
+ *    point.
  *
- * Whichever is chosen, the other stays as the fallback underneath it: a map
- * that cannot load is worse than a map in the other style.
+ * Whichever is chosen, the others stay behind it as fallbacks: a map that
+ * cannot load is worse than a map in another style.
  */
-export type MapProvider = "carto" | "openstreetmap";
+export type MapProvider = "carto" | "openstreetmap" | "satellite";
 
 /** CARTO's vector drawings. "auto" follows the site's dark/light theme. */
 export type CartoStyle = "auto" | "voyager" | "positron" | "dark-matter";
@@ -258,7 +262,11 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
 /** Fills in anything a site saved before the map setting existed. */
 export function resolveMapSettings(map?: Partial<MapSettings> | null): MapSettings {
   const provider: MapProvider =
-    map?.provider === "openstreetmap" ? "openstreetmap" : "carto";
+    map?.provider === "openstreetmap"
+      ? "openstreetmap"
+      : map?.provider === "satellite"
+        ? "satellite"
+        : "carto";
   const cartoStyle: CartoStyle =
     map?.cartoStyle === "voyager" || map?.cartoStyle === "positron" || map?.cartoStyle === "dark-matter"
       ? map.cartoStyle

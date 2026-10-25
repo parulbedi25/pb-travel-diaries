@@ -48,22 +48,29 @@ export default function TileBasemap({
   attributionClassName?: string;
 }) {
   const { theme, content } = useSite();
-  // The dashboard's map look decides which raster is tried first: CARTO's
-  // nameless drawing, or OpenStreetMap's own labelled tiles. Each keeps the
-  // other behind it, so a host having a bad day never empties the panel.
+  // The dashboard's map look decides which raster is tried first. Whatever is
+  // chosen, the others queue behind it — a host having a bad day should cost a
+  // different drawing, not the map.
   const mapSettings = resolveMapSettings(content.map);
   const cartoKey = mapSettings.cartoKey.trim();
-  // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
-  // are not asked for at all: the labelled map is the better of the two
-  // failures, and at least it says what it is.
-  const first: RasterSource = mapSettings.provider === "carto" && cartoKey ? "carto" : "osm";
-  const [source, setSource] = useState<RasterSource>(first);
+  const chain = useMemo<RasterSource[]>(() => {
+    // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
+    // are not asked for at all — the labelled map is the better of the two
+    // failures, and at least it says what it is.
+    const carto: RasterSource[] = cartoKey ? ["carto"] : [];
+    if (mapSettings.provider === "satellite") return ["satellite", ...carto, "osm"];
+    if (mapSettings.provider === "openstreetmap") return ["osm"];
+    return [...carto, "osm"];
+  }, [mapSettings.provider, cartoKey]);
+
+  const [step, setStep] = useState(0);
+  const source = chain[Math.min(step, chain.length - 1)];
   const failures = useRef(0);
 
   useEffect(() => {
-    setSource(first);
+    setStep(0);
     failures.current = 0;
-  }, [first]);
+  }, [chain]);
   const tiles = useMemo(
     () => tilesForView(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,9 +84,10 @@ export default function TileBasemap({
     if (failures.current >= FAILURES_BEFORE_FALLBACK) return;
     failures.current += 1;
     if (failures.current < FAILURES_BEFORE_FALLBACK) return;
-    // CARTO's rasters falling over leaves OpenStreetMap's labelled tiles; the
-    // reverse has nowhere else to go, so it stays put rather than flickering.
-    if (source === "carto") setSource("osm");
+    // Move one place down the chain; the last entry has nowhere to go, so it
+    // stays put rather than flickering between two dead hosts.
+    failures.current = 0;
+    setStep((i) => Math.min(i + 1, chain.length - 1));
   };
 
   return (
@@ -122,7 +130,7 @@ export default function TileBasemap({
     {attributionClassName && (
       <MapAttribution
         className={attributionClassName}
-        source={source === "osm" ? "raster" : "CARTO"}
+        source={source === "osm" ? "raster" : source === "satellite" ? "ESRI" : "CARTO"}
       />
     )}
     </>
@@ -145,6 +153,22 @@ const PROVIDER_LINKS: Record<string, string> = {
   CARTO: "https://carto.com/attributions",
 };
 
+/**
+ * Who drew what is on screen.
+ *
+ * Most of these are drawings of OpenStreetMap's data, so its credit comes
+ * first. Satellite is the exception: that is Esri's photography, and crediting
+ * OpenStreetMap for a photograph would be a lie — so it says whose picture it
+ * is instead.
+ */
+const CREDITS: Record<string, { label: string; href: string; text: string }> = {
+  ESRI: {
+    label: "Esri",
+    href: "https://www.esri.com/en-us/legal/terms/data-attributions",
+    text: "Maxar, Earthstar Geographics and the GIS community",
+  },
+};
+
 export function MapAttribution({
   className,
   source,
@@ -154,6 +178,23 @@ export function MapAttribution({
   source?: string;
 }) {
   const provider = source && source !== "raster" ? source : undefined;
+  const imagery = provider ? CREDITS[provider] : undefined;
+  if (imagery) {
+    return (
+      <p className={className}>
+        Imagery ©{" "}
+        <a
+          href={imagery.href}
+          target="_blank"
+          rel="noreferrer"
+          className="underline decoration-dotted underline-offset-2 hover:no-underline"
+        >
+          {imagery.label}
+        </a>
+        , {imagery.text}
+      </p>
+    );
+  }
   return (
     <p className={className}>
       ©{" "}

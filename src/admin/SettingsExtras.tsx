@@ -362,6 +362,11 @@ const PROVIDERS: { id: MapProvider; label: string; hint: string }[] = [
     label: "OpenStreetMap",
     hint: "The keyless look this site had before CARTO. Free, and it needs nothing from you.",
   },
+  {
+    id: "satellite",
+    label: "Satellite",
+    hint: "Esri's aerial imagery — a photograph of the ground, with no name printed on it. Good for the Himalaya.",
+  },
 ];
 
 const CARTO_DRAWINGS: { id: CartoStyle; label: string; hint: string }[] = [
@@ -480,6 +485,12 @@ export function MapPanel() {
                 </span>
                 , with every place name switched off.
               </p>
+            ) : map.provider === "satellite" ? (
+              <p className="text-sm leading-relaxed text-zinc-300">
+                The maps draw on{" "}
+                <span className="font-semibold text-white">Esri's satellite imagery</span> — the real
+                ground, photographed. No labels, because there are none in the picture.
+              </p>
             ) : (
               <p className="text-sm leading-relaxed text-zinc-300">
                 The maps draw on the{" "}
@@ -494,7 +505,9 @@ export function MapPanel() {
             <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
               {map.provider === "carto"
                 ? "basemaps.cartocdn.com/gl/…-gl-style/style.json"
-                : "tiles.openfreemap.org/styles/…"}
+                : map.provider === "satellite"
+                  ? "arcgisonline.com/…/World_Imagery/MapServer/tile/…"
+                  : "tiles.openfreemap.org/styles/…"}
             </p>
           </div>
         </div>
