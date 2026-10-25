@@ -53,7 +53,7 @@ export async function createSqliteRepo(file = path.join(config.root, "server/dat
   const exportAll = repo.exportAll;
   repo.exportAll = () => transaction(() => exportAll.call(repo));
   repo.importAll = data => transaction(async () => {
-    for (const table of ["sessions", "auth_events", "media", "revisions", "site_content", "users", "settings"]) db.exec(`DELETE FROM ${table}`);
+    for (const table of ["sessions", "member_journeys", "member_bikes", "auth_events", "media", "revisions", "site_content", "users", "settings"]) db.exec(`DELETE FROM ${table}`);
     const now = new Date().toISOString();
     const date = v => v ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(v) ? v : v.replace(" ", "T") + "Z").toISOString() : null;
     function insert(table, columns, rows) {
@@ -61,6 +61,8 @@ export async function createSqliteRepo(file = path.join(config.root, "server/dat
       for (const row of rows) stmt.run(...row.map(normalize));
     }
     insert("users", ["id","username","email","password_hash","role","disabled","disabled_at","created_at","last_login_at"], (data.users ?? []).map(r => [r.id,r.username,r.email,r.passwordHash,r.role ?? "reader",r.disabled ? 1 : 0,date(r.disabledAt),date(r.createdAt) ?? now,date(r.lastLoginAt)]));
+    insert("member_bikes",["id","user_id","maker","model","year","mileage_kmpl","mileage_source","created_at"],(data.memberBikes ?? []).map(r=>[r.id,r.userId,r.maker,r.model,r.year ?? null,r.mileageKmpl ?? null,r.mileageSource ?? "manual",date(r.createdAt) ?? now]));
+    insert("member_journeys",["id","user_id","title","bike_id","stops","notes","gallery","round_trip","created_at","updated_at"],(data.memberJourneys ?? []).map(r=>[r.id,r.userId,r.title ?? "",r.bikeId ?? null,typeof r.stops === "string" ? r.stops : JSON.stringify(r.stops ?? []),r.notes ?? "",typeof r.gallery === "string" ? r.gallery : JSON.stringify(r.gallery ?? []),r.roundTrip ? 1 : 0,date(r.createdAt) ?? now,date(r.updatedAt) ?? now]));
     if (data.content) insert("site_content",["id","content","updated_at","updated_by"],[[1,data.content.content,date(data.content.updatedAt) ?? now,data.content.updatedBy]]);
     insert("revisions",["id","description","content","created_at","created_by"],(data.revisions ?? []).map(r => [r.id,r.description ?? "",r.content,date(r.createdAt) ?? now,r.createdBy]));
     insert("media",["id","filename","original_name","mime","size","kind","ext","created_at","created_by"],(data.media ?? []).map(r=>[r.id,r.filename,r.originalName,r.mime,r.size,r.kind,r.ext,date(r.createdAt) ?? now,r.createdBy]));

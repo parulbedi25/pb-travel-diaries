@@ -100,7 +100,31 @@ test("SQLite backup is portable JSON, excludes raw WAL files, and restores lossl
   await fs.writeFile(path.join(config.mediaDir, "test.png"), "test-photo");
   const repo = await getRepo();
   await repo.insertMedia({ id: "test-image", filename: "test.png", originalName: "test.png", mime: "image/png", size: 10, kind: "image", ext: "png", createdBy: "owner" });
+  // A member's garage travels with the backup too: a restore that dropped it
+  // would quietly lose somebody's work.
+  const ownerId = (await repo.listUsers())[0].id;
+  const bikeId = await repo.createBike(ownerId, {
+    maker: "Royal Enfield",
+    model: "Himalayan 450",
+    year: 2024,
+    mileageKmpl: 27.4,
+    mileageSource: "estimated",
+  });
+  await repo.createJourney(ownerId, {
+    title: "Nangal → Leh",
+    bikeId,
+    stops: [
+      { name: "Nangal", lat: 31.3832, lng: 76.3766 },
+      { name: "Leh", lat: 34.163, lng: 77.5856 },
+    ],
+    notes: "Chai at Manali.",
+    gallery: [{ url: "data:image/png;base64,AAAA", caption: "The bike" }],
+    roundTrip: true,
+  });
+
   const original = JSON.parse(JSON.stringify(await repo.exportAll()));
+  assert.equal(original.memberBikes.length, 1);
+  assert.equal(original.memberJourneys.length, 1);
   const backup = await createBackup({ repo });
   const payload = await readBackupPayload(backup.path);
   assert.equal(payload.database.driver, "sqlite");
@@ -116,6 +140,8 @@ test("SQLite backup is portable JSON, excludes raw WAL files, and restores lossl
   assert.equal(result.mediaFiles, 1);
   const restored = JSON.parse(JSON.stringify(await (await getRepo()).exportAll()));
   assert.deepEqual(restored, original);
+  assert.equal(restored.memberBikes.length, 1, "the bike came back");
+  assert.equal(restored.memberJourneys.length, 1, "the ride came back");
   assert.equal((await getRepo()).kind, "sqlite");
 });
 

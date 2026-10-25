@@ -134,6 +134,17 @@ export async function buildRestorePayload({ reason = "manual", repo, at = new Da
         ...revision,
         createdAt: iso(revision.createdAt),
       })),
+      // A member's own garage and rides. Private in the app, but part of the
+      // backup: restoring the site should not throw away what members built.
+      memberBikes: (data.memberBikes ?? []).map((bike) => ({
+        ...bike,
+        createdAt: iso(bike.createdAt),
+      })),
+      memberJourneys: (data.memberJourneys ?? []).map((journey) => ({
+        ...journey,
+        createdAt: iso(journey.createdAt),
+        updatedAt: iso(journey.updatedAt),
+      })),
       content: data.content
         ? { ...data.content, updatedAt: iso(data.content.updatedAt) }
         : null,
@@ -484,11 +495,17 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
     // Build the tables at the backup's version, load the rows, then catch up.
     await applySchema(connection, { upTo: backupVersion });
 
+    // A backup made before the member garage existed has no member tables;
+    // this backup's own data says whether there are rows to clear and insert.
+    const hasMemberTables =
+      Array.isArray(data.memberBikes) || Array.isArray(data.memberJourneys);
+
     await connection.beginTransaction();
     try {
       if (present > 0) {
         for (const table of [
           "sessions",
+          ...(hasMemberTables ? ["member_journeys", "member_bikes"] : []),
           "auth_events",
           "media",
           "revisions",
@@ -515,6 +532,44 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
           sqlDate(user.lastLoginAt),
         ]),
       );
+
+      if (hasMemberTables) {
+        // Rides first: a ride points at a bike, so the garage has to exist
+        // before the rows that reference it.
+        await insertRows(
+          connection,
+          "member_bikes",
+          ["id", "user_id", "maker", "model", "year", "mileage_kmpl", "mileage_source", "created_at"],
+          (data.memberBikes ?? []).map((bike) => [
+            bike.id,
+            bike.userId,
+            bike.maker,
+            bike.model,
+            bike.year ?? null,
+            bike.mileageKmpl ?? null,
+            bike.mileageSource ?? "manual",
+            sqlDateMs(bike.createdAt) ?? sqlDateMs(new Date()),
+          ]),
+        );
+
+        await insertRows(
+          connection,
+          "member_journeys",
+          ["id", "user_id", "title", "bike_id", "stops", "notes", "gallery", "round_trip", "created_at", "updated_at"],
+          (data.memberJourneys ?? []).map((journey) => [
+            journey.id,
+            journey.userId,
+            journey.title ?? "",
+            journey.bikeId ?? null,
+            typeof journey.stops === "string" ? journey.stops : JSON.stringify(journey.stops ?? []),
+            journey.notes ?? "",
+            typeof journey.gallery === "string" ? journey.gallery : JSON.stringify(journey.gallery ?? []),
+            journey.roundTrip ? 1 : 0,
+            sqlDateMs(journey.createdAt) ?? sqlDateMs(new Date()),
+            sqlDateMs(journey.updatedAt) ?? sqlDateMs(new Date()),
+          ]),
+        );
+      }
 
       if (data.content?.content) {
         await connection.query(
@@ -598,6 +653,20 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
     // AUTO_INCREMENT must sit above the highest restored id.
     const [maxUser] = await connection.query("SELECT COALESCE(MAX(id), 0) AS n FROM users");
     await connection.query(`ALTER TABLE users AUTO_INCREMENT = ${Number(maxUser?.[0]?.n ?? 0) + 1}`);
+
+    // The same for the member tables — but only where this database has them
+    // (a restore that stopped at an older schema version has not added them
+    // yet; the catch-up above runs after this block for exactly that reason).
+    if (hasMemberTables) {
+      for (const table of ["member_bikes", "member_journeys"]) {
+        const [max] = await connection
+          .query(`SELECT COALESCE(MAX(id), 0) AS n FROM ${table}`)
+          .catch(() => [[{ n: 0 }]]);
+        await connection
+          .query(`ALTER TABLE ${table} AUTO_INCREMENT = ${Number(max?.[0]?.n ?? 0) + 1}`)
+          .catch(() => undefined);
+      }
+    }
   } catch (error) {
     if (error instanceof SetupError) throw error;
     if (error?.code === "ER_BAD_DB_ERROR") {

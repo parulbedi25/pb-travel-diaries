@@ -10,7 +10,7 @@
 --
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK
 -- constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in the
--- application. Schema version: 4.
+-- application. Schema version: 5.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS site_content (
@@ -125,6 +125,36 @@ UPDATE site_content SET content = REPLACE(content, 'Taweel', 'Taskeen');
 
 INSERT IGNORE INTO schema_migrations (version, name) VALUES (4, 'the bike is Taskeen, written تسکین');
 
-INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '4');
+CREATE TABLE IF NOT EXISTS member_bikes (
+        id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id         BIGINT UNSIGNED NOT NULL,
+        maker           VARCHAR(64) NOT NULL,
+        model           VARCHAR(120) NOT NULL,
+        year            SMALLINT UNSIGNED NULL,
+        mileage_kmpl    DECIMAL(5,2) NULL,
+        mileage_source  VARCHAR(16) NOT NULL DEFAULT 'manual',
+        created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY member_bikes_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS member_journeys (
+        id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id     BIGINT UNSIGNED NOT NULL,
+        title       VARCHAR(160) NOT NULL DEFAULT '',
+        bike_id     BIGINT UNSIGNED NULL,
+        stops       LONGTEXT NOT NULL,
+        notes       LONGTEXT NOT NULL,
+        gallery     LONGTEXT NOT NULL,
+        round_trip  TINYINT(1) NOT NULL DEFAULT 0,
+        created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY member_journeys_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (5, 'member garages and journeys');
+
+INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '5');
 
 INSERT IGNORE INTO settings (setting_key, value) VALUES ('theme', '"dark"');

@@ -21,6 +21,12 @@ hosting/.cache
 # Dependencies and generated output
 /node_modules/
 
+# Copies of public/ that Vite writes into dist/. Only the single-file page is
+# tracked; these are rebuilt every time.
+/dist/images/
+/dist/media/
+/dist/mobile-layout.css
+
 # Logs
 *.log
 npm-debug.log*

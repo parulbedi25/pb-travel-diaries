@@ -1,6 +1,38 @@
 /** Repository queries shared by SQL drivers. SQLite adapts the few SQL dialect differences. */
 import { authEventLimit } from "../lib/sqlSafety.js";
 export const REVISION_LIMIT = 15;
+
+/** Rows carry JSON strings and 0/1 flags; the routes deal in real objects. */
+const parseJson = (value, fallback) => {
+  if (typeof value !== "string") return value ?? fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const rowAsBike = (row) => ({
+  id: Number(row.id),
+  maker: row.maker,
+  model: row.model,
+  year: row.year == null ? null : Number(row.year),
+  mileageKmpl: row.mileageKmpl == null ? null : Number(row.mileageKmpl),
+  mileageSource: row.mileageSource === "estimated" ? "estimated" : "manual",
+  createdAt: row.createdAt ?? null,
+});
+
+const rowAsJourney = (row) => ({
+  id: Number(row.id),
+  title: row.title ?? "",
+  bikeId: row.bikeId == null ? null : Number(row.bikeId),
+  stops: parseJson(row.stops, []),
+  notes: row.notes ?? "",
+  gallery: parseJson(row.gallery, []),
+  roundTrip: Number(row.roundTrip) === 1,
+  createdAt: row.createdAt ?? null,
+  updatedAt: row.updatedAt ?? null,
+});
 export function createSqlRepository({ pool, transaction, kind, migrate }) {
   return {
     kind,
@@ -163,6 +195,11 @@ export function createSqlRepository({ pool, transaction, kind, migrate }) {
     },
 
     async deleteUser(id) {
+      // The garage goes with the account. SQLite cascades through its foreign
+      // keys; MySQL does not have them here, so it is done explicitly rather
+      // than left to depend on which driver is installed.
+      await pool.execute("DELETE FROM member_journeys WHERE user_id = ?", [id]);
+      await pool.execute("DELETE FROM member_bikes WHERE user_id = ?", [id]);
       const [result] = await pool.execute("DELETE FROM users WHERE id = ?", [id]);
       return result.affectedRows > 0;
     },
@@ -300,14 +337,137 @@ export function createSqlRepository({ pool, transaction, kind, migrate }) {
         `SELECT id, description, content, created_at AS createdAt, created_by AS createdBy
            FROM revisions ORDER BY created_at ASC, id ASC`,
       );
+      // A member's garage is theirs, not the site's — but a backup that quietly
+      // dropped it would be a restore that loses people's work, so it travels
+      // with everything else and comes back with it.
+      const [memberBikes] = await pool.query(
+        `SELECT id, user_id AS userId, maker, model, year,
+                mileage_kmpl AS mileageKmpl, mileage_source AS mileageSource,
+                created_at AS createdAt
+           FROM member_bikes ORDER BY id ASC`,
+      );
+      const [memberJourneys] = await pool.query(
+        `SELECT id, user_id AS userId, title, bike_id AS bikeId, stops, notes, gallery,
+                round_trip AS roundTrip, created_at AS createdAt, updated_at AS updatedAt
+           FROM member_journeys ORDER BY id ASC`,
+      );
       return {
         users,
         settings,
         media,
         authEvents,
         revisions,
+        memberBikes,
+        memberJourneys,
         content: await this.getContent(),
       };
+    },
+
+    /* ── member garages ───────────────────────────────────────────────── */
+
+    /**
+     * A member's own garage and rides.
+     *
+     * Every query is scoped by `user_id` in the WHERE clause rather than
+     * filtered afterwards, so one member's id in a request can never reach
+     * another member's rows — the ownership check is the query, not a
+     * comparison that could be forgotten.
+     */
+    async listBikes(userId) {
+      const [rows] = await pool.execute(
+        `SELECT id, user_id AS userId, maker, model, year,
+                mileage_kmpl AS mileageKmpl, mileage_source AS mileageSource,
+                created_at AS createdAt
+           FROM member_bikes WHERE user_id = ? ORDER BY id ASC`,
+        [userId],
+      );
+      return rows.map(rowAsBike);
+    },
+
+    async createBike(userId, bike) {
+      const [result] = await pool.execute(
+        `INSERT INTO member_bikes (user_id, maker, model, year, mileage_kmpl, mileage_source)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, bike.maker, bike.model, bike.year ?? null, bike.mileageKmpl ?? null, bike.mileageSource ?? "manual"],
+      );
+      return result.insertId;
+    },
+
+    async updateBike(userId, id, patch) {
+      const [result] = await pool.execute(
+        `UPDATE member_bikes
+            SET maker = ?, model = ?, year = ?, mileage_kmpl = ?, mileage_source = ?
+          WHERE id = ? AND user_id = ?`,
+        [patch.maker, patch.model, patch.year ?? null, patch.mileageKmpl ?? null, patch.mileageSource ?? "manual", id, userId],
+      );
+      return Number(result.affectedRows ?? 0) > 0;
+    },
+
+    async deleteBike(userId, id) {
+      const [result] = await pool.execute(
+        "DELETE FROM member_bikes WHERE id = ? AND user_id = ?",
+        [id, userId],
+      );
+      // A journey keeps its distance; it just no longer points at a bike.
+      await pool.execute(
+        "UPDATE member_journeys SET bike_id = NULL WHERE bike_id = ? AND user_id = ?",
+        [id, userId],
+      );
+      return Number(result.affectedRows ?? 0) > 0;
+    },
+
+    async listJourneys(userId) {
+      const [rows] = await pool.execute(
+        `SELECT id, user_id AS userId, title, bike_id AS bikeId, stops, notes, gallery,
+                round_trip AS roundTrip, created_at AS createdAt, updated_at AS updatedAt
+           FROM member_journeys WHERE user_id = ? ORDER BY id DESC`,
+        [userId],
+      );
+      return rows.map(rowAsJourney);
+    },
+
+    async createJourney(userId, journey) {
+      const [result] = await pool.execute(
+        `INSERT INTO member_journeys (user_id, title, bike_id, stops, notes, gallery, round_trip)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          journey.title ?? "",
+          journey.bikeId ?? null,
+          JSON.stringify(journey.stops ?? []),
+          journey.notes ?? "",
+          JSON.stringify(journey.gallery ?? []),
+          journey.roundTrip ? 1 : 0,
+        ],
+      );
+      return result.insertId;
+    },
+
+    async updateJourney(userId, id, journey) {
+      const [result] = await pool.execute(
+        `UPDATE member_journeys
+            SET title = ?, bike_id = ?, stops = ?, notes = ?, gallery = ?, round_trip = ?
+          WHERE id = ? AND user_id = ?`,
+        [
+          journey.title ?? "",
+          journey.bikeId ?? null,
+          JSON.stringify(journey.stops ?? []),
+          journey.notes ?? "",
+          JSON.stringify(journey.gallery ?? []),
+          journey.roundTrip ? 1 : 0,
+          id,
+          userId,
+        ],
+      );
+      return Number(result.affectedRows ?? 0) > 0;
+    },
+
+    async deleteJourney(userId, id) {
+      const [result] = await pool.execute(
+        "DELETE FROM member_journeys WHERE id = ? AND user_id = ?",
+        [id, userId],
+      );
+      return Number(result.affectedRows ?? 0) > 0;
     },
 
     /* ── settings ─────────────────────────────────────────────────────── */
