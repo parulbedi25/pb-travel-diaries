@@ -277,18 +277,22 @@ export default function VectorBasemap({
   }, [width, height]);
 
   const showingRaster = gaveUp || placeholder;
-  const credit = attributionClassName ? (
-    <MapAttribution
-      className={attributionClassName}
-      source={showingRaster ? "raster" : providerLabel(styleUrl)}
-    />
+  // Whichever raster ends up on screen credits itself, because only it knows
+  // whether it settled on the nameless drawing or the labelled last resort.
+  const credit = attributionClassName && !showingRaster ? (
+    <MapAttribution className={attributionClassName} source={providerLabel(styleUrl)} />
   ) : null;
 
   if (gaveUp) {
     return (
       <>
-        <TileBasemap view={view} width={width} height={height} className={className} />
-        {credit}
+        <TileBasemap
+          view={view}
+          width={width}
+          height={height}
+          className={className}
+          attributionClassName={attributionClassName}
+        />
       </>
     );
   }
@@ -297,7 +301,13 @@ export default function VectorBasemap({
     <>
       {/* Underneath, so the nameless map covers it as soon as it arrives. */}
       {placeholder && (
-        <TileBasemap view={view} width={width} height={height} className={className} />
+        <TileBasemap
+          view={view}
+          width={width}
+          height={height}
+          className={className}
+          attributionClassName={attributionClassName}
+        />
       )}
       <div ref={host} className={className} aria-hidden="true" />
       {credit}
