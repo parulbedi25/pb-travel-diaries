@@ -6,6 +6,8 @@ export const SHOP_PATH = "/shop";
 export const ADMIN_PATH = "/admin";
 export const COMMAND_CENTER_PATH = "/commandcenter";
 export const MEMBERS_PATH = "/members";
+/** The signed-in member's own garage and ride builder. Never public. */
+export const MEMBER_TRACKER_PATH = "/ride";
 
 /**
  * Every route that opens PB Control. Maintenance mode replaces the whole site,

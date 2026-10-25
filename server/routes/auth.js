@@ -18,6 +18,7 @@ import {
   usernameProblem,
   verifyPassword,
 } from "../lib/auth.js";
+import { estimateMileage, makerName, modelName } from "../lib/bikeCatalogue.js";
 
 export const authRouter = express.Router();
 
@@ -83,6 +84,13 @@ authRouter.post("/signup", async (req, res, next) => {
       return res.status(409).json({ error: "That username is taken." });
     }
 
+    // A member's garage starts at signup: the form asks for the bike, and the
+    // mileage is estimated from the catalogue when it is left blank. It is a
+    // convenience, never a condition — a bad bike row must not cost somebody
+    // their account, so it is written after the account exists and any problem
+    // with it is ignored rather than failing the signup.
+    const bike = bikeFromSignup(req.body);
+
     const id = await repo.createUser({
       username,
       email,
@@ -91,6 +99,13 @@ authRouter.post("/signup", async (req, res, next) => {
       // read-only access to the members-only parts of the frontend.
       role: existing === 0 ? "owner" : "reader",
     });
+    if (bike) {
+      try {
+        await repo.createBike(id, bike);
+      } catch {
+        /* the account is what matters; the garage can be filled in later */
+      }
+    }
     const user = await repo.findUserById(id);
     await recordEvent(req, { userId: id, username, event: "signup", detail: "Account created" });
     await startSession(req, res, user);
@@ -99,6 +114,37 @@ authRouter.post("/signup", async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * The bike fields on the signup form, read leniently.
+ *
+ * Optional in every part: an account created by an admin, or by somebody who
+ * rides pillion, simply has no garage yet. The mileage is either what they
+ * typed (`manual`) or what the catalogue says for that model and year
+ * (`estimated`) — the site never asks a question it can answer itself.
+ */
+function bikeFromSignup(body) {
+  const maker = makerName(body?.bikeMaker ?? "");
+  const model = modelName(body?.bikeMaker ?? "", body?.bikeModel ?? "");
+  if (!maker || !model) return null;
+
+  const now = new Date().getFullYear();
+  const yearNumber = Number(body?.bikeYear);
+  const year =
+    Number.isInteger(yearNumber) && yearNumber >= 1970 && yearNumber <= now + 1 ? yearNumber : null;
+
+  const typed = Number(body?.bikeMileage);
+  const hasTyped = Number.isFinite(typed) && typed > 0 && typed <= 200;
+  const estimate = estimateMileage({ maker, model, year });
+
+  return {
+    maker,
+    model,
+    year,
+    mileageKmpl: hasTyped ? typed : estimate.kmpl,
+    mileageSource: hasTyped ? "manual" : "estimated",
+  };
+}
 
 authRouter.post("/login", async (req, res, next) => {
   try {

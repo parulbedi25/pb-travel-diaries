@@ -57,10 +57,11 @@ import CountdownSection, {
 import { EASE } from "./components/ui/motion";
 import { useAnchorScroll } from "./hooks/useAnchorScroll";
 import { useRouteScroll } from "./hooks/useRouteScroll";
-import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, NEARBY_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, MEMBER_TRACKER_PATH, NEARBY_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
 import ShopPage from "./components/ShopPage";
 import LockedSection from "./components/LockedSection";
 import MembersPage from "./members/MembersPage";
+import MemberTracker from "./members/MemberTracker";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
 import { describeApiError } from "./api/client";
@@ -306,6 +307,11 @@ function Shell() {
   }
   if (route === MEMBERS_PATH || route.startsWith(`${MEMBERS_PATH}?`)) {
     return <MembersPage />;
+  }
+  // The member's own garage: a signed-in-only page that is not part of the
+  // site, is not in any nav, and reads nothing but that member's own records.
+  if (route === MEMBER_TRACKER_PATH) {
+    return <MemberTracker />;
   }
   if (ADMIN_PATHS.has(route)) {
     return (

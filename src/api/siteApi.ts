@@ -203,11 +203,29 @@ export const siteApi = {
     return user;
   },
 
-  async signup(username: string, password: string, email?: string): Promise<Account> {
+  /**
+   * Create a read-only account.
+   *
+   * `bike` is the member's first bike, straight from the signup form: maker and
+   * model as names, the purchase year, and a mileage they may leave blank so
+   * the server can estimate it. It is optional — an account without a bike is
+   * still a perfectly good account, and a bike can be added later from the
+   * garage.
+   */
+  async signup(
+    username: string,
+    password: string,
+    email?: string,
+    bike?: { maker: string; model: string; year?: number | null; mileageKmpl?: number | null },
+  ): Promise<Account> {
     const { user } = await api.post<{ user: Account }>("/api/auth/signup", {
       username,
       password,
       email,
+      bikeMaker: bike?.maker,
+      bikeModel: bike?.model,
+      bikeYear: bike?.year ?? null,
+      bikeMileage: bike?.mileageKmpl ?? null,
     });
     return user;
   },

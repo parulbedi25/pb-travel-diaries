@@ -35,6 +35,18 @@ export const SQLITE_MIGRATIONS = [{
     `UPDATE site_content SET content = replace(content, 'तस्कीन', 'تسکین')`,
     `UPDATE site_content SET content = replace(content, 'Taweel', 'Taskeen')`,
   ],
+}, {
+  version: 3,
+  name: "member garages and journeys",
+  // Same two tables as the MySQL side (migration 5), in SQLite's spelling.
+  // They belong to a member and nothing else reads them: the site's own
+  // content, the admin dashboard and the public pages are untouched.
+  statements: [
+    `CREATE TABLE IF NOT EXISTS member_bikes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, maker TEXT NOT NULL, model TEXT NOT NULL, year INTEGER, mileage_kmpl REAL, mileage_source TEXT NOT NULL DEFAULT 'manual', created_at ${timestamp})`,
+    `CREATE INDEX IF NOT EXISTS member_bikes_user ON member_bikes(user_id)`,
+    `CREATE TABLE IF NOT EXISTS member_journeys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL DEFAULT '', bike_id INTEGER, stops TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '', gallery TEXT NOT NULL DEFAULT '[]', round_trip INTEGER NOT NULL DEFAULT 0, created_at ${timestamp}, updated_at ${timestamp})`,
+    `CREATE INDEX IF NOT EXISTS member_journeys_user ON member_journeys(user_id)`,
+  ],
 }];
 export const SQLITE_VERSION = SQLITE_MIGRATIONS.at(-1).version;
 export function migrateSqlite(db) {

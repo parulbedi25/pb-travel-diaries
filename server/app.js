@@ -11,6 +11,7 @@ import { contentRouter, settingsRouter } from "./routes/content.js";
 import { mediaRouter } from "./routes/media.js";
 import { backupsRouter } from "./routes/backups.js";
 import { mapsRouter } from "./routes/maps.js";
+import { memberRouter } from "./routes/member.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
 
@@ -93,6 +94,9 @@ export function createApp() {
   api.use(mediaRouter);
   api.use(backupsRouter);
   api.use(mapsRouter);
+  // A member's own garage and rides. Session-scoped, owner-scoped, and
+  // deliberately apart from the site's content: nothing here publishes.
+  api.use(memberRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
   app.use("/api", api);

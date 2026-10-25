@@ -102,6 +102,43 @@ export const MIGRATIONS = [
       "UPDATE site_content SET content = REPLACE(content, 'Taweel', 'Taskeen')",
     ),
   },
+  {
+    version: 5,
+    name: "member garages and journeys",
+    // A member's own rides live beside the site's own tables and never touch
+    // them: one row per bike, one per journey, both keyed to the account that
+    // owns them. The journey is kept as JSON in LONGTEXT — stops, notes and
+    // gallery — because it is written and read whole, and because the same
+    // shape has to survive MySQL, SQLite and the in-memory driver.
+    up: sql(
+      `CREATE TABLE IF NOT EXISTS member_bikes (
+        id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id         BIGINT UNSIGNED NOT NULL,
+        maker           VARCHAR(64) NOT NULL,
+        model           VARCHAR(120) NOT NULL,
+        year            SMALLINT UNSIGNED NULL,
+        mileage_kmpl    DECIMAL(5,2) NULL,
+        mileage_source  VARCHAR(16) NOT NULL DEFAULT 'manual',
+        created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY member_bikes_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      `CREATE TABLE IF NOT EXISTS member_journeys (
+        id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id     BIGINT UNSIGNED NOT NULL,
+        title       VARCHAR(160) NOT NULL DEFAULT '',
+        bike_id     BIGINT UNSIGNED NULL,
+        stops       LONGTEXT NOT NULL,
+        notes       LONGTEXT NOT NULL,
+        gallery     LONGTEXT NOT NULL,
+        round_trip  TINYINT(1) NOT NULL DEFAULT 0,
+        created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY member_journeys_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    ),
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

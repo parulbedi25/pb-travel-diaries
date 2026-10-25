@@ -10,6 +10,8 @@ import { REVISION_LIMIT } from "./mysql.js";
 import { LATEST_VERSION } from "./migrations.js";
 
 const clone = (value) => (value == null ? value : JSON.parse(JSON.stringify(value)));
+/** Rows keep their owner for scoping; the API never needs to be told it. */
+const withoutUser = ({ userId, ...rest }) => rest;
 
 export function createMemoryRepo() {
   const state = {
@@ -20,6 +22,10 @@ export function createMemoryRepo() {
     events: [],
     media: [],
     settings: new Map([["theme", '"dark"']]),
+    bikes: [],
+    journeys: [],
+    nextBikeId: 1,
+    nextJourneyId: 1,
     nextUserId: 1,
   };
 
@@ -119,7 +125,100 @@ export function createMemoryRepo() {
     async deleteUser(id) {
       const before = state.users.length;
       state.users = state.users.filter((u) => u.id !== Number(id));
+      state.bikes = state.bikes.filter((bike) => bike.userId !== Number(id));
+      state.journeys = state.journeys.filter((journey) => journey.userId !== Number(id));
       return state.users.length < before;
+    },
+
+    /* ── member garages ───────────────────────────────────────────────── */
+
+    async listBikes(userId) {
+      return clone(state.bikes.filter((bike) => bike.userId === Number(userId)).map(withoutUser));
+    },
+
+    async createBike(userId, bike) {
+      const id = state.nextBikeId++;
+      state.bikes.push({
+        id,
+        userId: Number(userId),
+        maker: bike.maker,
+        model: bike.model,
+        year: bike.year ?? null,
+        mileageKmpl: bike.mileageKmpl ?? null,
+        mileageSource: bike.mileageSource ?? "manual",
+        createdAt: new Date().toISOString(),
+      });
+      return id;
+    },
+
+    async updateBike(userId, id, patch) {
+      const bike = state.bikes.find((b) => b.id === Number(id) && b.userId === Number(userId));
+      if (!bike) return false;
+      Object.assign(bike, {
+        maker: patch.maker,
+        model: patch.model,
+        year: patch.year ?? null,
+        mileageKmpl: patch.mileageKmpl ?? null,
+        mileageSource: patch.mileageSource ?? "manual",
+      });
+      return true;
+    },
+
+    async deleteBike(userId, id) {
+      const before = state.bikes.length;
+      state.bikes = state.bikes.filter((b) => !(b.id === Number(id) && b.userId === Number(userId)));
+      for (const journey of state.journeys) {
+        if (journey.userId === Number(userId) && journey.bikeId === Number(id)) journey.bikeId = null;
+      }
+      return state.bikes.length < before;
+    },
+
+    async listJourneys(userId) {
+      return clone(
+        state.journeys
+          .filter((journey) => journey.userId === Number(userId))
+          .sort((a, b) => b.id - a.id)
+          .map(withoutUser),
+      );
+    },
+
+    async createJourney(userId, journey) {
+      const id = state.nextJourneyId++;
+      const at = new Date().toISOString();
+      state.journeys.push({
+        id,
+        userId: Number(userId),
+        title: journey.title ?? "",
+        bikeId: journey.bikeId ?? null,
+        stops: clone(journey.stops ?? []),
+        notes: journey.notes ?? "",
+        gallery: clone(journey.gallery ?? []),
+        roundTrip: Boolean(journey.roundTrip),
+        createdAt: at,
+        updatedAt: at,
+      });
+      return id;
+    },
+
+    async updateJourney(userId, id, journey) {
+      const existing = state.journeys.find((j) => j.id === Number(id) && j.userId === Number(userId));
+      if (!existing) return false;
+      Object.assign(existing, {
+        title: journey.title ?? "",
+        bikeId: journey.bikeId ?? null,
+        stops: clone(journey.stops ?? []),
+        notes: journey.notes ?? "",
+        gallery: clone(journey.gallery ?? []),
+        roundTrip: Boolean(journey.roundTrip),
+        updatedAt: new Date().toISOString(),
+      });
+      return true;
+    },
+
+    async deleteJourney(userId, id) {
+      const before = state.journeys.length;
+      state.journeys = state.journeys.filter((j) => !(j.id === Number(id) && j.userId === Number(userId)));
+      return state.journeys.length < before;
     },
 
     async createSession({ tokenHash, userId, expiresAt, ip, userAgent }) {
