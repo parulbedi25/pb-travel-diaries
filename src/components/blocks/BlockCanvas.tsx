@@ -40,7 +40,7 @@ function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        "grid h-6 w-6 place-items-center rounded-full transition-colors",
+        "shrink-0 aspect-square grid h-6 w-6 place-items-center rounded-full transition-colors",
         danger ? "hover:bg-red-500/15 hover:text-red-600" : "hover:bg-black/10",
         "disabled:pointer-events-none disabled:opacity-25"
       )}

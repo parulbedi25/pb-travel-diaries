@@ -34,7 +34,7 @@ export default function SocialProof({ data }: { data: SocialProofData }) {
           {data.stats.filter(isOn).map((s) => (
             <Item key={s.label}>
               <div className="group relative overflow-hidden rounded-3xl glass p-6 transition-all duration-500 hover:-translate-y-1 hover:border-white/20 sm:p-7">
-                <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-saffron-400/20 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
+                <div className="shrink-0 aspect-square pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-saffron-400/20 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
                 <Flame className="h-4 w-4 text-saffron-400/80" />
                 <p className="mt-4 font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
                   <CountUp to={s.value} suffix={s.suffix} />

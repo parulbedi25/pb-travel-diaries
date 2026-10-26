@@ -26,7 +26,7 @@ export default function ThemeToggle({ className }: { className?: string }) {
       title={light ? "Switch to dark theme" : "Switch to light theme"}
       aria-pressed={light}
       className={cn(
-        "relative grid h-10 w-10 place-items-center overflow-hidden rounded-full glass text-zinc-300 transition-all duration-300 hover:text-white active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400",
+        "shrink-0 aspect-square relative grid h-10 w-10 place-items-center overflow-hidden rounded-full glass text-zinc-300 transition-all duration-300 hover:text-white active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400",
         className
       )}
     >

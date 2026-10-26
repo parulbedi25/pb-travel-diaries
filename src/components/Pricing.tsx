@@ -14,7 +14,7 @@ export default function Pricing({ data }: { data: PricingData }) {
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
+        className="shrink-0 aspect-square pointer-events-none absolute right-0 top-40 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -131,7 +131,7 @@ export default function Pricing({ data }: { data: PricingData }) {
                       <li key={f} className="flex items-start gap-3 text-sm text-zinc-300">
                         <span
                           className={cn(
-                            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full",
+                            "aspect-square mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full",
                             plan.featured ? "bg-saffron-400/20" : "bg-emerald-400/12"
                           )}
                         >

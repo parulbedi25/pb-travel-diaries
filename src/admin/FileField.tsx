@@ -32,7 +32,7 @@ function FilePicker({ onPick, onClose }: { onPick: (ref: string) => void; onClos
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:text-white"
+            className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:text-white"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -184,7 +184,7 @@ export default function FileField({
             type="button"
             onClick={() => onChange("")}
             aria-label="Remove file"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 hover:bg-red-500/20 hover:text-red-400"
+            className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 hover:bg-red-500/20 hover:text-red-400"
           >
             <X className="h-3 w-3" />
           </button>

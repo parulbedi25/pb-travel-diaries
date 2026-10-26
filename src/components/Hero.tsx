@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation } from "lucide-react";
-import type { HeroData } from "../store/siteContent";
+import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation, Crosshair } from "lucide-react";
+import { resolveOrigin, type HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
 import Photo from "./ui/Photo";
 
@@ -12,6 +12,131 @@ const item = {
   hidden: { opacity: 0, y: 30 },
   show: { opacity: 1, y: 0, transition: { duration: 1, ease: EASE } },
 };
+
+
+/**
+ * Where the rider is from — and who is already travelling along.
+ *
+ * One plate, two rows, because they are the same statement: this is the place
+ * the road starts from, and this is how many people are on it. The coordinates
+ * used to be a one-line chip with the tribe and rating row sitting separately
+ * under the buttons; two thin strips of information with a gap between them
+ * read as clutter, and both left empty space on the right.
+ *
+ *   ┌──────────────────────────────────────────────────────────┐
+ *   │ ⊙•  31.3832° N   76.3766° E     NANGAL DAM · PUNJAB · …  │
+ *   │ ────────────────────────────────────────────────────────  │
+ *   │ (AM)(RK)(IS)(KB)  4.9 from 6,200+ travelers  |  480K+ …  │
+ *   └──────────────────────────────────────────────────────────┘
+ *
+ * There is no slash or rule between the two coordinates: `° N` and `° E`
+ * already separate them, and a plain gap reads cleaner than punctuation. The
+ * place and its note take the right-hand half of the first row, the rating and
+ * the tribe the whole of the second — so nothing is left hanging in empty space.
+ *
+ * Every value comes from the hero's own fields, so an owner who moves the pin
+ * changes four values in the dashboard rather than hunting for a literal.
+ */
+function OriginPlate({ data }: { data: HeroData }) {
+  const origin = resolveOrigin(data);
+  const [ratingLead, ...ratingRest] = data.ratingText.split(" ");
+  const [tribeLead, ...tribeRest] = data.tribeText.split(" ");
+
+  return (
+    <figure
+      className="group relative mt-7 w-full max-w-xl overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/40 hover:bg-saffron-400/[0.05] lg:max-w-2xl"
+      title={origin.label}
+    >
+      {/* the graticule: faint grid, fading right so it never fights the text */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-grid opacity-[0.14] [mask-image:linear-gradient(90deg,black,transparent_88%)]"
+      />
+      {/* a warm pool of light behind the pin */}
+      <div
+        aria-hidden
+        className="shrink-0 aspect-square pointer-events-none absolute -left-8 top-1/3 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      {/* corner ticks — the four marks of a graticule */}
+      {[
+        "left-0 top-0 border-l border-t rounded-tl-2xl",
+        "right-0 top-0 border-r border-t rounded-tr-2xl",
+        "left-0 bottom-0 border-l border-b rounded-bl-2xl",
+        "right-0 bottom-0 border-r border-b rounded-br-2xl",
+      ].map((corner) => (
+        <span
+          key={corner}
+          aria-hidden
+          className={`pointer-events-none absolute h-2.5 w-2.5 border-saffron-400/60 transition-colors duration-300 group-hover:border-saffron-300 ${corner}`}
+        />
+      ))}
+
+      {/* ── row one: the point on the map ── */}
+      <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5">
+        {/* the pin, with a slow ping so the plate feels like a live reading */}
+        <span className="relative grid aspect-square h-9 w-9 shrink-0 place-items-center rounded-full border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
+          <Crosshair className="h-4 w-4" aria-hidden />
+          <span className="absolute -right-1 -top-1 flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-400 opacity-60" />
+            <span className="shrink-0 aspect-square relative inline-flex h-2 w-2 rounded-full bg-saffron-400" />
+          </span>
+        </span>
+
+        {/* The two readings, separated by nothing but space: ° N and ° E say
+            which is which, and the gap is wider than the space inside a value
+            so they read as two figures rather than one long number. */}
+        <figcaption className="flex shrink-0 items-center gap-5 whitespace-nowrap font-mono text-[12px] tracking-[0.08em]">
+          <span className="text-zinc-100">{origin.lat}</span>
+          <span className="text-zinc-300">{origin.lng}</span>
+        </figcaption>
+
+        {/* place and note fill the rest of the row, on the same baseline */}
+        <div className="flex min-w-0 flex-1 items-baseline gap-x-2">
+          <p className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-300">
+            {origin.place}
+          </p>
+          {origin.note && (
+            <p className="min-w-0 truncate text-[9.5px] text-zinc-500">
+              <span aria-hidden className="shrink-0 aspect-square mr-2 inline-block h-1 w-1 rounded-full bg-saffron-400/70 align-middle" />
+              {origin.note}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── row two: who is already on the road ── */}
+      <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.08] px-4 py-2.5 sm:px-5">
+        <div className="flex shrink-0 items-center">
+          {["AM", "RK", "IS", "KB"].map((n, i) => (
+            <span
+              key={n}
+              className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[9px] font-bold text-on-gold transition-transform duration-300 hover:scale-110"
+              style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 4 - i }}
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-zinc-400">
+          <span className="font-semibold text-white">{ratingLead}</span>{" "}
+          <span className="uppercase tracking-[0.1em]">{ratingRest.join(" ")}</span>
+        </p>
+
+        <span aria-hidden className="h-4 w-px bg-white/12" />
+
+        <p className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+          <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />
+          <span>
+            <span className="font-semibold text-white">{tribeLead}</span>{" "}
+            <span className="uppercase tracking-[0.1em]">{tribeRest.join(" ")}</span>
+          </span>
+        </p>
+      </div>
+    </figure>
+  );
+}
 
 export default function Hero({ data }: { data: HeroData }) {
   const reduce = useReducedMotion();
@@ -29,8 +154,8 @@ export default function Hero({ data }: { data: HeroData }) {
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_75%_60%_at_50%_0%,black,transparent)]" />
         <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[100px] animate-pulse-soft" />
-        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
-        <div className="glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -44,7 +169,7 @@ export default function Hero({ data }: { data: HeroData }) {
               >
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                  <span className="shrink-0 aspect-square relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
                 {data.liveTag}
                 <Navigation className="h-3.5 w-3.5 text-emerald-300 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -79,44 +204,15 @@ export default function Hero({ data }: { data: HeroData }) {
                 href={data.cta2Href || "#"}
                 className="group inline-flex items-center gap-3 rounded-full glass px-6 py-4 font-display text-[15px] font-semibold text-white transition-all duration-300 hover:border-white/25 hover:bg-white/[0.07] active:scale-95"
               >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-saffron-400">
+                <span className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-saffron-400">
                   <Play className="h-3.5 w-3.5 fill-current" />
                 </span>
                 {data.cta2}
               </a>
             </motion.div>
 
-            <motion.div variants={item} className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4">
-              <div className="flex items-center">
-                {["AM", "RK", "IS", "KB"].map((n, i) => (
-                  <span
-                    key={n}
-                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[10px] font-bold text-on-gold"
-                    style={{
-                      marginLeft: i === 0 ? 0 : -10,
-                      zIndex: 4 - i,
-                    }}
-                  >
-                    {n}
-                  </span>
-                ))}
-                <span className="ml-3 text-sm text-zinc-400">
-                  <span className="font-semibold text-white">
-                    {data.ratingText.split(" ").slice(0, 1).join(" ")}
-                  </span>{" "}
-                  {data.ratingText.split(" ").slice(1).join(" ")}
-                </span>
-              </div>
-              <div className="hidden h-8 w-px bg-white/10 sm:block" />
-              <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
-                <span>
-                  <span className="font-semibold text-white">
-                    {data.tribeText.split(" ").slice(0, 1).join(" ")}
-                  </span>{" "}
-                  {data.tribeText.split(" ").slice(1).join(" ")}
-                </span>
-              </div>
+            <motion.div variants={item}>
+              <OriginPlate data={data} />
             </motion.div>
           </motion.div>
 

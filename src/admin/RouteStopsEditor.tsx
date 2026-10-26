@@ -709,7 +709,7 @@ export default function RouteStopsEditor({
               <li key={`${index}-${point.label ?? ""}`} className="flex items-start gap-2 text-[11px] text-zinc-300">
                 <span
                   className={cn(
-                    "mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white",
+                    "aspect-square mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white",
                     index === 0
                       ? "bg-emerald-500"
                       : index === parsedLink.points.length - 1

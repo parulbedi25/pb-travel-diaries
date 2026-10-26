@@ -76,7 +76,7 @@ export default function CountdownSetupDialog({
             type="button"
             onClick={onCancel}
             aria-label="Cancel countdown setup and close dialog"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:bg-white/[0.12] hover:text-white"
+            className="aspect-square grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:bg-white/[0.12] hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>

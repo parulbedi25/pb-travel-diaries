@@ -451,6 +451,63 @@ export function resolveLoaderAnimation(value?: unknown): LoaderAnimation {
     : "none";
 }
 
+/* ── Origin: where the rider is from, drawn as map coordinates ───────────── */
+
+/**
+ * The coordinate plate on the hero.
+ *
+ * Nangal Dam, Punjab is the shipped origin — the same point the live tracker
+ * starts from when no feed has reported in. It is a fallback rather than a
+ * hard-coded label: an owner who moves the pin changes two numbers in the
+ * dashboard, and a site saved before this existed still renders.
+ */
+const ORIGIN_FALLBACK = {
+  lat: "31.3832",
+  lng: "76.3766",
+  place: "Nangal Dam · Punjab",
+  note: "Home base — where every route begins",
+} as const;
+
+/**
+ * "31.3832" becomes "31.3832° N"; anything that is not a number is left exactly
+ * as it was typed, in capitals, so a hand-written "31°23′N" or "N 31.38" is
+ * respected instead of being mangled. The hemisphere is derived from the sign.
+ */
+function formatCoordinate(value: string | undefined, axis: "lat" | "lng"): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const number = Number(raw);
+  if (!Number.isFinite(number)) return raw.toUpperCase();
+  const limit = axis === "lat" ? 90 : 180;
+  const clamped = Math.max(-limit, Math.min(limit, number));
+  const hemisphere = axis === "lat" ? (clamped < 0 ? "S" : "N") : (clamped < 0 ? "W" : "E");
+  return `${Math.abs(clamped).toFixed(4)}° ${hemisphere}`;
+}
+
+export interface Origin {
+  /** e.g. "31.3832° N" */
+  lat: string;
+  /** e.g. "76.3766° E" */
+  lng: string;
+  /** e.g. "Nangal Dam · Punjab" */
+  place: string;
+  /** Optional quiet line under the place. */
+  note: string;
+  /** The two joined with a middot, for a screen reader or a copy button. */
+  label: string;
+}
+
+/** Fills in whatever a saved hero is missing, so no plate ever reads "undefined". */
+export function resolveOrigin(data?: Partial<HeroData> | null): Origin {
+  const lat =
+    formatCoordinate(data?.originLat, "lat") || formatCoordinate(ORIGIN_FALLBACK.lat, "lat");
+  const lng =
+    formatCoordinate(data?.originLng, "lng") || formatCoordinate(ORIGIN_FALLBACK.lng, "lng");
+  const place = String(data?.originPlace ?? "").trim() || ORIGIN_FALLBACK.place;
+  const note = String(data?.originNote ?? "").trim() || ORIGIN_FALLBACK.note;
+  return { lat, lng, place, note, label: `${lat}, ${lng} — ${place}` };
+}
+
 export interface SiteContent {
   v: 1;
   /** Internal one-time migrations applied to browser-saved dashboard content. */
@@ -490,6 +547,19 @@ export interface HeroData {
   ratingText: string;
   tribeText: string;
   chipLocation: string;
+  /**
+   * Where the road starts, written the way a map writes it.
+   *
+   * Four fields rather than one line of text: keeping the latitude, the
+   * longitude and the place apart is what lets the site draw a real coordinate
+   * plate, reformat them for the reader, and still let the owner move the pin
+   * by typing two numbers. `originNote` is the quiet line underneath, and may
+   * be left empty.
+   */
+  originLat: string;
+  originLng: string;
+  originPlace: string;
+  originNote: string;
   epTitle: string;
   epMeta: string;
   statTop: string;
@@ -916,6 +986,12 @@ const HERO: HeroData = {
   ratingText: "4.9 from 6,200+ travelers",
   tribeText: "480K+ tribe members",
   chipLocation: "Khardung La · 17,582 ft",
+  // Nangal Dam, Punjab — the first stop of every route, and the place the
+  // tracker's "live" dot starts from when no feed has reported in yet.
+  originLat: "31.3832",
+  originLng: "76.3766",
+  originPlace: "Nangal Dam · Punjab",
+  originNote: "Home base — where every route begins",
   epTitle: "EP. 214 — Spiti: The Middle Land",
   epMeta: "38:12 · Premieres Sunday, 7 PM IST",
   statTop: "1,412 days",

@@ -448,7 +448,7 @@ function Gallery({
                 type="button"
                 onClick={() => onChange(items.filter((_, at) => at !== index))}
                 aria-label={`Remove photo ${index + 1}`}
-                className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100 focus:opacity-100"
+                className="shrink-0 aspect-square absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100 focus:opacity-100"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -818,7 +818,7 @@ export default function MemberTracker() {
           <div className="flex items-center gap-3">
             <a
               href="#/"
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white"
+              className="shrink-0 aspect-square grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white"
               aria-label="Back to the journal"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -1064,7 +1064,7 @@ export default function MemberTracker() {
                           : "border-white/[0.07] bg-white/[0.02]",
                       )}
                     >
-                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-bold text-saffron-300">
+                      <span className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-bold text-saffron-300">
                         {index + 1}
                       </span>
                       <input
@@ -1087,7 +1087,7 @@ export default function MemberTracker() {
                           setSelectedStop(null);
                         }}
                         aria-label={`Remove stop ${index + 1}`}
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.08] hover:text-red-300"
+                        className="aspect-square grid h-7 w-7 shrink-0 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.08] hover:text-red-300"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1282,7 +1282,7 @@ export default function MemberTracker() {
                         type="button"
                         onClick={() => editRide(journey)}
                         aria-label={`Edit ${journey.title}`}
-                        className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+                        className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -1290,7 +1290,7 @@ export default function MemberTracker() {
                         type="button"
                         onClick={() => void removeRide(journey)}
                         aria-label={`Delete ${journey.title}`}
-                        className="grid h-8 w-8 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.08] hover:text-red-300"
+                        className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/[0.08] hover:text-red-300"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

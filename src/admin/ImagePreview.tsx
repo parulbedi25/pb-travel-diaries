@@ -72,7 +72,7 @@ export default function ImagePreview({
           type="button"
           onClick={onClear}
           aria-label="Clear image"
-          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-red-500"
+          className="shrink-0 aspect-square absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white transition-colors hover:bg-red-500"
         >
           <X className="h-3.5 w-3.5" />
         </button>

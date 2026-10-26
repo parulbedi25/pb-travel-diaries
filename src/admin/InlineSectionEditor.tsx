@@ -101,7 +101,7 @@ export default function InlineSectionEditor({
           type="button"
           onClick={onClose}
           aria-label="Close editor"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:bg-white/[0.15] hover:text-white"
+          className="aspect-square grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:bg-white/[0.15] hover:text-white"
         >
           <X className="h-3.5 w-3.5" />
         </button>

@@ -226,7 +226,7 @@ export default function BlockEditor({
             onClose();
           }}
           aria-label="Close editor"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
+          className="aspect-square grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

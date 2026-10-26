@@ -50,7 +50,7 @@ export function FooterView({
                       href={s.href.trim()}
                       {...externalLinkProps(s.href)}
                       aria-label={s.label}
-                      className="social-link grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
+                      className="shrink-0 aspect-square social-link grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:-translate-y-1 hover:bg-saffron-400 hover:text-on-gold"
                     >
                       <span
                         className="social-glyph inline-flex"
@@ -141,7 +141,7 @@ function BackToTop() {
       aria-label="Back to top"
       title="Back to top"
       className={cn(
-        "fixed bottom-6 right-5 z-[50] grid h-12 w-12 place-items-center rounded-full border-2 border-saffron-400/70 bg-ink-950/90 text-saffron-300 shadow-lg shadow-black/40 backdrop-blur-md transition-all duration-300",
+        "shrink-0 aspect-square fixed bottom-6 right-5 z-[50] grid h-12 w-12 place-items-center rounded-full border-2 border-saffron-400/70 bg-ink-950/90 text-saffron-300 shadow-lg shadow-black/40 backdrop-blur-md transition-all duration-300",
         "hover:-translate-y-1 hover:border-saffron-400 hover:bg-saffron-400 hover:text-black",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400",
         shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0",

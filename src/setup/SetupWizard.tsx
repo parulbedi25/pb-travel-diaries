@@ -30,7 +30,7 @@ function StepDot({ n, active, done }: { n: number; active: boolean; done: boolea
   return (
     <span
       className={cn(
-        "grid h-8 w-8 place-items-center rounded-full text-xs font-bold transition-colors",
+        "shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full text-xs font-bold transition-colors",
         done
           ? "bg-emerald-400/15 text-emerald-300"
           : active
@@ -460,21 +460,21 @@ export default function SetupWizard({
                 </p>
                 <ol id="setup-prereq" className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-relaxed text-zinc-400">
                   <li className="flex gap-2.5">
-                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">1</span>
+                    <span className="aspect-square mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">1</span>
                     <span>
                       Create an empty <span className="text-zinc-200">database</span> (MySQL or MariaDB).
                       Note its exact name — panels sometimes prefix it with your account name.
                     </span>
                   </li>
                   <li className="flex gap-2.5">
-                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">2</span>
+                    <span className="aspect-square mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">2</span>
                     <span>
                       Create a <span className="text-zinc-200">database user</span> with a strong
                       password, and note the exact username.
                     </span>
                   </li>
                   <li className="flex gap-2.5">
-                    <span className="mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">3</span>
+                    <span className="aspect-square mt-px grid h-4 w-4 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">3</span>
                     <span>
                       Add that user to that database with{" "}
                       <span className="text-zinc-200">all privileges</span>, then enter the three
@@ -571,7 +571,7 @@ export default function SetupWizard({
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-zinc-500 transition-colors hover:text-white"
+                    className="shrink-0 aspect-square absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-zinc-500 transition-colors hover:text-white"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -716,7 +716,7 @@ export default function SetupWizard({
                       type="button"
                       onClick={() => setShowOwnerPassword((v) => !v)}
                       aria-label={showOwnerPassword ? "Hide password" : "Show password"}
-                      className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-zinc-500 transition-colors hover:text-white"
+                      className="shrink-0 aspect-square absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-zinc-500 transition-colors hover:text-white"
                     >
                       {showOwnerPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>

@@ -92,7 +92,7 @@ function LegacyCustomSection({ data }: { data: CustomData }) {
           <Reveal className={cn(data.image && imageRight && "lg:order-2")}>
             {data.eyebrow && (
               <span className="inline-flex items-center gap-2 rounded-full glass px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-saffron-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-saffron-400" />
+                <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-saffron-400" />
                 {data.eyebrow}
               </span>
             )}

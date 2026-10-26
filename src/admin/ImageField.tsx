@@ -37,7 +37,7 @@ export function LibraryModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:text-white"
+            className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 hover:text-white"
           >
             <X className="h-3.5 w-3.5" />
           </button>

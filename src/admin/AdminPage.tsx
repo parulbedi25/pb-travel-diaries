@@ -224,6 +224,10 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("ratingText", "Rating line", "e.g. 4.9 from 6,200+ travelers"),
     T("tribeText", "Tribe line", "e.g. 480K+ tribe members"),
     T("chipLocation", "Location chip on photo"),
+    T("originLat", "Origin — latitude", "Where the rider is from; e.g. 31.3832 shows as 31.3832° N"),
+    T("originLng", "Origin — longitude", "e.g. 76.3766 shows as 76.3766° E"),
+    T("originPlace", "Origin — place", "Shown under the coordinates, e.g. Nangal Dam · Punjab"),
+    T("originNote", "Origin — small line", "Optional, e.g. Home base — where every route begins"),
     T("epTitle", "Episode title on photo card"),
     T("epMeta", "Episode meta on photo card"),
     T("statTop", "Floating stat — big line"),
@@ -889,7 +893,7 @@ function Login({ onLogin }: { onLogin: (user: Account) => void }) {
         </button>
         <div className="rounded-3xl glass p-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
+            <span className="grid aspect-square h-11 w-11 shrink-0 place-items-center rounded-full bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
               PB
             </span>
             <div>
@@ -901,7 +905,7 @@ function Login({ onLogin }: { onLogin: (user: Account) => void }) {
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="ml-auto grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:text-white"
+              className="shrink-0 aspect-square ml-auto grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:text-white"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -1160,7 +1164,7 @@ export function HotspotEditor({
                   setOpenIdx(isOpen ? null : i);
                 }}
                 className={cn(
-                  "absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
+                  "shrink-0 aspect-square absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
                   isOpen
                     ? "border-white bg-saffron-400 text-on-gold"
                     : "border-white bg-ink-950/85 text-white hover:border-saffron-300",
@@ -1234,7 +1238,7 @@ export function HotspotEditor({
                   className="flex cursor-grab items-center gap-2.5 p-2.5 active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
+                  <span className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
                     {i + 1}
                   </span>
                   <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05]">
@@ -1503,7 +1507,7 @@ export function RiderKitPointerEditor({
                   setOpenIdx(isOpen ? null : index);
                 }}
                 className={cn(
-                  "absolute z-10 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-ink-950/90 text-[10px] font-bold text-white shadow-lg transition-colors",
+                  "shrink-0 aspect-square absolute z-10 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-ink-950/90 text-[10px] font-bold text-white shadow-lg transition-colors",
                   isOpen ? "bg-saffron-400 text-on-gold" : "hover:border-saffron-300",
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab",
                   isOn(pointer) ? "opacity-100" : "opacity-45"
@@ -1587,7 +1591,7 @@ export function RiderKitPointerEditor({
                     title="Click to edit this product and its pointer"
                     className="flex min-w-[8rem] flex-1 items-center gap-2 text-left"
                   >
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">{index + 1}</span>
+                    <span className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">{index + 1}</span>
                     <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.05]">
                       {linkedProduct?.image ? (
                         <img src={linkedProduct.image} alt="" className="h-full w-full object-contain" />
@@ -2736,7 +2740,7 @@ function SectionsPanel() {
               <button
                 onClick={() => setSelectedId(null)}
                 aria-label="Close editor"
-                className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
+                className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -3752,26 +3756,146 @@ function AccessPanel() {
   );
 }
 
+/* ═══════════════ Settings ═══════════════ */
+
+/**
+ * One place for everything that belongs to the site as a whole.
+ *
+ * Settings used to be a short list of leftovers while the logo, the colours,
+ * the map and the backups each had their own place in the dashboard — four
+ * buttons for one idea. They are all here now, in a short sub-list, so
+ * "change how the site looks" and "change how it behaves" both start from the
+ * same button. Nothing was rewritten to move: each section renders the same
+ * panel as before, so every control keeps doing exactly what it did.
+ *
+ * The sub-list is deliberately small enough to read at a glance: identity,
+ * looks (brand, colours, map, loader), the owner's own account, backups, and
+ * the revision history.
+ */
+type SettingsSection =
+  | "identity"
+  | "brand"
+  | "colours"
+  | "map"
+  | "loader"
+  | "account"
+  | "backup"
+  | "history";
+
+const SETTINGS_SECTIONS: { id: SettingsSection; label: string; hint: string; icon: typeof List }[] = [
+  {
+    id: "identity",
+    label: "Site & sign-up",
+    hint: "The website title, and who is allowed to create an account.",
+    icon: Settings,
+  },
+  {
+    id: "brand",
+    label: "Logo & brand",
+    hint: "The logo, the wordmark beside it, and the colour it is drawn in.",
+    icon: ImageIcon,
+  },
+  {
+    id: "colours",
+    label: "Theme colours",
+    hint: "The dark and light colour sets the whole site is painted with.",
+    icon: Palette,
+  },
+  {
+    id: "map",
+    label: "Map look",
+    hint: "One basemap for every map on the site — the tracker, the live page and a member's rides.",
+    icon: MapIcon,
+  },
+  {
+    id: "loader",
+    label: "Loader screen",
+    hint: "The mark shown for the moment while the site loads.",
+    icon: Play,
+  },
+  {
+    id: "account",
+    label: "Password & accounts",
+    hint: "Your own password, and who may edit the site.",
+    icon: KeyRound,
+  },
+  {
+    id: "backup",
+    label: "Backups",
+    hint: "The nightly archive of everything, plus exporting and importing the content.",
+    icon: DatabaseBackup,
+  },
+  {
+    id: "history",
+    label: "Revision history",
+    hint: "Every save, what changed, and how to go back to an earlier one.",
+    icon: History,
+  },
+];
+
+/** A quiet line under a section heading: what this panel changes, and where. */
+function SectionNote({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-4 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-[11px] leading-relaxed text-zinc-500">
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The Settings page: a short sub-list on the left, the section on the right.
+ *
+ * The list becomes a row of buttons on a narrow screen so nothing is hidden
+ * behind a menu, and sticks to the top on a wide one so switching sections
+ * never means scrolling back.
+ */
 function SettingsPanel() {
-  const { theme, setTheme, updateDraft, logAction, draft, loaderDraft, setLoaderDraft, setSiteTitle } = useSite();
-  const [cur, setCur] = useState("");
-  const [nw, setNw] = useState("");
-  const [cf, setCf] = useState("");
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [savingPw, setSavingPw] = useState(false);
-  const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [section, setSection] = useState<SettingsSection>("identity");
+  const active = SETTINGS_SECTIONS.find((s) => s.id === section) ?? SETTINGS_SECTIONS[0];
+
+  return (
+    <div className="grid items-start gap-6 xl:grid-cols-[230px_minmax(0,1fr)]">
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-2 xl:sticky xl:top-24 xl:flex-col">
+        {SETTINGS_SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSection(s.id)}
+            aria-pressed={section === s.id}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-xs font-semibold transition-colors duration-200",
+              section === s.id
+                ? "border-saffron-400 bg-saffron-400/10 text-white"
+                : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/25 hover:bg-white/[0.06] hover:text-white"
+            )}
+          >
+            <s.icon className="h-3.5 w-3.5 shrink-0" />
+            {s.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="min-w-0">
+        <SectionNote>{active.hint}</SectionNote>
+        {section === "identity" && <SettingsIdentity />}
+        {section === "brand" && <SettingsBrand />}
+        {section === "colours" && <SettingsColours />}
+        {section === "map" && <SettingsMap />}
+        {section === "loader" && <SettingsLoader />}
+        {section === "account" && <SettingsAccount />}
+        {section === "backup" && <SettingsBackup />}
+        {section === "history" && <SettingsHistory />}
+      </div>
+    </div>
+  );
+}
+
+/** The title in the browser tab, and whether strangers may sign up. */
+function SettingsIdentity() {
+  const { setSiteTitle } = useSite();
   const [site, setSite] = useState<{ title: string; allowSignup: boolean } | null>(null);
   const [siteMsg, setSiteMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [savingSite, setSavingSite] = useState(false);
-
-  // The loader animation lives on the draft, so it publishes with Save Changes.
-  const loaderAnimation = resolveLoaderAnimation(draft.loaderAnimation);
-  const setLoaderAnimation = (next: LoaderAnimation) => {
-    logAction(`Changed loader animation to ${LOADER_ANIMATION_LABELS[next].label}`);
-    updateDraft((c) => ({ ...c, loaderAnimation: next }));
-  };
 
   useEffect(() => {
     let alive = true;
@@ -3804,6 +3928,126 @@ function SettingsPanel() {
     }
   };
 
+  return (
+    <div className="max-w-2xl">
+      {site && (
+            <form onSubmit={saveSite} className="rounded-3xl glass p-6">
+              <h3 className="font-display text-base font-semibold text-white">Site &amp; sign-up</h3>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                The title appears in the browser tab and on the sign-in screens. Public sign-up lets
+                anybody create a read-only account from the members page.
+              </p>
+              <label htmlFor="site-title" className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Website title
+              </label>
+              <input
+                id="site-title"
+                value={site.title}
+                onChange={(e) => setSite((v) => (v ? { ...v, title: e.target.value } : v))}
+                maxLength={120}
+                className={cn(inputCls, "mt-1.5")}
+              />
+              <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
+                <Switch
+                  on={site.allowSignup}
+                  onChange={(allowSignup) => setSite((v) => (v ? { ...v, allowSignup } : v))}
+                  label="Allow public sign-up"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">Allow public sign-up</p>
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                    New accounts get read-only access. Off means the owner adds everybody from this
+                    panel.
+                  </p>
+                </div>
+              </div>
+              {siteMsg && (
+                <p className={cn("mt-3 text-xs font-medium", siteMsg.ok ? "text-emerald-300" : "text-red-400")}>
+                  {siteMsg.text}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={savingSite}
+                className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" /> {savingSite ? "Saving…" : "Save site settings"}
+              </button>
+            </form>
+      )}
+      {!site && <p className="text-xs text-zinc-500">Reading the site settings…</p>}
+    </div>
+  );
+}
+
+/** Logo, wordmark and brand colour — the same editor the dashboard had. */
+function SettingsBrand() {
+  return (
+    <div>
+      <SectionNote>
+        Saving here republishes the brand everywhere it appears: the header, the loader, the footer
+        and the shared link preview.
+      </SectionNote>
+      <BrandingPanel />
+    </div>
+  );
+}
+
+/** The colour sets, and the day/night switch for this browser. */
+function SettingsColours() {
+  const { theme, setTheme } = useSite();
+
+  return (
+    <div className="grid gap-5">
+      <ThemePanel />
+
+      <div className="rounded-3xl glass p-6">
+        <h3 className="font-display text-base font-semibold text-white">Day or night, for you</h3>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          The colours above are the palette; this is which half of it you are looking at. It applies
+          across the whole site, including the live map page, and is remembered per visitor — so
+          your choice does not decide a reader&apos;s.
+        </p>
+        <div className="mt-4 flex gap-2">
+          {(["dark", "light"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTheme(t)}
+              aria-pressed={theme === t}
+              className={cn(
+                "inline-flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold capitalize transition-all duration-300",
+                theme === t
+                  ? "border-saffron-400/60 bg-saffron-400/10 text-white"
+                  : "border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white"
+              )}
+            >
+              {t === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Which basemap the maps draw with. */
+function SettingsMap() {
+  return <MapPanel />;
+}
+
+/** The mark shown for the moment the site takes to load. */
+function SettingsLoader() {
+  const { updateDraft, logAction, draft, loaderDraft, setLoaderDraft } = useSite();
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // The loader animation lives on the draft, so it publishes with Save Changes.
+  const loaderAnimation = resolveLoaderAnimation(draft.loaderAnimation);
+  const setLoaderAnimation = (next: LoaderAnimation) => {
+    logAction(`Changed loader animation to ${LOADER_ANIMATION_LABELS[next].label}`);
+    updateDraft((c) => ({ ...c, loaderAnimation: next }));
+  };
+
   // Esc closes the loader preview.
   useEffect(() => {
     if (!previewOpen) return;
@@ -3813,6 +4057,169 @@ function SettingsPanel() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [previewOpen]);
+
+  return (
+    <div className="max-w-3xl">
+          <div className="rounded-3xl glass p-6">
+            <h3 className="font-display text-base font-semibold text-white">Loader screen</h3>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+              Shown while the site loads. Upload your own mark, pick one from the media folder, or
+              leave it empty for the default rider crossing the mountains. Large images are
+              accepted and compressed to under 2 MB automatically, and the compressed copy is what
+              the loader displays.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr] sm:items-start">
+              {/* Fixed 16/9 viewport, so a very tall or very wide logo still
+                  previews in the same space as everything else. */}
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                <div className="grid place-items-center p-3" style={{ aspectRatio: "16 / 9" }}>
+                  <span
+                    className={cn(
+                      "grid place-items-center",
+                      loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
+                    )}
+                  >
+                    {loaderDraft ? (
+                      <img
+                        src={loaderDraft}
+                        alt=""
+                        className="max-h-[64px] max-w-[150px] object-contain"
+                      />
+                    ) : (
+                      <LineLoaderMark />
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <ImageField
+                  value={loaderDraft}
+                  onChange={setLoaderDraft}
+                  budget={LOADER_LOGO_BUDGET}
+                  previewNote="Loader mark · compressed on upload"
+                />
+                {loaderDraft && (
+                  <button
+                    type="button"
+                    onClick={() => setLoaderDraft("")}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
+                  >
+                    <RefreshCcw className="h-3 w-3" /> Use default rider mark
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* animation picker */}
+            <div className="mt-6 border-t border-white/[0.07] pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                  Animation
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+                >
+                  <Play className="h-3 w-3" /> Preview full screen
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                How the mark moves while loading. Hover a tile to see it, or pick one to apply it
+                to the loader and this preview.
+              </p>
+
+              <div
+                role="group"
+                aria-label="Loader animation"
+                className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3"
+              >
+                {LOADER_ANIMATIONS.map((a) => {
+                  const on = loaderAnimation === a;
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => setLoaderAnimation(a)}
+                      aria-pressed={on}
+                      className={cn(
+                        "group flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-center transition-colors",
+                        on
+                          ? "border-saffron-400/60 bg-saffron-400/10"
+                          : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+                      )}
+                    >
+                      <span className="grid h-11 w-full place-items-center overflow-hidden">
+                        <span
+                          className={cn(
+                            "grid place-items-center",
+                            a !== "none" && `ldr-anim-${a}`,
+                            // Only animate on hover unless it's the chosen one,
+                            // so a grid of tiles is not permanently in motion.
+                            !on && "group-hover:[animation-play-state:running] [animation-play-state:paused]"
+                          )}
+                        >
+                          {loaderDraft ? (
+                            <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
+                          ) : (
+                            <LineLoaderMark className="ldr-line-sm" />
+                          )}
+                        </span>
+                      </span>
+                      <span className="min-w-0">
+                        <span
+                          className={cn(
+                            "block text-xs font-semibold",
+                            on ? "text-white" : "text-zinc-300"
+                          )}
+                        >
+                          {LOADER_ANIMATION_LABELS[a].label}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] leading-tight text-zinc-500">
+                          {LOADER_ANIMATION_LABELS[a].hint}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+      {/* full-screen loader preview — the real component, on a local timer */}
+      {previewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Loader preview"
+          className="fixed inset-0 z-[200] grid place-items-center bg-ink-950"
+        >
+          <LoaderBackdrop />
+          <LoaderStage logo={loaderDraft} animation={loaderAnimation} />
+          <button
+            type="button"
+            autoFocus
+            onClick={() => setPreviewOpen(false)}
+            className="absolute right-5 top-5 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:text-white"
+          >
+            <X className="h-3.5 w-3.5" /> Close preview
+          </button>
+          <p className="absolute bottom-8 text-[11px] text-zinc-600">
+            This is the real loader screen · Esc to close
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The owner's own password, and who may edit the site. */
+function SettingsAccount() {
+  const [cur, setCur] = useState("");
+  const [nw, setNw] = useState("");
+  const [cf, setCf] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savingPw, setSavingPw] = useState(false);
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3835,328 +4242,159 @@ function SettingsPanel() {
     }
   };
 
-  /** The editor's working copy, exactly as it would be published. */
-  const snapshotJson = () =>
-    JSON.stringify({ ...draft, loaderLogo: loaderDraft }, null, 2);
+  return (
+    <div className="grid max-w-2xl gap-5">
+          <form onSubmit={changePassword} className="rounded-3xl glass p-6">
+            <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
+              <KeyRound className="h-4 w-4 text-saffron-300" /> Change admin password
+            </h3>
+            <div className="mt-4 grid gap-3">
+              <input
+                type="password"
+                value={cur}
+                onChange={(e) => setCur(e.target.value)}
+                placeholder="Current password"
+                aria-label="Current password"
+                className={inputCls}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="password"
+                  value={nw}
+                  onChange={(e) => setNw(e.target.value)}
+                  placeholder="New password"
+                  aria-label="New password"
+                  className={inputCls}
+                />
+                <input
+                  type="password"
+                  value={cf}
+                  onChange={(e) => setCf(e.target.value)}
+                  placeholder="Confirm new password"
+                  aria-label="Confirm new password"
+                  className={inputCls}
+                />
+              </div>
+              {msg && (
+                <p className={cn("text-xs font-medium", msg.ok ? "text-emerald-300" : "text-red-400")}>
+                  {msg.text}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={savingPw}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
+              >
+                <Check className="h-4 w-4" /> {savingPw ? "Updating…" : "Update password"}
+              </button>
+            </div>
+          </form>
 
-  const exportJson = () => {
-    try {
-      const blob = new Blob([snapshotJson()], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "pb-site-content-draft.json";
-      a.rel = "noopener";
-      // Firefox and Safari only start a programmatic download when the anchor
-      // is in the document, and revoking the URL in the same tick can cancel a
-      // download that has not begun yet — between them the button silently did
-      // nothing. Append, click, remove, then release the blob later.
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      setBackupMsg({ ok: true, text: "Exported — check your downloads folder." });
-    } catch {
-      setBackupMsg({
-        ok: false,
-        text: "Export failed. Use Copy JSON instead, or allow downloads for this site.",
-      });
-    }
-  };
+      <AccessPanel />
+    </div>
+  );
+}
 
-  const copyJson = async () => {
-    const json = snapshotJson();
-    try {
-      await navigator.clipboard.writeText(json);
-      setBackupMsg({
-        ok: true,
-        text: `Copied ${Math.round(json.length / 1024)} KB of JSON to your clipboard.`,
-      });
-    } catch {
-      setBackupMsg({
-        ok: false,
-        text: "The browser blocked the clipboard. Export the file instead.",
-      });
-    }
-  };
+/**
+ * Backups, in one section.
+ *
+ * The server's nightly archive and the content export/import are two halves of
+ * the same idea — a copy of the site you can put back — so they sit together
+ * rather than in two different corners of the dashboard.
+ */
+function SettingsBackup() {
+  return (
+    <div className="grid gap-5">
+      <BackupsPanel />
+      <BackupTransferCard />
+    </div>
+  );
+}
 
-  const importJson = (file: File) => {
-    const reader = new FileReader();
-    reader.onerror = () =>
-      setBackupMsg({ ok: false, text: "Couldn't read that file — try exporting it again." });
-    reader.onload = () => {
+/**
+ * Export, copy or import the published content as JSON.
+ *
+ * This is the content half of a backup: text, images references, sections and
+ * settings, without the database itself. It is what moves a design from one
+ * installation to another.
+ */
+function BackupTransferCard() {
+  const { updateDraft, draft, loaderDraft } = useSite();
+  const [backupMsg, setBackupMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+    /** The editor's working copy, exactly as it would be published. */
+    const snapshotJson = () =>
+      JSON.stringify({ ...draft, loaderLogo: loaderDraft }, null, 2);
+
+    const exportJson = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as {
-          v?: number;
-          nav?: unknown[];
-          sections?: unknown[];
-        };
-        if (parsed?.v !== 1 || !Array.isArray(parsed.sections) || !Array.isArray(parsed.nav)) {
-          setBackupMsg({ ok: false, text: "That file doesn't look like a valid PB content export." });
-          return;
-        }
-        updateDraft(() => parsed as never);
-        setBackupMsg({ ok: true, text: "Imported into the editor. Press Save Changes to publish it." });
+        const blob = new Blob([snapshotJson()], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "pb-site-content-draft.json";
+        a.rel = "noopener";
+        // Firefox and Safari only start a programmatic download when the anchor
+        // is in the document, and revoking the URL in the same tick can cancel a
+        // download that has not begun yet — between them the button silently did
+        // nothing. Append, click, remove, then release the blob later.
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        setBackupMsg({ ok: true, text: "Exported — check your downloads folder." });
       } catch {
-        setBackupMsg({ ok: false, text: "Couldn't read that file — is it valid JSON?" });
+        setBackupMsg({
+          ok: false,
+          text: "Export failed. Use Copy JSON instead, or allow downloads for this site.",
+        });
       }
     };
-    reader.readAsText(file);
-  };
+
+    const copyJson = async () => {
+      const json = snapshotJson();
+      try {
+        await navigator.clipboard.writeText(json);
+        setBackupMsg({
+          ok: true,
+          text: `Copied ${Math.round(json.length / 1024)} KB of JSON to your clipboard.`,
+        });
+      } catch {
+        setBackupMsg({
+          ok: false,
+          text: "The browser blocked the clipboard. Export the file instead.",
+        });
+      }
+    };
+
+    const importJson = (file: File) => {
+      const reader = new FileReader();
+      reader.onerror = () =>
+        setBackupMsg({ ok: false, text: "Couldn't read that file — try exporting it again." });
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result)) as {
+            v?: number;
+            nav?: unknown[];
+            sections?: unknown[];
+          };
+          if (parsed?.v !== 1 || !Array.isArray(parsed.sections) || !Array.isArray(parsed.nav)) {
+            setBackupMsg({ ok: false, text: "That file doesn't look like a valid PB content export." });
+            return;
+          }
+          updateDraft(() => parsed as never);
+          setBackupMsg({ ok: true, text: "Imported into the editor. Press Save Changes to publish it." });
+        } catch {
+          setBackupMsg({ ok: false, text: "Couldn't read that file — is it valid JSON?" });
+        }
+      };
+      reader.readAsText(file);
+    };
+
 
   return (
-    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_370px]">
-      <div className="max-w-2xl">
-        <div className="flex flex-col gap-5">
-        {/* site identity + sign-up */}
-        {site && (
-          <form onSubmit={saveSite} className="rounded-3xl glass p-6">
-            <h3 className="font-display text-base font-semibold text-white">Site &amp; sign-up</h3>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              The title appears in the browser tab and on the sign-in screens. Public sign-up lets
-              anybody create a read-only account from the members page.
-            </p>
-            <label htmlFor="site-title" className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Website title
-            </label>
-            <input
-              id="site-title"
-              value={site.title}
-              onChange={(e) => setSite((v) => (v ? { ...v, title: e.target.value } : v))}
-              maxLength={120}
-              className={cn(inputCls, "mt-1.5")}
-            />
-            <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-              <Switch
-                on={site.allowSignup}
-                onChange={(allowSignup) => setSite((v) => (v ? { ...v, allowSignup } : v))}
-                label="Allow public sign-up"
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-white">Allow public sign-up</p>
-                <p className="text-[11px] leading-relaxed text-zinc-500">
-                  New accounts get read-only access. Off means the owner adds everybody from this
-                  panel.
-                </p>
-              </div>
-            </div>
-            {siteMsg && (
-              <p className={cn("mt-3 text-xs font-medium", siteMsg.ok ? "text-emerald-300" : "text-red-400")}>
-                {siteMsg.text}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={savingSite}
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
-            >
-              <Save className="h-4 w-4" /> {savingSite ? "Saving…" : "Save site settings"}
-            </button>
-          </form>
-        )}
-
-        {/* theme */}
-        <div className="rounded-3xl glass p-6">
-          <h3 className="font-display text-base font-semibold text-white">Theme</h3>
-          <p className="mt-1 text-xs text-zinc-500">
-            Applies across the whole site, including the live map page. Saved per visitor.
-          </p>
-          <div className="mt-4 flex gap-2">
-            {(["dark", "light"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTheme(t)}
-                aria-pressed={theme === t}
-                className={cn(
-                  "inline-flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold capitalize transition-all duration-300",
-                  theme === t
-                    ? "border-saffron-400/60 bg-saffron-400/10 text-white"
-                    : "border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white"
-                )}
-              >
-                {t === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                {t}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* loader icon + animation */}
-        <div className="rounded-3xl glass p-6">
-          <h3 className="font-display text-base font-semibold text-white">Loader screen</h3>
-          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            Shown while the site loads. Upload your own mark, pick one from the media folder, or
-            leave it empty for the default rider crossing the mountains. Large images are
-            accepted and compressed to under 2 MB automatically, and the compressed copy is what
-            the loader displays.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr] sm:items-start">
-            {/* Fixed 16/9 viewport, so a very tall or very wide logo still
-                previews in the same space as everything else. */}
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-              <div className="grid place-items-center p-3" style={{ aspectRatio: "16 / 9" }}>
-                <span
-                  className={cn(
-                    "grid place-items-center",
-                    loaderAnimation !== "none" && `ldr-anim-${loaderAnimation}`
-                  )}
-                >
-                  {loaderDraft ? (
-                    <img
-                      src={loaderDraft}
-                      alt=""
-                      className="max-h-[64px] max-w-[150px] object-contain"
-                    />
-                  ) : (
-                    <LineLoaderMark />
-                  )}
-                </span>
-              </div>
-            </div>
-            <div>
-              <ImageField
-                value={loaderDraft}
-                onChange={setLoaderDraft}
-                budget={LOADER_LOGO_BUDGET}
-                previewNote="Loader mark · compressed on upload"
-              />
-              {loaderDraft && (
-                <button
-                  type="button"
-                  onClick={() => setLoaderDraft("")}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-400 hover:bg-red-500/15 hover:text-red-400"
-                >
-                  <RefreshCcw className="h-3 w-3" /> Use default rider mark
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* animation picker */}
-          <div className="mt-6 border-t border-white/[0.07] pt-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                Animation
-              </h4>
-              <button
-                type="button"
-                onClick={() => setPreviewOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
-              >
-                <Play className="h-3 w-3" /> Preview full screen
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-zinc-500">
-              How the mark moves while loading. Hover a tile to see it, or pick one to apply it
-              to the loader and this preview.
-            </p>
-
-            <div
-              role="group"
-              aria-label="Loader animation"
-              className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3"
-            >
-              {LOADER_ANIMATIONS.map((a) => {
-                const on = loaderAnimation === a;
-                return (
-                  <button
-                    key={a}
-                    type="button"
-                    onClick={() => setLoaderAnimation(a)}
-                    aria-pressed={on}
-                    className={cn(
-                      "group flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-center transition-colors",
-                      on
-                        ? "border-saffron-400/60 bg-saffron-400/10"
-                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
-                    )}
-                  >
-                    <span className="grid h-11 w-full place-items-center overflow-hidden">
-                      <span
-                        className={cn(
-                          "grid place-items-center",
-                          a !== "none" && `ldr-anim-${a}`,
-                          // Only animate on hover unless it's the chosen one,
-                          // so a grid of tiles is not permanently in motion.
-                          !on && "group-hover:[animation-play-state:running] [animation-play-state:paused]"
-                        )}
-                      >
-                        {loaderDraft ? (
-                          <img src={loaderDraft} alt="" className="max-h-10 max-w-[72px] object-contain" />
-                        ) : (
-                          <LineLoaderMark className="ldr-line-sm" />
-                        )}
-                      </span>
-                    </span>
-                    <span className="min-w-0">
-                      <span
-                        className={cn(
-                          "block text-xs font-semibold",
-                          on ? "text-white" : "text-zinc-300"
-                        )}
-                      >
-                        {LOADER_ANIMATION_LABELS[a].label}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] leading-tight text-zinc-500">
-                        {LOADER_ANIMATION_LABELS[a].hint}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* password */}
-        <form onSubmit={changePassword} className="rounded-3xl glass p-6">
-          <h3 className="flex items-center gap-2 font-display text-base font-semibold text-white">
-            <KeyRound className="h-4 w-4 text-saffron-300" /> Change admin password
-          </h3>
-          <div className="mt-4 grid gap-3">
-            <input
-              type="password"
-              value={cur}
-              onChange={(e) => setCur(e.target.value)}
-              placeholder="Current password"
-              aria-label="Current password"
-              className={inputCls}
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                type="password"
-                value={nw}
-                onChange={(e) => setNw(e.target.value)}
-                placeholder="New password"
-                aria-label="New password"
-                className={inputCls}
-              />
-              <input
-                type="password"
-                value={cf}
-                onChange={(e) => setCf(e.target.value)}
-                placeholder="Confirm new password"
-                aria-label="Confirm new password"
-                className={inputCls}
-              />
-            </div>
-            {msg && (
-              <p className={cn("text-xs font-medium", msg.ok ? "text-emerald-300" : "text-red-400")}>
-                {msg.text}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={savingPw}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/[0.08] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-ink-950 disabled:opacity-60"
-            >
-              <Check className="h-4 w-4" /> {savingPw ? "Updating…" : "Update password"}
-            </button>
-          </div>
-        </form>
-
-        <AccessPanel />
-
+    <div className="rounded-3xl glass p-6">
         {/* export / import */}
         <div className="rounded-3xl glass p-6">
           <h3 className="font-display text-base font-semibold text-white">Backup &amp; transfer</h3>
@@ -4206,37 +4444,15 @@ function SettingsPanel() {
             </p>
           )}
         </div>
-      </div>
+    </div>
+  );
+}
 
-      {/* full-screen loader preview — the real component, on a local timer */}
-      {previewOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Loader preview"
-          className="fixed inset-0 z-[200] grid place-items-center bg-ink-950"
-        >
-          <LoaderBackdrop />
-          <LoaderStage logo={loaderDraft} animation={loaderAnimation} />
-          <button
-            type="button"
-            autoFocus
-            onClick={() => setPreviewOpen(false)}
-            className="absolute right-5 top-5 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:text-white"
-          >
-            <X className="h-3.5 w-3.5" /> Close preview
-          </button>
-          <p className="absolute bottom-8 text-[11px] text-zinc-600">
-            This is the real loader screen · Esc to close
-          </p>
-        </div>
-      )}
-      </div>
-
-      {/* revision history — the detail lives beside the settings cards */}
-      <div className="min-w-0 xl:sticky xl:top-24">
-        <RevisionsPanel />
-      </div>
+/** Everything that has been saved, newest first. */
+function SettingsHistory() {
+  return (
+    <div className="min-w-0">
+      <RevisionsPanel />
     </div>
   );
 }
@@ -5477,19 +5693,24 @@ function BackupsPanel() {
 
 /* ═══════════════ Page shell ═══════════════ */
 
-type Tab = "sections" | "shop" | "brand" | "menu" | "footer" | "theme" | "map" | "media" | "settings" | "backups";
+/**
+ * The dashboard's top-level list.
+ *
+ * Everything that belongs to the site as a whole — the logo and brand, the
+ * theme colours, the map look, the loader, the backups, the revision history —
+ * is one button now: Settings. They used to be five separate ones beside the
+ * page sections, which made the list long without making anything easier to
+ * find. Settings holds them in a short sub-list instead.
+ */
+type Tab = "sections" | "shop" | "menu" | "footer" | "media" | "settings";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
   { id: "shop", label: "Shop", icon: ShoppingBag },
-  { id: "brand", label: "Logo & brand", icon: ImageIcon },
   { id: "menu", label: "Header", icon: Link2 },
   { id: "footer", label: "Footer", icon: LayoutList },
-  { id: "theme", label: "Theme colours", icon: Palette },
-  { id: "map", label: "Map look", icon: MapIcon },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
-  { id: "backups", label: "Backups", icon: DatabaseBackup },
 ];
 
 export default function AdminPage() {
@@ -5620,7 +5841,7 @@ export default function AdminPage() {
             Site
           </a>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+            <span className="relative grid aspect-square h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               PB
             </span>
             <div>
@@ -5664,7 +5885,7 @@ export default function AdminPage() {
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="grid h-9 w-9 place-items-center rounded-full glass text-zinc-300 transition-colors hover:text-white"
+              className="shrink-0 aspect-square grid h-9 w-9 place-items-center rounded-full glass text-zinc-300 transition-colors hover:text-white"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -5726,14 +5947,10 @@ export default function AdminPage() {
           )}
           {tab === "sections" && <SectionsPanel />}
           {tab === "shop" && <ShopPanel />}
-          {tab === "brand" && <BrandingPanel />}
           {tab === "menu" && <MenuPanel />}
           {tab === "footer" && <FooterPanel />}
-          {tab === "theme" && <ThemePanel />}
-          {tab === "map" && <MapPanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
-          {tab === "backups" && <BackupsPanel />}
         </main>
       </div>
 
@@ -5764,7 +5981,7 @@ export default function AdminPage() {
               <button
                 onClick={() => setShowSaveModal(false)}
                 aria-label="Close dialog"
-                className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
+                className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
