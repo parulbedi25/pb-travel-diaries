@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation } from "lucide-react";
-import type { HeroData } from "../store/siteContent";
+import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation, Crosshair } from "lucide-react";
+import { resolveOrigin, type HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
 import Photo from "./ui/Photo";
 
@@ -12,6 +12,60 @@ const item = {
   hidden: { opacity: 0, y: 30 },
   show: { opacity: 1, y: 0, transition: { duration: 1, ease: EASE } },
 };
+
+
+/**
+ * Where the rider is from, written the way a map writes a place.
+ *
+ * A survey plate rather than another paragraph: mono coordinates, corner ticks
+ * that pick up the graticule from the live tracker, and the place underneath in
+ * spaced capitals. It sits under the subheadline because that is the sentence
+ * it belongs to — "Hailing from Nangal Dam" — and makes the claim checkable.
+ *
+ * Everything on it comes from the hero's own fields, so an owner who moves the
+ * pin changes four numbers in the dashboard rather than hunting for a literal.
+ */
+function OriginPlate({ data }: { data: HeroData }) {
+  const origin = resolveOrigin(data);
+
+  return (
+    <figure
+      className="group relative mt-7 inline-flex w-fit flex-col gap-1.5 rounded-2xl border border-white/12 bg-white/[0.03] px-4 py-3 backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/35 hover:bg-saffron-400/[0.04]"
+      title={origin.label}
+    >
+      {/* corner ticks — the four marks of a map graticule */}
+      {[
+        "left-0 top-0 border-l border-t rounded-tl-2xl",
+        "right-0 top-0 border-r border-t rounded-tr-2xl",
+        "left-0 bottom-0 border-l border-b rounded-bl-2xl",
+        "right-0 bottom-0 border-r border-b rounded-br-2xl",
+      ].map((corner) => (
+        <span
+          key={corner}
+          aria-hidden
+          className={`pointer-events-none absolute h-2.5 w-2.5 border-saffron-400/60 transition-colors duration-300 group-hover:border-saffron-300 ${corner}`}
+        />
+      ))}
+
+      <figcaption className="flex items-center gap-2.5 font-mono text-[11px] tracking-[0.16em] text-zinc-200">
+        <Crosshair className="h-3.5 w-3.5 shrink-0 text-saffron-300" aria-hidden />
+        <span className="whitespace-nowrap">{origin.lat}</span>
+        <span className="text-zinc-600" aria-hidden>
+          /
+        </span>
+        <span className="whitespace-nowrap">{origin.lng}</span>
+      </figcaption>
+
+      <p className="pl-[1.65rem] text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-400">
+        {origin.place}
+      </p>
+
+      {origin.note && (
+        <p className="pl-[1.65rem] text-[10px] leading-relaxed text-zinc-600">{origin.note}</p>
+      )}
+    </figure>
+  );
+}
 
 export default function Hero({ data }: { data: HeroData }) {
   const reduce = useReducedMotion();
@@ -66,6 +120,10 @@ export default function Hero({ data }: { data: HeroData }) {
             >
               {data.sub}
             </motion.p>
+
+            <motion.div variants={item}>
+              <OriginPlate data={data} />
+            </motion.div>
 
             <motion.div variants={item} className="mt-9 flex flex-wrap items-center gap-4">
               <a
