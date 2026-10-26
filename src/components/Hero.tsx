@@ -37,7 +37,7 @@ function OriginPlate({ data }: { data: HeroData }) {
 
   return (
     <figure
-      className="group relative mt-7 w-full max-w-xl overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/40 hover:bg-saffron-400/[0.05]"
+      className="group relative mt-7 w-full max-w-xl overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/40 hover:bg-saffron-400/[0.05] lg:max-w-2xl"
       title={origin.label}
     >
       {/* the graticule: faint grid, fading right so it never fights the text */}
@@ -65,9 +65,15 @@ function OriginPlate({ data }: { data: HeroData }) {
         />
       ))}
 
-      <div className="relative flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3.5 sm:flex-nowrap sm:px-5">
+      {/* One flat row, everything on one baseline.
+          The readings used to carry LAT/LNG words stacked above the numbers and
+          the place a second line under it, so the plate was two tiers tall and
+          always had a "lower part" hanging off the coordinates. Nothing stacks
+          now: pin, latitude, hairline, longitude, place, dot, quiet line — one
+          height, one row, nothing below the coordinates to look untidy. */}
+      <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5">
         {/* the pin, with a slow ping so the plate feels like a live reading */}
-        <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
+        <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
           <Crosshair className="h-4 w-4" aria-hidden />
           <span className="absolute -right-1 -top-1 flex h-2 w-2" aria-hidden>
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-400 opacity-60" />
@@ -75,37 +81,25 @@ function OriginPlate({ data }: { data: HeroData }) {
           </span>
         </span>
 
-        <figcaption className="flex items-center gap-3.5 font-mono sm:gap-4">
-          <span className="block">
-            <span className="block text-[9px] uppercase leading-none tracking-[0.3em] text-zinc-600">Lat</span>
-            <span className="mt-1.5 block whitespace-nowrap text-[12px] leading-none tracking-[0.1em] text-zinc-100">
-              {origin.lat}
-            </span>
-          </span>
-          {/* the divider: a hairline, not an oblique */}
-          <span aria-hidden className="h-7 w-px shrink-0 bg-white/15 transition-colors duration-300 group-hover:bg-saffron-400/40" />
-          <span className="block">
-            <span className="block text-[9px] uppercase leading-none tracking-[0.3em] text-zinc-600">Lng</span>
-            <span className="mt-1.5 block whitespace-nowrap text-[12px] leading-none tracking-[0.1em] text-zinc-100">
-              {origin.lng}
-            </span>
-          </span>
+        {/* The two readings, divided by a hairline. No LAT/LNG words above the
+            numbers: the ° N and ° E already say which is which, and the labels
+            were what forced a second tier into the plate. */}
+        <figcaption className="flex shrink-0 items-center gap-3 whitespace-nowrap font-mono text-[12px] tracking-[0.08em] text-zinc-100">
+          <span>{origin.lat}</span>
+          <span aria-hidden className="h-4 w-px bg-white/15 transition-colors duration-300 group-hover:bg-saffron-400/40" />
+          <span>{origin.lng}</span>
         </figcaption>
 
-        {/* The place, and the quiet line after it.
-            One line rather than two stacked ones: the coordinates beside it are
-            a single row, so a two-line block on the right left the lower-left of
-            the plate empty and made the whole thing look half-filled. Place and
-            note now sit on the same baseline, divided by a small gold dot. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 sm:justify-end">
-          <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-zinc-300">
+        {/* place and note share the rest of the row, on the same baseline */}
+        <div className="flex min-w-0 flex-1 items-baseline gap-x-2">
+          <p className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-300">
             {origin.place}
           </p>
           {origin.note && (
-            <>
-              <span aria-hidden className="h-1 w-1 shrink-0 rounded-full bg-saffron-400/70" />
-              <p className="min-w-0 truncate text-[10px] text-zinc-500">{origin.note}</p>
-            </>
+            <p className="min-w-0 truncate text-[9.5px] text-zinc-500">
+              <span aria-hidden className="mr-2 inline-block h-1 w-1 rounded-full bg-saffron-400/70 align-middle" />
+              {origin.note}
+            </p>
           )}
         </div>
       </div>
