@@ -37,11 +37,13 @@ test("commandcenter is recognized in reference and prebuilt routers", () => {
   const html = fs.readFileSync(new URL("dist/index.html", root), "utf8");
   const source = fs.readFileSync(new URL("src/utils/router.ts", root), "utf8");
   // Minified names and quote style are not part of the contract — only that the
-  // prebuilt router knows the same four admin paths the source does.
-  assert.match(
-    html,
-    /new Set\(\[[^\]]*\/commandcenter[^\]]*\/pb-control[^\]]*\/login[^\]]*\]\)/,
-  );
+  // prebuilt router knows the same four admin paths the source does. The
+  // minifier may inline those paths as literals or leave them as constants
+  // declared just above, so each path is looked for on its own rather than as
+  // one `new Set([...])` run of literals.
+  for (const path of ["/admin", "/commandcenter", "/pb-control", "/login"]) {
+    assert.match(html, new RegExp(`["'\`]${path}["'\`]`), `prebuilt router missing ${path}`);
+  }
   assert.match(source, /COMMAND_CENTER_PATH = "\/commandcenter"/);
   assert.match(source, /new Set<string>\(\[ADMIN_PATH, COMMAND_CENTER_PATH,/);
 });
