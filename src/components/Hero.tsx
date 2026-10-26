@@ -15,25 +15,32 @@ const item = {
 
 
 /**
- * Where the rider is from, written the way a map writes a place.
+ * Where the rider is from — and who is already travelling along.
  *
- * A survey plate rather than another paragraph: a pin, the latitude and
- * longitude as two labelled readings, and the place filling the space to their
- * right. That last part matters — the hero's copy column is wider than a short
- * line of coordinates, so a narrow plate left a hole beside it. This one runs
- * the width of the paragraph above (same `max-w-xl`), and puts the place and
- * its small note on the far side of a hairline, right-aligned, so the whole row
- * reads as one instrument instead of a label with empty space after it.
+ * One plate, two rows, because they are the same statement: this is the place
+ * the road starts from, and this is how many people are on it. The coordinates
+ * used to be a one-line chip with the tribe and rating row sitting separately
+ * under the buttons; two thin strips of information with a gap between them
+ * read as clutter, and both left empty space on the right.
  *
- * The coordinates are separated by a rule rather than a slash: a thin vertical
- * line is a map's own punctuation, and reads as "two readings" instead of a
- * fraction.
+ *   ┌──────────────────────────────────────────────────────────┐
+ *   │ ⊙•  31.3832° N   76.3766° E     NANGAL DAM · PUNJAB · …  │
+ *   │ ────────────────────────────────────────────────────────  │
+ *   │ (AM)(RK)(IS)(KB)  4.9 from 6,200+ travelers  |  480K+ …  │
+ *   └──────────────────────────────────────────────────────────┘
  *
- * Everything on it comes from the hero's own fields, so an owner who moves the
- * pin changes four values in the dashboard rather than hunting for a literal.
+ * There is no slash or rule between the two coordinates: `° N` and `° E`
+ * already separate them, and a plain gap reads cleaner than punctuation. The
+ * place and its note take the right-hand half of the first row, the rating and
+ * the tribe the whole of the second — so nothing is left hanging in empty space.
+ *
+ * Every value comes from the hero's own fields, so an owner who moves the pin
+ * changes four values in the dashboard rather than hunting for a literal.
  */
 function OriginPlate({ data }: { data: HeroData }) {
   const origin = resolveOrigin(data);
+  const [ratingLead, ...ratingRest] = data.ratingText.split(" ");
+  const [tribeLead, ...tribeRest] = data.tribeText.split(" ");
 
   return (
     <figure
@@ -48,7 +55,7 @@ function OriginPlate({ data }: { data: HeroData }) {
       {/* a warm pool of light behind the pin */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -left-8 top-1/2 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute -left-8 top-1/3 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
       />
 
       {/* corner ticks — the four marks of a graticule */}
@@ -65,12 +72,7 @@ function OriginPlate({ data }: { data: HeroData }) {
         />
       ))}
 
-      {/* One flat row, everything on one baseline.
-          The readings used to carry LAT/LNG words stacked above the numbers and
-          the place a second line under it, so the plate was two tiers tall and
-          always had a "lower part" hanging off the coordinates. Nothing stacks
-          now: pin, latitude, hairline, longitude, place, dot, quiet line — one
-          height, one row, nothing below the coordinates to look untidy. */}
+      {/* ── row one: the point on the map ── */}
       <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5">
         {/* the pin, with a slow ping so the plate feels like a live reading */}
         <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
@@ -81,16 +83,15 @@ function OriginPlate({ data }: { data: HeroData }) {
           </span>
         </span>
 
-        {/* The two readings, divided by a hairline. No LAT/LNG words above the
-            numbers: the ° N and ° E already say which is which, and the labels
-            were what forced a second tier into the plate. */}
-        <figcaption className="flex shrink-0 items-center gap-3 whitespace-nowrap font-mono text-[12px] tracking-[0.08em] text-zinc-100">
-          <span>{origin.lat}</span>
-          <span aria-hidden className="h-4 w-px bg-white/15 transition-colors duration-300 group-hover:bg-saffron-400/40" />
-          <span>{origin.lng}</span>
+        {/* The two readings, separated by nothing but space: ° N and ° E say
+            which is which, and the gap is wider than the space inside a value
+            so they read as two figures rather than one long number. */}
+        <figcaption className="flex shrink-0 items-center gap-5 whitespace-nowrap font-mono text-[12px] tracking-[0.08em]">
+          <span className="text-zinc-100">{origin.lat}</span>
+          <span className="text-zinc-300">{origin.lng}</span>
         </figcaption>
 
-        {/* place and note share the rest of the row, on the same baseline */}
+        {/* place and note fill the rest of the row, on the same baseline */}
         <div className="flex min-w-0 flex-1 items-baseline gap-x-2">
           <p className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-300">
             {origin.place}
@@ -102,6 +103,36 @@ function OriginPlate({ data }: { data: HeroData }) {
             </p>
           )}
         </div>
+      </div>
+
+      {/* ── row two: who is already on the road ── */}
+      <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.08] px-4 py-2.5 sm:px-5">
+        <div className="flex items-center">
+          {["AM", "RK", "IS", "KB"].map((n, i) => (
+            <span
+              key={n}
+              className="grid h-7 w-7 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[9px] font-bold text-on-gold transition-transform duration-300 hover:scale-110"
+              style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 4 - i }}
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-zinc-400">
+          <span className="font-semibold text-white">{ratingLead}</span>{" "}
+          <span className="uppercase tracking-[0.1em]">{ratingRest.join(" ")}</span>
+        </p>
+
+        <span aria-hidden className="h-4 w-px bg-white/12" />
+
+        <p className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+          <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />
+          <span>
+            <span className="font-semibold text-white">{tribeLead}</span>{" "}
+            <span className="uppercase tracking-[0.1em]">{tribeRest.join(" ")}</span>
+          </span>
+        </p>
       </div>
     </figure>
   );
@@ -161,10 +192,6 @@ export default function Hero({ data }: { data: HeroData }) {
               {data.sub}
             </motion.p>
 
-            <motion.div variants={item}>
-              <OriginPlate data={data} />
-            </motion.div>
-
             <motion.div variants={item} className="mt-9 flex flex-wrap items-center gap-4">
               <a
                 href={data.cta1Href || "#"}
@@ -184,37 +211,8 @@ export default function Hero({ data }: { data: HeroData }) {
               </a>
             </motion.div>
 
-            <motion.div variants={item} className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4">
-              <div className="flex items-center">
-                {["AM", "RK", "IS", "KB"].map((n, i) => (
-                  <span
-                    key={n}
-                    className="grid h-9 w-9 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[10px] font-bold text-on-gold"
-                    style={{
-                      marginLeft: i === 0 ? 0 : -10,
-                      zIndex: 4 - i,
-                    }}
-                  >
-                    {n}
-                  </span>
-                ))}
-                <span className="ml-3 text-sm text-zinc-400">
-                  <span className="font-semibold text-white">
-                    {data.ratingText.split(" ").slice(0, 1).join(" ")}
-                  </span>{" "}
-                  {data.ratingText.split(" ").slice(1).join(" ")}
-                </span>
-              </div>
-              <div className="hidden h-8 w-px bg-white/10 sm:block" />
-              <div className="flex items-center gap-1.5 text-sm text-zinc-400">
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
-                <span>
-                  <span className="font-semibold text-white">
-                    {data.tribeText.split(" ").slice(0, 1).join(" ")}
-                  </span>{" "}
-                  {data.tribeText.split(" ").slice(1).join(" ")}
-                </span>
-              </div>
+            <motion.div variants={item}>
+              <OriginPlate data={data} />
             </motion.div>
           </motion.div>
 
