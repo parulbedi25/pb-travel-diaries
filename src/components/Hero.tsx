@@ -55,7 +55,7 @@ function OriginPlate({ data }: { data: HeroData }) {
       {/* a warm pool of light behind the pin */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -left-8 top-1/3 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+        className="shrink-0 aspect-square pointer-events-none absolute -left-8 top-1/3 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
       />
 
       {/* corner ticks — the four marks of a graticule */}
@@ -75,11 +75,11 @@ function OriginPlate({ data }: { data: HeroData }) {
       {/* ── row one: the point on the map ── */}
       <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-5">
         {/* the pin, with a slow ping so the plate feels like a live reading */}
-        <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
+        <span className="relative grid aspect-square h-9 w-9 shrink-0 place-items-center rounded-full border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
           <Crosshair className="h-4 w-4" aria-hidden />
           <span className="absolute -right-1 -top-1 flex h-2 w-2" aria-hidden>
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-400 opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-saffron-400" />
+            <span className="shrink-0 aspect-square relative inline-flex h-2 w-2 rounded-full bg-saffron-400" />
           </span>
         </span>
 
@@ -98,7 +98,7 @@ function OriginPlate({ data }: { data: HeroData }) {
           </p>
           {origin.note && (
             <p className="min-w-0 truncate text-[9.5px] text-zinc-500">
-              <span aria-hidden className="mr-2 inline-block h-1 w-1 rounded-full bg-saffron-400/70 align-middle" />
+              <span aria-hidden className="shrink-0 aspect-square mr-2 inline-block h-1 w-1 rounded-full bg-saffron-400/70 align-middle" />
               {origin.note}
             </p>
           )}
@@ -107,11 +107,11 @@ function OriginPlate({ data }: { data: HeroData }) {
 
       {/* ── row two: who is already on the road ── */}
       <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.08] px-4 py-2.5 sm:px-5">
-        <div className="flex items-center">
+        <div className="flex shrink-0 items-center">
           {["AM", "RK", "IS", "KB"].map((n, i) => (
             <span
               key={n}
-              className="grid h-7 w-7 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[9px] font-bold text-on-gold transition-transform duration-300 hover:scale-110"
+              className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[9px] font-bold text-on-gold transition-transform duration-300 hover:scale-110"
               style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 4 - i }}
             >
               {n}
@@ -154,8 +154,8 @@ export default function Hero({ data }: { data: HeroData }) {
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_75%_60%_at_50%_0%,black,transparent)]" />
         <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[100px] animate-pulse-soft" />
-        <div className="glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
-        <div className="glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -169,7 +169,7 @@ export default function Hero({ data }: { data: HeroData }) {
               >
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                  <span className="shrink-0 aspect-square relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
                 {data.liveTag}
                 <Navigation className="h-3.5 w-3.5 text-emerald-300 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -204,7 +204,7 @@ export default function Hero({ data }: { data: HeroData }) {
                 href={data.cta2Href || "#"}
                 className="group inline-flex items-center gap-3 rounded-full glass px-6 py-4 font-display text-[15px] font-semibold text-white transition-all duration-300 hover:border-white/25 hover:bg-white/[0.07] active:scale-95"
               >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-saffron-400">
+                <span className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/10 transition-all duration-300 group-hover:scale-110 group-hover:bg-saffron-400">
                   <Play className="h-3.5 w-3.5 fill-current" />
                 </span>
                 {data.cta2}

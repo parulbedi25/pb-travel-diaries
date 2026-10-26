@@ -128,7 +128,7 @@ function GearProductBubble({
               type="button"
               onClick={onClose}
               aria-label="Close gear details"
-              className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 transition hover:bg-white/20 hover:text-white"
+              className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 transition hover:bg-white/20 hover:text-white"
             >
               <X className="h-3 w-3" />
             </button>
@@ -371,7 +371,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
   return (
     <section id="riderkit" aria-labelledby="riderkit-title" className="relative overflow-hidden py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-[-10rem] top-16 h-96 w-96 rounded-full bg-saffron-400/[0.05] blur-[130px]"
+        className="shrink-0 aspect-square pointer-events-none absolute right-[-10rem] top-16 h-96 w-96 rounded-full bg-saffron-400/[0.05] blur-[130px]"
         aria-hidden="true"
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -463,7 +463,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                                 : "0 6px 16px rgba(0,0,0,0.5)",
                           }}
                           className={cn(
-                            "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:scale-110 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                            "shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:scale-110 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
                             dimmed ? "opacity-70" : "opacity-100"
                           )}
                         >
@@ -493,7 +493,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                   })}
                 </div>
                 <div className="pointer-events-none absolute left-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-white/15 bg-ink-950/70 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-zinc-200 backdrop-blur-md sm:left-5 sm:top-5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-saffron-300 shadow-[0_0_10px_rgba(255,196,66,0.8)]" />
+                  <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-saffron-300 shadow-[0_0_10px_rgba(255,196,66,0.8)]" />
                   Illustrative rider · hover to explore
                 </div>
 

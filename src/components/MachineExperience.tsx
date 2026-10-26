@@ -276,7 +276,7 @@ function AccessoryBubble({
             type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             aria-label="Close accessory details"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 hover:bg-white/20 hover:text-white"
+            className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-zinc-400 hover:bg-white/20 hover:text-white"
           >
             <X className="h-3 w-3" />
           </button>
@@ -592,7 +592,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                     : "0 6px 16px rgba(0,0,0,0.5)",
               }}
               className={cn(
-                "grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
+                "shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full border bg-ink-950/85 text-saffron-100 transition-[transform,scale,opacity] duration-[420ms] ease-out hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-100",
                 dimmed ? "opacity-70" : "opacity-100"
               )}
             >
@@ -674,7 +674,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                   : "border-white/15 bg-white/[0.05] text-zinc-300"
               )}
             >
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-white/10 text-[9px]">
+              <span className="shrink-0 aspect-square grid h-4 w-4 place-items-center rounded-full bg-white/10 text-[9px]">
                 {i + 1}
               </span>
               {h.title}
@@ -735,7 +735,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                             : "border-transparent hover:border-white/10 hover:bg-white/[0.05]"
                         )}
                       >
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">
+                        <span className="aspect-square grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">
                           {idx + 1}
                         </span>
                         <span className="min-w-0 flex-1">
@@ -894,7 +894,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   );
 
   const expedition = (
-    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">PB's expedition setup</h3><p className="mt-1 text-xs text-zinc-500">Every bolt earned over {data.km.toLocaleString("en-IN")} km</p><ul className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{data.mods.map((m) => <li key={m} className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-zinc-300"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-saffron-400" />{m}</li>)}</ul></div>
+    <div className="flex h-full flex-col rounded-[2rem] glass p-7"><h3 className="font-display text-xl font-semibold text-white">PB's expedition setup</h3><p className="mt-1 text-xs text-zinc-500">Every bolt earned over {data.km.toLocaleString("en-IN")} km</p><ul className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">{data.mods.map((m) => <li key={m} className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-3.5 py-2.5 text-[13px] text-zinc-300"><span className="aspect-square h-1.5 w-1.5 shrink-0 rounded-full bg-saffron-400" />{m}</li>)}</ul></div>
   );
 
   const review = (
@@ -1407,7 +1407,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                     }}
                     onDragEnd={() => { dragIdRef.current = null; setDragging(null); setOver(null); }}
                     title="Drag this subsection anywhere inside The Machine"
-                    className="grid h-7 w-7 cursor-grab touch-none place-items-center rounded-full text-saffron-300 hover:bg-white/10 active:cursor-grabbing"
+                    className="shrink-0 aspect-square grid h-7 w-7 cursor-grab touch-none place-items-center rounded-full text-saffron-300 hover:bg-white/10 active:cursor-grabbing"
                   >
                     <GripVertical className="h-3.5 w-3.5" />
                   </span>
@@ -1419,16 +1419,16 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                     aria-label={`${isHidden ? "Enable" : "Disable"} ${block.label}`}
                     title={isHidden ? "Hidden from visitors — click to enable" : "Visible — click to disable"}
                     className={cn(
-                      "grid h-7 w-7 place-items-center rounded-full hover:bg-white/10",
+                      "shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full hover:bg-white/10",
                       isHidden ? "text-red-400" : "text-emerald-400"
                     )}
                   >
                     {isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                   </button>
-                  <button type="button" onClick={() => moveBlock(id, -1)} disabled={index === 0} aria-label={`Move ${block.label} earlier`} title="Move earlier" className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
-                  <button type="button" onClick={() => moveBlock(id, 1)} disabled={index === order.length - 1} aria-label={`Move ${block.label} later`} title="Move later" className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
-                  <button type="button" onClick={() => changeWidth(id)} aria-label={`Change ${block.label} width`} title={`Width: ${cols}/12 columns — cycle width`} className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"><MoveHorizontal className="h-3 w-3" /></button>
-                  {height && <button type="button" onClick={() => persistLayout(order, Object.fromEntries(Object.entries(heights).filter(([k]) => k !== id)), widths, `Reset size of Machine subsection: ${block.label}`)} aria-label={`Reset ${block.label} height`} title="Reset height to auto" className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"><RotateCcw className="h-3 w-3" /></button>}
+                  <button type="button" onClick={() => moveBlock(id, -1)} disabled={index === 0} aria-label={`Move ${block.label} earlier`} title="Move earlier" className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
+                  <button type="button" onClick={() => moveBlock(id, 1)} disabled={index === order.length - 1} aria-label={`Move ${block.label} later`} title="Move later" className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
+                  <button type="button" onClick={() => changeWidth(id)} aria-label={`Change ${block.label} width`} title={`Width: ${cols}/12 columns — cycle width`} className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"><MoveHorizontal className="h-3 w-3" /></button>
+                  {height && <button type="button" onClick={() => persistLayout(order, Object.fromEntries(Object.entries(heights).filter(([k]) => k !== id)), widths, `Reset size of Machine subsection: ${block.label}`)} aria-label={`Reset ${block.label} height`} title="Reset height to auto" className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"><RotateCcw className="h-3 w-3" /></button>}
                 </div>
               )}
 

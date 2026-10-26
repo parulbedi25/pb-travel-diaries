@@ -44,7 +44,7 @@ export default function CTA({ data }: { data: CtaData }) {
               <div className="mx-auto mt-10 max-w-lg">
                 {done ? (
                   <div className="flex items-center justify-center gap-3 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-6 py-4">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-400/20">
+                    <span className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-emerald-400/20">
                       <Check className="h-4 w-4 text-emerald-300" />
                     </span>
                     <p className="text-sm font-medium text-emerald-200">{data.success}</p>

@@ -37,7 +37,7 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
     >
       <span
         className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
+          "shrink-0 aspect-square absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
           on ? "left-[22px]" : "left-0.5"
         )}
       />
@@ -321,7 +321,7 @@ export function ThemePanel() {
               <span style={{ color: t.goldInk }}>Accent text</span>
               <span style={{ color: t.goldSoft }}>Soft accent text</span>
               <span className="inline-flex items-center gap-1.5" style={{ color: t.goldDeep }}>
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.goldDeep }} />
+                <span className="shrink-0 aspect-square h-2.5 w-2.5 rounded-full" style={{ background: t.goldDeep }} />
                 Deep accent
               </span>
             </div>
@@ -443,7 +443,7 @@ function MapPreview({ settings }: { settings: MapSettings }) {
           panel's route, pins and plates would only get in the way of seeing
           the basemap. */}
       <div className="pointer-events-none absolute inset-0">
-        <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400 shadow-[0_0_0_4px_rgba(245,179,1,0.25),0_0_16px_rgba(245,179,1,0.6)]" />
+        <span className="shrink-0 aspect-square absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400 shadow-[0_0_0_4px_rgba(245,179,1,0.25),0_0_16px_rgba(245,179,1,0.6)]" />
         <span className="absolute left-1/2 top-1/2 mt-3 -translate-x-1/2 rounded-full bg-ink-950/80 px-2 py-0.5 text-[10px] font-semibold text-white">
           {place}
         </span>
@@ -490,12 +490,12 @@ export function MapPanel() {
                     <span className="text-sm font-semibold text-white">{p.label}</span>
                     <span
                       className={cn(
-                        "grid h-4 w-4 place-items-center rounded-full border",
+                        "shrink-0 aspect-square grid h-4 w-4 place-items-center rounded-full border",
                         on ? "border-saffron-400 bg-saffron-400" : "border-white/25"
                       )}
                       aria-hidden="true"
                     >
-                      {on && <span className="h-1.5 w-1.5 rounded-full bg-ink-950" />}
+                      {on && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-ink-950" />}
                     </span>
                   </span>
                   <span className="mt-1.5 block text-[11px] leading-relaxed text-zinc-500">{p.hint}</span>
@@ -560,7 +560,7 @@ export function MapPanel() {
             <div className="mt-3 flex items-start gap-2 px-1.5 pb-1.5">
               <span
                 className={cn(
-                  "mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                  "aspect-square mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
                   hasChanges ? "bg-saffron-400" : "bg-emerald-400"
                 )}
                 aria-hidden="true"

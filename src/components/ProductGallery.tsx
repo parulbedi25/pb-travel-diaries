@@ -77,7 +77,7 @@ export default function ProductGallery({
             type="button"
             onClick={() => go(-1)}
             aria-label="Previous photo"
-            className="absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-ink-950/70 text-white backdrop-blur-md transition-colors hover:bg-ink-950/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300"
+            className="shrink-0 aspect-square absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-ink-950/70 text-white backdrop-blur-md transition-colors hover:bg-ink-950/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -85,7 +85,7 @@ export default function ProductGallery({
             type="button"
             onClick={() => go(1)}
             aria-label="Next photo"
-            className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-ink-950/70 text-white backdrop-blur-md transition-colors hover:bg-ink-950/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300"
+            className="shrink-0 aspect-square absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-ink-950/70 text-white backdrop-blur-md transition-colors hover:bg-ink-950/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300"
           >
             <ChevronRight className="h-4 w-4" />
           </button>

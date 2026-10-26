@@ -49,7 +49,7 @@ export default function Features({ data }: { data: FeaturesData }) {
               <Item key={`${f.title}-${i}`}>
                 <article className="group relative h-full overflow-hidden rounded-3xl glass p-7 transition-all duration-500 hover:-translate-y-1.5 hover:border-white/20 hover:shadow-2xl hover:shadow-black/40">
                   <div
-                    className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-saffron-400/25 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                    className="shrink-0 aspect-square pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-saffron-400/25 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
                     aria-hidden
                   />
                   <div className="flex items-start justify-between">

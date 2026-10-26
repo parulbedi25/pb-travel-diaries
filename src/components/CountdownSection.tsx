@@ -336,7 +336,7 @@ export function DonePage({ data }: { data: CountdownData }) {
       <ThemeToggle className="fixed right-4 top-4 z-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_72%)]" aria-hidden />
       <div className="relative w-full max-w-2xl text-center">
-        <span className="mx-auto inline-grid h-14 w-14 place-items-center rounded-full border border-emerald-400/30 bg-emerald-400/10">
+        <span className="shrink-0 aspect-square mx-auto inline-grid h-14 w-14 place-items-center rounded-full border border-emerald-400/30 bg-emerald-400/10">
           <Check className="h-6 w-6 text-emerald-300" />
         </span>
         <h1 className="mx-auto mt-6 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl text-balance">
@@ -373,7 +373,7 @@ export function DoneToast({ message, onClose }: { message: string; onClose: () =
         transition={{ duration: 0.6, ease: EASE }}
         className="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border border-emerald-400/30 bg-ink-950/90 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl"
       >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-400/15">
+        <span className="aspect-square grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-400/15">
           <Check className="h-4 w-4 text-emerald-300" />
         </span>
         <p className="flex-1 text-sm leading-relaxed text-emerald-100">{message}</p>
@@ -381,7 +381,7 @@ export function DoneToast({ message, onClose }: { message: string; onClose: () =
           type="button"
           onClick={onClose}
           aria-label="Dismiss message"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.07] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
+          className="aspect-square grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.07] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
         >
           <X className="h-3.5 w-3.5" />
         </button>

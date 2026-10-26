@@ -278,7 +278,7 @@ export default function NearbyPlacesPage() {
                         )}
                         sizes="64px"
                       />
-                      <span className="absolute left-1 top-1 grid h-4.5 w-4.5 min-h-[18px] min-w-[18px] place-items-center rounded-full bg-ink-950/85 text-[9px] font-bold text-white">
+                      <span className="shrink-0 aspect-square absolute left-1 top-1 grid h-4.5 w-4.5 min-h-[18px] min-w-[18px] place-items-center rounded-full bg-ink-950/85 text-[9px] font-bold text-white">
                         {index + 1}
                       </span>
                     </button>
@@ -385,14 +385,14 @@ export default function NearbyPlacesPage() {
           >
             <span
               className={cn(
-                "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
+                "shrink-0 aspect-square relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
                 status === "live" ? "bg-saffron-400 shadow-saffron-400/50" : "bg-zinc-500 shadow-zinc-500/50",
               )}
             >
               {status === "live" && (
                 <span className="absolute inset-0 rounded-full bg-saffron-400/40 animate-radar" aria-hidden />
               )}
-              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white" />
             </span>
           </div>
 
@@ -408,7 +408,7 @@ export default function NearbyPlacesPage() {
                 aria-label={`${place.title}, ${place.distanceKm.toFixed(1)} kilometres away`}
                 aria-pressed={active}
                 className={cn(
-                  "group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 border-white text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
+                  "shrink-0 aspect-square group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 border-white text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
                   active ? "bg-saffron-400 text-ink-950" : "bg-ink-950/85 text-white hover:bg-ink-800",
                 )}
                 style={{ left: `${point.x}%`, top: `${point.y}%` }}
@@ -439,7 +439,7 @@ export default function NearbyPlacesPage() {
                   type="button"
                   onClick={() => setSelected(null)}
                   aria-label="Close"
-                  className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-white transition-colors hover:bg-ink-950"
+                  className="shrink-0 aspect-square absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-white transition-colors hover:bg-ink-950"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

@@ -245,7 +245,7 @@ export default function Navbar() {
                     : "PB Control account"
                   : "Sign in or create a read-only account"
               }
-              className="grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:text-white"
+              className="shrink-0 aspect-square grid h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:text-white"
             >
               {account ? <UserRound className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
             </a>
@@ -253,7 +253,7 @@ export default function Navbar() {
               href="#/admin"
               aria-label="Admin dashboard"
               title="Admin dashboard"
-              className="hidden h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:rotate-45 hover:text-white sm:grid"
+              className="shrink-0 aspect-square hidden h-10 w-10 place-items-center rounded-full glass text-zinc-400 transition-all duration-300 hover:rotate-45 hover:text-white sm:grid"
             >
               <SlidersHorizontal className="h-4 w-4" />
             </a>
@@ -268,7 +268,7 @@ export default function Navbar() {
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
               aria-label={open ? "Close menu" : "Open menu"}
-              className="grid h-10 w-10 place-items-center rounded-full glass text-white lg:hidden"
+              className="shrink-0 aspect-square grid h-10 w-10 place-items-center rounded-full glass text-white lg:hidden"
             >
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>

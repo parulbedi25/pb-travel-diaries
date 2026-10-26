@@ -131,7 +131,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   return (
     <section id="live" aria-labelledby="live-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute -left-40 top-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-[130px]"
+        className="shrink-0 aspect-square pointer-events-none absolute -left-40 top-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -153,8 +153,8 @@ export default function LiveTracker({ data }: { data: LiveData }) {
           <Reveal className="h-full">
             <div className="relative flex h-full min-h-[440px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50">
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
-              <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
-              <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
+              <div className="shrink-0 aspect-square absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
+              <div className="shrink-0 aspect-square absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
               <TrackerMap
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}
@@ -181,7 +181,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     />
                     <span
                       className={cn(
-                        "relative h-3 w-3 rounded-full animate-blink",
+                        "shrink-0 aspect-square relative h-3 w-3 rounded-full animate-blink",
                         status === "live" ? "bg-red-500" : status === "stale" ? "bg-amber-400" : "bg-zinc-500"
                       )}
                       aria-hidden
@@ -243,7 +243,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                       )}
                     >
                       {status === "live" && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-blink" />
+                        <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-emerald-400 animate-blink" />
                       )}
                       {status === "live"
                         ? "Current location"

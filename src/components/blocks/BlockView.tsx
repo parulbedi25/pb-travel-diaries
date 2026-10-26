@@ -215,7 +215,7 @@ function ListBlock({ block, admin }: { block: SectionBlock; admin: boolean }) {
     <ul className={cn("h-full space-y-3", twoCol && "sm:grid sm:grid-cols-2 sm:gap-x-8 sm:space-y-0")}>
       {rows.map((row, i) => (
         <li key={i} className="flex gap-3">
-          <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-saffron-400/15 text-[10px] font-semibold text-saffron-300">
+          <span className="aspect-square mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-saffron-400/15 text-[10px] font-semibold text-saffron-300">
             {style === "number" ? i + 1 : style === "dot" ? "•" : <Check className="h-3 w-3" />}
           </span>
           <span className="min-w-0">
@@ -371,9 +371,9 @@ function DividerBlock({ block }: { block: SectionBlock }) {
   if (style === "dots") {
     return (
       <div className="flex h-full items-center justify-center gap-2" aria-hidden="true">
-        <span className="h-1.5 w-1.5 rounded-full bg-saffron-400/70" />
-        <span className="h-1.5 w-1.5 rounded-full bg-saffron-400/50" />
-        <span className="h-1.5 w-1.5 rounded-full bg-saffron-400/30" />
+        <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-saffron-400/70" />
+        <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-saffron-400/50" />
+        <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-saffron-400/30" />
       </div>
     );
   }

@@ -893,7 +893,7 @@ function Login({ onLogin }: { onLogin: (user: Account) => void }) {
         </button>
         <div className="rounded-3xl glass p-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
+            <span className="grid aspect-square h-11 w-11 shrink-0 place-items-center rounded-full bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/30">
               PB
             </span>
             <div>
@@ -905,7 +905,7 @@ function Login({ onLogin }: { onLogin: (user: Account) => void }) {
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="ml-auto grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:text-white"
+              className="shrink-0 aspect-square ml-auto grid h-9 w-9 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:text-white"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -1164,7 +1164,7 @@ export function HotspotEditor({
                   setOpenIdx(isOpen ? null : i);
                 }}
                 className={cn(
-                  "absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
+                  "shrink-0 aspect-square absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 text-[10px] font-bold shadow-lg transition-colors",
                   isOpen
                     ? "border-white bg-saffron-400 text-on-gold"
                     : "border-white bg-ink-950/85 text-white hover:border-saffron-300",
@@ -1238,7 +1238,7 @@ export function HotspotEditor({
                   className="flex cursor-grab items-center gap-2.5 p-2.5 active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
+                  <span className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">
                     {i + 1}
                   </span>
                   <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05]">
@@ -1507,7 +1507,7 @@ export function RiderKitPointerEditor({
                   setOpenIdx(isOpen ? null : index);
                 }}
                 className={cn(
-                  "absolute z-10 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-ink-950/90 text-[10px] font-bold text-white shadow-lg transition-colors",
+                  "shrink-0 aspect-square absolute z-10 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-ink-950/90 text-[10px] font-bold text-white shadow-lg transition-colors",
                   isOpen ? "bg-saffron-400 text-on-gold" : "hover:border-saffron-300",
                   isDragging ? "cursor-grabbing scale-110" : "cursor-grab",
                   isOn(pointer) ? "opacity-100" : "opacity-45"
@@ -1591,7 +1591,7 @@ export function RiderKitPointerEditor({
                     title="Click to edit this product and its pointer"
                     className="flex min-w-[8rem] flex-1 items-center gap-2 text-left"
                   >
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">{index + 1}</span>
+                    <span className="aspect-square grid h-6 w-6 shrink-0 place-items-center rounded-full bg-saffron-400 text-[10px] font-bold text-on-gold">{index + 1}</span>
                     <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.05]">
                       {linkedProduct?.image ? (
                         <img src={linkedProduct.image} alt="" className="h-full w-full object-contain" />
@@ -2740,7 +2740,7 @@ function SectionsPanel() {
               <button
                 onClick={() => setSelectedId(null)}
                 aria-label="Close editor"
-                className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
+                className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -5841,7 +5841,7 @@ export default function AdminPage() {
             Site
           </a>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
+            <span className="relative grid aspect-square h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-saffron-400 font-display text-sm font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               PB
             </span>
             <div>
@@ -5885,7 +5885,7 @@ export default function AdminPage() {
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label="Toggle theme"
-              className="grid h-9 w-9 place-items-center rounded-full glass text-zinc-300 transition-colors hover:text-white"
+              className="shrink-0 aspect-square grid h-9 w-9 place-items-center rounded-full glass text-zinc-300 transition-colors hover:text-white"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -5981,7 +5981,7 @@ export default function AdminPage() {
               <button
                 onClick={() => setShowSaveModal(false)}
                 aria-label="Close dialog"
-                className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
+                className="shrink-0 aspect-square grid h-8 w-8 place-items-center rounded-full bg-white/[0.06] text-zinc-400 transition-colors hover:bg-white/[0.15] hover:text-white"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

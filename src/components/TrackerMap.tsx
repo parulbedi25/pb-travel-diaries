@@ -395,17 +395,17 @@ export default function TrackerMap({
       {liveIndex >= 0 && (
         <>
           <div
-            className="pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
+            className="shrink-0 aspect-square pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
             style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
             aria-hidden="true"
           />
           <div
-            className="pointer-events-none absolute h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]"
+            className="shrink-0 aspect-square pointer-events-none absolute h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]"
             style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
             aria-hidden="true"
           />
           <div
-            className="pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]"
+            className="shrink-0 aspect-square pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]"
             style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
             aria-hidden="true"
           />
@@ -433,8 +433,8 @@ export default function TrackerMap({
             >
               {isLive && status === "live" && (
                 <>
-                  <span className="absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden="true" />
-                  <span className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden="true" />
+                  <span className="shrink-0 aspect-square absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden="true" />
+                  <span className="shrink-0 aspect-square absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden="true" />
                 </>
               )}
               <span
@@ -456,9 +456,9 @@ export default function TrackerMap({
                 {stop.status === "done" && !isStart && !isEnd ? (
                   <Check className="h-2.5 w-2.5 text-ridden-tick" aria-hidden="true" />
                 ) : (
-                  !isLive && <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  !isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white" />
                 )}
-                {isLive && <span className="h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
+                {isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
               </span>
               {labels && (
                 <span
@@ -543,7 +543,7 @@ export default function TrackerMap({
                       >
                         {isLive && (
                           <span
-                            className="absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-radar"
+                            className="shrink-0 aspect-square absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-radar"
                             aria-hidden="true"
                           />
                         )}
@@ -552,7 +552,7 @@ export default function TrackerMap({
                             stop.name
                           }${stop.note ? ` — ${stop.note}` : ""}`}
                           className={cn(
-                            "relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-black/40",
+                            "shrink-0 aspect-square relative grid h-3 w-3 place-items-center rounded-full ring-2 ring-black/40",
                             isStart
                               ? "bg-emerald-500"
                               : isEnd

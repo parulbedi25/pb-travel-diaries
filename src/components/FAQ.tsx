@@ -89,7 +89,7 @@ export default function FAQ({ data }: { data: FaqData }) {
                         animate={{ rotate: isOpen ? 45 : 0 }}
                         transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                         className={cn(
-                          "grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors duration-300",
+                          "aspect-square grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors duration-300",
                           isOpen
                             ? "bg-saffron-400 text-on-gold"
                             : "bg-white/[0.06] text-zinc-400"

@@ -51,7 +51,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
   return (
     <section id="showreel" aria-labelledby="benefits-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
+        className="shrink-0 aspect-square pointer-events-none absolute -left-32 top-1/3 h-96 w-96 rounded-full bg-saffron-400/6 blur-[130px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -86,7 +86,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
             <button
               onClick={toggleMute}
               aria-label={muted ? "Unmute showreel" : "Mute showreel"}
-              className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full bg-ink-950/55 text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:bg-ink-950/75 active:scale-95"
+              className="shrink-0 aspect-square absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full bg-ink-950/55 text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:bg-ink-950/75 active:scale-95"
             >
               {muted ? <VolumeX className="h-4.5 w-4.5" /> : <Volume2 className="h-4.5 w-4.5" />}
             </button>
@@ -131,7 +131,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                 </p>
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold">
+                    <span className="shrink-0 aspect-square grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold">
                       PB
                     </span>
                     <div>
@@ -149,7 +149,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                             href={social.href.trim()}
                             {...externalLinkProps(social.href)}
                             aria-label={social.label}
-                            className="social-link grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
+                            className="shrink-0 aspect-square social-link grid h-8 w-8 place-items-center rounded-full bg-white/[0.08] text-zinc-300 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:bg-white hover:text-ink-950"
                           >
                             <span
                                 className="social-glyph inline-flex"
@@ -184,7 +184,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
                   <ul className="mt-5 grid gap-3 sm:grid-cols-3">
                     {p.points.map((pt) => (
                       <li key={pt} className="flex items-start gap-2.5 text-[13px] leading-snug text-zinc-400">
-                        <span className="mt-0.5 grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-emerald-400/15">
+                        <span className="aspect-square mt-0.5 grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-emerald-400/15">
                           <Check className="h-3 w-3 text-emerald-300" />
                         </span>
                         {pt}

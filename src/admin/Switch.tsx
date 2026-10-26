@@ -35,7 +35,7 @@ export default function Switch({
     >
       <span
         className={cn(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
+          "shrink-0 aspect-square absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
           on ? "left-[22px]" : "left-0.5"
         )}
       />

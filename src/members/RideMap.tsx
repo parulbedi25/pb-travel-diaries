@@ -167,7 +167,7 @@ export default function RideMap({
         >
           <span
             className={cn(
-              "grid h-7 w-7 place-items-center rounded-full border text-[11px] font-bold shadow-lg transition-transform",
+              "shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border text-[11px] font-bold shadow-lg transition-transform",
               selected === index
                 ? "scale-110 border-white bg-white text-ink-950"
                 : "border-saffron-400/70 bg-ink-950/90 text-saffron-300",

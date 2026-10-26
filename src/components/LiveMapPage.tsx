@@ -62,7 +62,7 @@ function StatusChip({ status }: { status: LiveStatus }) {
         )}
         <span
           className={cn(
-            "relative inline-flex h-2 w-2 rounded-full",
+            "shrink-0 aspect-square relative inline-flex h-2 w-2 rounded-full",
             meta.dot,
             status === "live" && "animate-blink"
           )}
@@ -142,11 +142,11 @@ function PositionMap({
         {live && (
           <>
             <span
-              className="absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
+              className="shrink-0 aspect-square absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
               aria-hidden="true"
             />
             <span
-              className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.07]"
+              className="shrink-0 aspect-square absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.07]"
               aria-hidden="true"
             />
           </>
@@ -155,7 +155,7 @@ function PositionMap({
           role="status"
           aria-label={`PB's current position: ${label}`}
           className={cn(
-            "relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
+            "shrink-0 aspect-square relative grid h-5 w-5 place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
             live ? "bg-saffron-400 shadow-saffron-400/50" : "bg-zinc-500 shadow-zinc-500/50",
           )}
         >
@@ -166,7 +166,7 @@ function PositionMap({
             />
           )}
           <span
-            className={cn("h-1.5 w-1.5 rounded-full bg-white", live && "animate-blink")}
+            className={cn("shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white", live && "animate-blink")}
           />
         </span>
       </div>
@@ -231,7 +231,7 @@ export default function LiveMapPage() {
               )}
             >
               {status === "live" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-blink" />
+                <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-emerald-400 animate-blink" />
               )}
               {status === "live"
                 ? "Live position"

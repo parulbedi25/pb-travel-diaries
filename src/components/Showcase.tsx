@@ -31,7 +31,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
   return (
     <section id="journey" aria-labelledby="journey-title" className="relative py-24 sm:py-32">
       <div
-        className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/6 blur-[120px]"
+        className="shrink-0 aspect-square pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-saffron-500/6 blur-[120px]"
         aria-hidden
       />
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
@@ -191,7 +191,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                     aria-pressed={!paused}
                     aria-label={paused ? "Resume image carousel" : "Pause image carousel"}
                     title={paused ? "Resume carousel" : "Pause carousel"}
-                    className="absolute right-5 top-5 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-ink-950/60 text-white shadow-xl shadow-black/40 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:border-saffron-300 hover:bg-ink-950/80 active:scale-95"
+                    className="shrink-0 aspect-square absolute right-5 top-5 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-ink-950/60 text-white shadow-xl shadow-black/40 backdrop-blur-md transition-all duration-300 hover:scale-110 hover:border-saffron-300 hover:bg-ink-950/80 active:scale-95"
                   >
                     {paused ? (
                       <Play className="h-4 w-4 fill-current" />

@@ -45,7 +45,7 @@ function ToolButton({
       disabled={disabled}
       aria-label={label}
       title={title}
-      className="section-chrome-hover pointer-events-auto grid h-7 w-7 place-items-center rounded-full opacity-80 transition-colors hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
+      className="shrink-0 aspect-square section-chrome-hover pointer-events-auto grid h-7 w-7 place-items-center rounded-full opacity-80 transition-colors hover:opacity-100 disabled:pointer-events-none disabled:opacity-30"
     >
       {children}
     </button>

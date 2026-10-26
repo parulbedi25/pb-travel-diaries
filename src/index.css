@@ -95,10 +95,14 @@
     0%, 100% { transform: translateY(-7px); }
     50% { transform: translateY(7px); }
   }
+  /* The bounce is a movement, not a squash. It used to scale on the Y axis
+     alone (scaleY 0.94–1.02), which turned every circular mark — and any round
+     logo uploaded for the loader — into an oval twice a second. The lift stays;
+     the only scale left is uniform, so the shape never distorts. */
   @keyframes ldr-anim-bounce {
-    0%, 100% { transform: translateY(0) scaleY(0.96); }
-    45% { transform: translateY(-20px) scaleY(1.02); }
-    70% { transform: translateY(0) scaleY(0.94); }
+    0%, 100% { transform: translateY(0) scale(1); }
+    45% { transform: translateY(-20px) scale(1.03); }
+    70% { transform: translateY(0) scale(0.99); }
   }
   @keyframes ldr-anim-spin {
     from { transform: rotate(0deg); }

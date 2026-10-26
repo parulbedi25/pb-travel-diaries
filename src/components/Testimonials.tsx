@@ -39,7 +39,7 @@ export default function Testimonials({ data }: { data: StoriesData }) {
                 </div>
                 <figcaption className="mt-4 flex items-center gap-3 border-t border-white/[0.07] pt-5">
                   <span
-                    className="grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold"
+                    className="shrink-0 aspect-square grid h-10 w-10 place-items-center rounded-full bg-saffron-400 font-display text-xs font-bold text-on-gold"
                   >
                     {t.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
                   </span>
