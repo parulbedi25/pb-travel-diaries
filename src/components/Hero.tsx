@@ -92,13 +92,20 @@ function OriginPlate({ data }: { data: HeroData }) {
           </span>
         </figcaption>
 
-        {/* the place fills the right-hand side */}
-        <div className="min-w-0 flex-1 sm:text-right">
-          <p className="truncate text-[10px] font-medium uppercase leading-none tracking-[0.26em] text-zinc-300">
+        {/* The place, and the quiet line after it.
+            One line rather than two stacked ones: the coordinates beside it are
+            a single row, so a two-line block on the right left the lower-left of
+            the plate empty and made the whole thing look half-filled. Place and
+            note now sit on the same baseline, divided by a small gold dot. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 sm:justify-end">
+          <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-zinc-300">
             {origin.place}
           </p>
           {origin.note && (
-            <p className="mt-1.5 truncate text-[10px] leading-none text-zinc-600">{origin.note}</p>
+            <>
+              <span aria-hidden className="h-1 w-1 shrink-0 rounded-full bg-saffron-400/70" />
+              <p className="min-w-0 truncate text-[10px] text-zinc-500">{origin.note}</p>
+            </>
           )}
         </div>
       </div>
