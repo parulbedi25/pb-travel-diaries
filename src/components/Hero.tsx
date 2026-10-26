@@ -17,23 +17,41 @@ const item = {
 /**
  * Where the rider is from, written the way a map writes a place.
  *
- * A survey plate rather than another paragraph: mono coordinates, corner ticks
- * that pick up the graticule from the live tracker, and the place underneath in
- * spaced capitals. It sits under the subheadline because that is the sentence
- * it belongs to — "Hailing from Nangal Dam" — and makes the claim checkable.
+ * A survey plate rather than another paragraph: a pin, the latitude and
+ * longitude as two labelled readings, and the place filling the space to their
+ * right. That last part matters — the hero's copy column is wider than a short
+ * line of coordinates, so a narrow plate left a hole beside it. This one runs
+ * the width of the paragraph above (same `max-w-xl`), and puts the place and
+ * its small note on the far side of a hairline, right-aligned, so the whole row
+ * reads as one instrument instead of a label with empty space after it.
+ *
+ * The coordinates are separated by a rule rather than a slash: a thin vertical
+ * line is a map's own punctuation, and reads as "two readings" instead of a
+ * fraction.
  *
  * Everything on it comes from the hero's own fields, so an owner who moves the
- * pin changes four numbers in the dashboard rather than hunting for a literal.
+ * pin changes four values in the dashboard rather than hunting for a literal.
  */
 function OriginPlate({ data }: { data: HeroData }) {
   const origin = resolveOrigin(data);
 
   return (
     <figure
-      className="group relative mt-7 inline-flex w-fit flex-col gap-1.5 rounded-2xl border border-white/12 bg-white/[0.03] px-4 py-3 backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/35 hover:bg-saffron-400/[0.04]"
+      className="group relative mt-7 w-full max-w-xl overflow-hidden rounded-2xl border border-white/12 bg-white/[0.03] backdrop-blur-sm transition-colors duration-300 hover:border-saffron-400/40 hover:bg-saffron-400/[0.05]"
       title={origin.label}
     >
-      {/* corner ticks — the four marks of a map graticule */}
+      {/* the graticule: faint grid, fading right so it never fights the text */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-grid opacity-[0.14] [mask-image:linear-gradient(90deg,black,transparent_88%)]"
+      />
+      {/* a warm pool of light behind the pin */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-8 top-1/2 h-28 w-28 -translate-y-1/2 rounded-full bg-saffron-400/10 opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      {/* corner ticks — the four marks of a graticule */}
       {[
         "left-0 top-0 border-l border-t rounded-tl-2xl",
         "right-0 top-0 border-r border-t rounded-tr-2xl",
@@ -47,22 +65,43 @@ function OriginPlate({ data }: { data: HeroData }) {
         />
       ))}
 
-      <figcaption className="flex items-center gap-2.5 font-mono text-[11px] tracking-[0.16em] text-zinc-200">
-        <Crosshair className="h-3.5 w-3.5 shrink-0 text-saffron-300" aria-hidden />
-        <span className="whitespace-nowrap">{origin.lat}</span>
-        <span className="text-zinc-600" aria-hidden>
-          /
+      <div className="relative flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3.5 sm:flex-nowrap sm:px-5">
+        {/* the pin, with a slow ping so the plate feels like a live reading */}
+        <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-saffron-400/30 bg-saffron-400/10 text-saffron-300">
+          <Crosshair className="h-4 w-4" aria-hidden />
+          <span className="absolute -right-1 -top-1 flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-saffron-400 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-saffron-400" />
+          </span>
         </span>
-        <span className="whitespace-nowrap">{origin.lng}</span>
-      </figcaption>
 
-      <p className="pl-[1.65rem] text-[10px] font-medium uppercase tracking-[0.3em] text-zinc-400">
-        {origin.place}
-      </p>
+        <figcaption className="flex items-center gap-3.5 font-mono sm:gap-4">
+          <span className="block">
+            <span className="block text-[9px] uppercase leading-none tracking-[0.3em] text-zinc-600">Lat</span>
+            <span className="mt-1.5 block whitespace-nowrap text-[12px] leading-none tracking-[0.1em] text-zinc-100">
+              {origin.lat}
+            </span>
+          </span>
+          {/* the divider: a hairline, not an oblique */}
+          <span aria-hidden className="h-7 w-px shrink-0 bg-white/15 transition-colors duration-300 group-hover:bg-saffron-400/40" />
+          <span className="block">
+            <span className="block text-[9px] uppercase leading-none tracking-[0.3em] text-zinc-600">Lng</span>
+            <span className="mt-1.5 block whitespace-nowrap text-[12px] leading-none tracking-[0.1em] text-zinc-100">
+              {origin.lng}
+            </span>
+          </span>
+        </figcaption>
 
-      {origin.note && (
-        <p className="pl-[1.65rem] text-[10px] leading-relaxed text-zinc-600">{origin.note}</p>
-      )}
+        {/* the place fills the right-hand side */}
+        <div className="min-w-0 flex-1 sm:text-right">
+          <p className="truncate text-[10px] font-medium uppercase leading-none tracking-[0.26em] text-zinc-300">
+            {origin.place}
+          </p>
+          {origin.note && (
+            <p className="mt-1.5 truncate text-[10px] leading-none text-zinc-600">{origin.note}</p>
+          )}
+        </div>
+      </div>
     </figure>
   );
 }
