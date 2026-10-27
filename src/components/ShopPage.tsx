@@ -3,29 +3,23 @@ import { ArrowUpRight, Check, PackageOpen, ShoppingBag } from "lucide-react";
 import { useSite, type GearItem } from "../store/siteContent";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
+import { gearItemCategory, gearItemTitle, gearItemMaker } from "../utils/gearItem";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { Item, Reveal, Stagger } from "./ui/motion";
 import ProductGallery from "./ProductGallery";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
-function productTitle(item: GearItem): string {
-  return item.name?.trim() || [item.brand, item.model].filter(Boolean).join(" ") || "Gear item";
-}
-
-function productCategory(item: GearItem): string {
-  return item.category?.trim() || "Riding gear";
-}
-
-function productCategoryKey(item: GearItem): string {
-  return productCategory(item).toLocaleLowerCase();
-}
-
-function productKey(item: GearItem): string {
-  return item.id?.trim() || [item.name, item.brand, item.model, item.image, item.link]
+/* Naming, grouping and keys are shared with The Gear and the ride builder. */
+const productTitle = gearItemTitle;
+const productCategory = (item: GearItem) => gearItemCategory(item, "Riding gear");
+const productCategoryKey = (item: GearItem) => productCategory(item).toLocaleLowerCase();
+/** The shop keys a card by its whole identity, so two unnamed items never collide. */
+const productKey = (item: GearItem) =>
+  item.id?.trim() ||
+  [item.name, item.brand, item.model, item.image, item.link]
     .map((value) => value?.trim() ?? "")
     .join("|");
-}
 
 const EMPTY_ITEMS: GearItem[] = [];
 
@@ -135,7 +129,7 @@ export default function ShopPage() {
                 <Stagger key={activeCategoryKey === null ? "filter:all" : `filter:${activeCategoryKey}`} className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   {visibleItems.map((item) => {
                     const title = productTitle(item);
-                    const maker = [item.brand, item.model].map((value) => value?.trim()).filter(Boolean).join(" · ");
+                    const maker = gearItemMaker(item);
                     const highlights = Array.isArray(item.highlights)
                       ? item.highlights.map((value) => value?.trim()).filter((value): value is string => Boolean(value)).slice(0, 3)
                       : [];

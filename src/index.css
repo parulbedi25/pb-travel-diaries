@@ -198,11 +198,6 @@
     mask-image: linear-gradient(90deg, transparent, black 10%, black 90%, transparent);
   }
 
-  .mask-fade-b {
-    -webkit-mask-image: linear-gradient(180deg, black 55%, transparent);
-    mask-image: linear-gradient(180deg, black 55%, transparent);
-  }
-
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

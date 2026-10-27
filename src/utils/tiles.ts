@@ -159,8 +159,3 @@ export function rasterTileUrl(
   }
   return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
 }
-
-/** OpenStreetMap's own tiles, kept for the labelled last resort. */
-export function osmTileUrl(tileZoom: number, tile: PlacedTile): string {
-  return rasterTileUrl("osm", "light", tileZoom, tile);
-}

@@ -4,6 +4,7 @@ import { ArrowUpRight, Check, Crosshair, ShieldCheck, X } from "lucide-react";
 import { isOn } from "../utils/enabled";
 import { type GearItem, type RiderKitData, type RiderKitPointer } from "../store/siteContent";
 import { cn } from "../utils/cn";
+import { gearItemTitle, gearItemMaker } from "../utils/gearItem";
 import { pointerColors, waveDelay, withAlpha } from "../utils/pointerColors";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { EASE, Reveal, SectionHeader } from "./ui/motion";
@@ -62,9 +63,8 @@ function zoneFor(item: GearItem): BodyZone {
     ?? "torso";
 }
 
-function itemTitle(item: GearItem): string {
-  return item.name?.trim() || [item.brand, item.model].filter(Boolean).join(" ") || "Gear item";
-}
+/** Naming is shared with the Shop and the ride builder. */
+const itemTitle = gearItemTitle;
 
 function itemHighlights(item: GearItem): string[] {
   return Array.isArray(item.highlights)
@@ -582,7 +582,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                       const expanded = isExpanded(index);
                       const mapFocused = mapFocusedEntry?.index === index;
                       const highlights = itemHighlights(item);
-                      const maker = [item.brand, item.model].map((value) => value?.trim()).filter(Boolean).join(" · ");
+                      const maker = gearItemMaker(item);
                       const title = itemTitle(item);
                       const zoneName = item.bodyPart?.trim() || ZONE_LABELS[zone];
                       return (
