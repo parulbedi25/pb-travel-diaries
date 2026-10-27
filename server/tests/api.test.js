@@ -244,6 +244,107 @@ test("an image upload lands on disk and is served back", async () => {
   assert.equal(uploads[0].name, "helmet.png");
 });
 
+test("a photo can be tagged, and the tags come back cleaned up", async () => {
+  const png = Buffer.from(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001",
+    "hex",
+  );
+  const form = new FormData();
+  form.append("file", new Blob([png], { type: "image/png" }), "tagged.png");
+  const uploaded = await call("POST", "/api/media", undefined, { form });
+  const id = uploaded.json.item.id;
+  assert.deepEqual(uploaded.json.item.tags, [], "a new upload starts with no tags");
+
+  // Duplicates, padding, blanks and a comma inside a tag are all tidied: a tag
+  // is one phrase, and the storage is a single comma-separated string.
+  const saved = await call("PATCH", `/api/media/${id}`, {
+    tags: ["  Spiti  ", "spiti", "", "monastery, blue hour", "key monastery"],
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.json.item.tags, ["Spiti", "monastery blue hour", "key monastery"]);
+
+  const listed = (await call("GET", "/api/media")).json.media.find((m) => m.id === id);
+  assert.deepEqual(listed.tags, ["Spiti", "monastery blue hour", "key monastery"], "and they persist");
+
+  // They are also the photo's alt text, so the field is not decoration.
+  const cleared = await call("PATCH", `/api/media/${id}`, { tags: [] });
+  assert.deepEqual(cleared.json.item.tags, [], "tags can be cleared");
+
+  await call("DELETE", `/api/media/${id}`);
+});
+
+test("a photo's tags are capped, so one field cannot fill the row", async () => {
+  const png = Buffer.from(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001",
+    "hex",
+  );
+  const form = new FormData();
+  form.append("file", new Blob([png], { type: "image/png" }), "many-tags.png");
+  const id = (await call("POST", "/api/media", undefined, { form })).json.item.id;
+
+  const many = Array.from({ length: 30 }, (_, i) => `tag ${i}`);
+  const saved = await call("PATCH", `/api/media/${id}`, { tags: many });
+  assert.equal(saved.json.item.tags.length, 12);
+
+  const long = await call("PATCH", `/api/media/${id}`, { tags: ["x".repeat(120)] });
+  assert.equal(long.json.item.tags[0].length, 40, "a tag is trimmed to a sane length");
+
+  await call("DELETE", `/api/media/${id}`);
+});
+
+test("an edited photo is written over the original, keeping its id and URL", async () => {
+  const before = Buffer.from(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001",
+    "hex",
+  );
+  const form = new FormData();
+  form.append("file", new Blob([before], { type: "image/png" }), "editable.png");
+  const item = (await call("POST", "/api/media", undefined, { form })).json.item;
+
+  const after = Buffer.from(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000c49444154789c6360f8cf0000030001f5f2b0a90000000049454e44ae426082",
+    "hex",
+  );
+  const replace = new FormData();
+  replace.append("file", new Blob([after], { type: "image/png" }), "editable.png");
+  const saved = await call("PUT", `/api/media/${item.id}/file`, undefined, { form: replace });
+
+  assert.equal(saved.status, 200);
+  assert.equal(saved.json.item.id, item.id, "same id");
+  assert.equal(saved.json.item.dataUrl, item.dataUrl, "same URL, so every field keeps working");
+  assert.equal(saved.json.item.size, after.length, "the recorded size follows the new bytes");
+
+  const filename = item.dataUrl.replace("/media/", "");
+  assert.deepEqual(await fs.readFile(path.join(mediaDir, filename)), after, "the file itself changed");
+
+  const listed = (await call("GET", "/api/media")).json.media.find((m) => m.id === item.id);
+  assert.equal(listed.size, after.length);
+
+  await call("DELETE", `/api/media/${item.id}`);
+});
+
+test("documents cannot be edited as images, and shipped photos are read-only", async () => {
+  const pdf = Buffer.from("%PDF-1.4\n%%EOF", "utf8");
+  const form = new FormData();
+  form.append("file", new Blob([pdf], { type: "application/pdf" }), "route.pdf");
+  const item = (await call("POST", "/api/media", undefined, { form })).json.item;
+
+  const png = new FormData();
+  png.append(
+    "file",
+    new Blob([Buffer.from("89504e470d0a1a0a", "hex")], { type: "image/png" }),
+    "route.png",
+  );
+  const refused = await call("PUT", `/api/media/${item.id}/file`, undefined, { form: png });
+  assert.equal(refused.status, 415, "a PDF has no pixels to adjust");
+  await call("DELETE", `/api/media/${item.id}`);
+
+  const bundled = (await call("GET", "/api/media")).json.media.find((entry) => entry.bundled);
+  assert.ok(bundled, "the starter set is on the shelf");
+  assert.equal((await call("PATCH", `/api/media/${bundled.id}`, { tags: ["x"] })).status, 403);
+  assert.equal((await call("PUT", `/api/media/${bundled.id}/file`, undefined, { form: png })).status, 403);
+});
+
 test("the media that ships with the site is listed, and cannot be deleted", async () => {
   const list = await call("GET", "/api/media");
   const bundled = list.json.media.filter((entry) => entry.bundled);

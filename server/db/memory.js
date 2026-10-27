@@ -289,12 +289,27 @@ export function createMemoryRepo() {
     },
 
     async insertMedia(row) {
-      state.media.unshift({ ...row, createdAt: new Date().toISOString() });
+      state.media.unshift({ tags: "", ...row, createdAt: new Date().toISOString() });
       return row;
     },
 
     async findMedia(id) {
       return clone(state.media.find((m) => m.id === id) ?? null);
+    },
+
+    async updateMediaTags(id, tags) {
+      const row = state.media.find((m) => m.id === id);
+      if (!row) return false;
+      row.tags = tags;
+      return true;
+    },
+
+    async updateMediaFile(id, { mime, size }) {
+      const row = state.media.find((m) => m.id === id);
+      if (!row) return false;
+      row.mime = mime;
+      row.size = size;
+      return true;
     },
 
     async deleteMedia(id) {

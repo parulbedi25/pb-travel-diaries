@@ -122,6 +122,8 @@ import {
 import { LineLoaderMark, LoaderBackdrop, LoaderStage } from "../components/Loader";
 import {
   addAnyMediaFile,
+  formatAdded,
+  formatAddedFull,
   formatBytes,
   kindOf,
   KIND_META,
@@ -133,6 +135,7 @@ import {
   type MediaItem,
 } from "./mediaLibrary";
 import ConfirmDialog from "./ConfirmDialog";
+import MediaLightbox from "./MediaLightbox";
 import { siteApi, type Account, type AuthEvent, type BackupState } from "../api/siteApi";
 import { describeApiError } from "../api/client";
 import { inputCls } from "./fieldStyles";
@@ -4564,6 +4567,8 @@ function MediaPanel() {
   const [pendingDelete, setPendingDelete] = useState<MediaItem | null>(null);
   /** Images the browser could not paint — shown as files instead of broken frames. */
   const [broken, setBroken] = useState<Record<string, true>>({});
+  /** The photo open in the preview panel, if any. */
+  const [viewing, setViewing] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => listMedia().then(setItems);
@@ -4611,6 +4616,9 @@ function MediaPanel() {
   const usageCount = (item: MediaItem) => {
     return JSON.stringify(draft).split(`idb:${item.id}`).length - 1;
   };
+
+  /** Only photos open in the preview panel — a PDF is still a new tab. */
+  const photos = items.filter((item) => kindOf(item) === "image" && !broken[item.id]);
 
   return (
     <div>
@@ -4677,13 +4685,21 @@ function MediaPanel() {
               >
                 <span className="relative block">
                   {isImage ? (
-                    <img
-                      src={m.dataUrl}
-                      alt={m.name}
-                      loading="lazy"
-                      onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
-                      className="aspect-[4/3] w-full object-cover"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setViewing(m.id)}
+                      aria-label={`Open ${m.name}`}
+                      className="block w-full cursor-zoom-in"
+                      title="Open in the preview panel"
+                    >
+                      <img
+                        src={m.dataUrl}
+                        alt={m.name}
+                        loading="lazy"
+                        onError={() => setBroken((b) => ({ ...b, [m.id]: true }))}
+                        className="aspect-[4/3] w-full object-cover transition-opacity hover:opacity-85"
+                      />
+                    </button>
                   ) : isVideo ? (
                     <video
                       src={m.dataUrl}
@@ -4720,15 +4736,31 @@ function MediaPanel() {
                   <span className="mt-0.5 text-[10px] text-zinc-500">
                     {meta.label} · {formatBytes(m.size)}
                   </span>
+                  <span
+                    className="text-[10px] text-zinc-600"
+                    title={formatAddedFull(m.addedAt)}
+                  >
+                    Added {formatAdded(m.addedAt)}
+                  </span>
                   <span className="mt-3 flex items-center gap-1.5">
-                    <a
-                      href={m.dataUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
-                    >
-                      <Eye className="h-3.5 w-3.5" /> Open
-                    </a>
+                    {isImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewing(m.id)}
+                        className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Open
+                      </button>
+                    ) : (
+                      <a
+                        href={m.dataUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Open
+                      </a>
+                    )}
                     <button
                       type="button"
                       onClick={() => setPendingDelete(m)}
@@ -4749,6 +4781,22 @@ function MediaPanel() {
             );
           })}
         </div>
+      )}
+
+      {viewing && photos.some((m) => m.id === viewing) && (
+        <MediaLightbox
+          images={photos}
+          startId={viewing}
+          usageOf={usageCount}
+          onClose={() => setViewing(null)}
+          // Saved tags or a re-encoded image come back as the whole item, so the
+          // card behind the panel updates without a round trip to the server.
+          onSaved={(saved) =>
+            setItems((list) => list.map((m) => (m.id === saved.id ? { ...m, ...saved } : m)))
+          }
+          onDeleted={(gone) => setItems((list) => list.filter((m) => m.id !== gone.id))}
+          onDelete={(goner) => confirmedDelete(goner)}
+        />
       )}
 
       {pendingDelete && (

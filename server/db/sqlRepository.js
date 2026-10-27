@@ -284,7 +284,7 @@ export function createSqlRepository({ pool, transaction, kind, migrate, schemaSt
 
     async listMedia() {
       const [rows] = await pool.execute(
-        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext,
+        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext, tags,
                 created_at AS createdAt, created_by AS createdBy
            FROM media ORDER BY created_at DESC, id DESC`,
       );
@@ -293,21 +293,50 @@ export function createSqlRepository({ pool, transaction, kind, migrate, schemaSt
 
     async insertMedia(row) {
       await pool.execute(
-        `INSERT INTO media (id, filename, original_name, mime, size, kind, ext, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [row.id, row.filename, row.originalName, row.mime, row.size, row.kind, row.ext, row.createdBy ?? null],
+        `INSERT INTO media (id, filename, original_name, mime, size, kind, ext, tags, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          row.id,
+          row.filename,
+          row.originalName,
+          row.mime,
+          row.size,
+          row.kind,
+          row.ext,
+          row.tags ?? "",
+          row.createdBy ?? null,
+        ],
       );
       return row;
     },
 
     async findMedia(id) {
       const [rows] = await pool.execute(
-        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext,
+        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext, tags,
                 created_at AS createdAt, created_by AS createdBy
            FROM media WHERE id = ? LIMIT 1`,
         [id],
       );
       return rows[0] ?? null;
+    },
+
+    /** Replace a photo's tags. The file itself is untouched. */
+    async updateMediaTags(id, tags) {
+      const [result] = await pool.execute("UPDATE media SET tags = ? WHERE id = ?", [tags, id]);
+      return result.affectedRows > 0;
+    },
+
+    /**
+     * Record a re-encoded photo: same file on disk and same id, so every field
+     * pointing at the URL keeps working, with the new type and byte count.
+     */
+    async updateMediaFile(id, { mime, size }) {
+      const [result] = await pool.execute("UPDATE media SET mime = ?, size = ? WHERE id = ?", [
+        mime,
+        size,
+        id,
+      ]);
+      return result.affectedRows > 0;
     },
 
     async deleteMedia(id) {
@@ -335,7 +364,7 @@ export function createSqlRepository({ pool, transaction, kind, migrate, schemaSt
         "SELECT setting_key AS settingKey, value FROM settings ORDER BY setting_key",
       );
       const [media] = await pool.query(
-        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext,
+        `SELECT id, filename, original_name AS originalName, mime, size, kind, ext, tags,
                 created_at AS createdAt, created_by AS createdBy
            FROM media ORDER BY id ASC`,
       );

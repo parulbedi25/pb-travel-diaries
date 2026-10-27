@@ -56,6 +56,14 @@ export const SQLITE_MIGRATIONS = [{
   statements: [
     `CREATE INDEX IF NOT EXISTS member_journeys_bike ON member_journeys(bike_id)`,
   ],
+}, {
+  version: 5,
+  name: "media tags",
+  // The same column as the MySQL side's version 7. SQLite can add a column
+  // with a constant default in place, so no table rebuild is needed.
+  statements: [
+    `ALTER TABLE media ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
+  ],
 }];
 export const SQLITE_VERSION = SQLITE_MIGRATIONS.at(-1).version;
 
