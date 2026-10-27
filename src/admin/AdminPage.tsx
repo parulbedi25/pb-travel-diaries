@@ -95,6 +95,7 @@ import RouteStopsEditor from "./RouteStopsEditor";
 import { navStates } from "../utils/navSections";
 import type { MapLinkSource } from "../utils/mapLinks";
 import Switch from "./Switch";
+import ColorPicker from "./ColorPicker";
 import { createBlock, type SectionBlock } from "../blocks/types";
 import FileField from "./FileField";
 import CountdownSetupDialog from "./CountdownSetupDialog";
@@ -685,34 +686,15 @@ export function FieldRow({
           placeholder={"One item per line"}
         />
       ) : field.kind === "color" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={/^#[0-9a-f]{6}$/i.test(String(value ?? "")) ? String(value) : "#f5b301"}
-            onChange={(e) => onChange(e.target.value)}
-            aria-label={`${field.label} colour`}
-            className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0.5"
-          />
-          <input
-            type="text"
-            value={(value as string) ?? ""}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Default"
-            maxLength={7}
-            spellCheck={false}
-            aria-label={`${field.label} hex`}
-            className={cn(inputCls, "min-w-0 font-mono text-xs")}
-          />
-          {value ? (
-            <button
-              type="button"
-              onClick={() => onChange("")}
-              className="shrink-0 rounded-lg bg-white/[0.06] px-2.5 py-2 text-[11px] font-semibold text-zinc-400 hover:text-white"
-            >
-              Default
-            </button>
-          ) : null}
-        </div>
+        // Boxes, not the browser's drag picker. Empty means "use the site
+        // gold", so the first box is that default.
+        <ColorPicker
+          label={field.label}
+          value={String(value ?? "")}
+          onChange={(hex) => onChange(hex)}
+          fallback="#f5b301"
+          fallbackLabel="Default gold"
+        />
       ) : field.kind === "file" ? (
         <FileField
           value={(value as string) ?? ""}
@@ -3142,36 +3124,9 @@ function BrandColorInput({
   value: string;
   onChange: (color: string) => void;
 }) {
-  const [hex, setHex] = useState(value);
-  const validHex = /^#[0-9a-f]{6}$/i;
-
-  useEffect(() => setHex(value), [value]);
-
   return (
-    <div className="mt-2 flex items-center gap-2">
-      <input
-        type="color"
-        value={validHex.test(value) ? value : "#ffffff"}
-        onInput={(e) => onChange(e.currentTarget.value)}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        aria-label={`${label} colour`}
-        className="h-10 w-11 shrink-0 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0.5"
-      />
-      <input
-        type="text"
-        value={hex}
-        onChange={(e) => {
-          setHex(e.target.value);
-          if (validHex.test(e.target.value)) onChange(e.target.value);
-        }}
-        onBlur={() => { if (!validHex.test(hex)) setHex(value); }}
-        aria-label={`${label} hex colour`}
-        aria-invalid={!validHex.test(hex)}
-        placeholder="#ffffff"
-        maxLength={7}
-        spellCheck={false}
-        className={cn(inputCls, "min-w-0 font-mono text-xs")}
-      />
+    <div className="mt-2">
+      <ColorPicker label={label} value={value} onChange={onChange} />
     </div>
   );
 }

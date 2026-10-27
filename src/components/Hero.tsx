@@ -153,15 +153,19 @@ export default function Hero({ data }: { data: HeroData }) {
       {/* ambient background */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute inset-0 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_75%_60%_at_50%_0%,black,transparent)]" />
-        <div className="glow absolute -top-32 left-1/2 h-[480px] w-[820px] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[100px] animate-pulse-soft" />
-        <div className="shrink-0 aspect-square glow absolute top-40 -left-40 h-96 w-96 rounded-full bg-saffron-400/8 blur-[100px]" />
-        <div className="shrink-0 aspect-square glow absolute top-64 -right-40 h-96 w-96 rounded-full bg-saffron-500/8 blur-[100px]" />
+        <div className="glow absolute -top-24 left-1/2 h-[300px] w-[min(100%,520px)] -translate-x-1/2 rounded-full bg-saffron-400/10 blur-[70px] animate-pulse-soft sm:-top-32 sm:h-[480px] sm:w-[820px] sm:blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-40 -left-40 h-72 w-72 rounded-full bg-saffron-400/8 blur-[80px] sm:h-96 sm:w-96 sm:blur-[100px]" />
+        <div className="shrink-0 aspect-square glow absolute top-64 -right-40 h-72 w-72 rounded-full bg-saffron-500/8 blur-[80px] sm:h-96 sm:w-96 sm:blur-[100px]" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid items-center gap-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
+        {/* The gap on lg is wider than it looks: the photo's floating cards
+            hang off its left edge, and that overhang has to stay inside the
+            gap. At 48px the widest one (32px) keeps 16px of clear air from the
+            copy column, so a tile can never sit on top of the text. */}
+        <div className="grid items-center gap-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-x-12 lg:gap-y-10">
           {/* ---------- Copy ---------- */}
-          <motion.div variants={container} initial="hidden" animate="show" className="max-w-2xl">
+          <motion.div variants={container} initial="hidden" animate="show" className="min-w-0 max-w-2xl">
             <motion.div variants={item}>
               <a
                 href="#/live-map"
@@ -217,7 +221,7 @@ export default function Hero({ data }: { data: HeroData }) {
           </motion.div>
 
           {/* ---------- Visual ---------- */}
-          <div className="relative mx-auto w-full max-w-[560px] lg:max-w-none">
+          <div className="relative mx-auto min-w-0 w-full max-w-[560px] lg:max-w-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.94, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -235,9 +239,9 @@ export default function Hero({ data }: { data: HeroData }) {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-transparent to-ink-950/10" />
                 {/* location chip */}
-                <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-ink-950/60 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-md">
-                  <MapPin className="h-3.5 w-3.5 text-saffron-400" />
-                  {data.chipLocation}
+                <div className="absolute left-4 top-4 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full bg-ink-950/60 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-md">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-saffron-400" />
+                  <span className="truncate">{data.chipLocation}</span>
                 </div>
                 {/* bottom card */}
                 <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-2xl bg-ink-950/55 p-3 backdrop-blur-xl">
@@ -246,7 +250,7 @@ export default function Hero({ data }: { data: HeroData }) {
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-white">{data.epTitle}</p>
-                    <p className="text-xs text-zinc-400">{data.epMeta}</p>
+                    <p className="truncate text-xs text-zinc-400">{data.epMeta}</p>
                   </div>
                   <span className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 sm:flex">
                     <BadgeCheck className="h-3 w-3" /> New
@@ -254,10 +258,12 @@ export default function Hero({ data }: { data: HeroData }) {
                 </div>
               </div>
 
-              {/* floating card A */}
+              {/* floating card A — top-left, over the photo's edge.
+                  It overhangs by 32px at most, which is inside the column gap,
+                  and stops well above the episode card below it. */}
               <motion.div
                 {...float(0.4, 12)}
-                className="absolute -left-6 top-14 hidden w-44 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-12"
+                className="absolute -left-4 top-14 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-left-8"
               >
                 <Photo
                   src={data.cardAImage}
@@ -274,7 +280,7 @@ export default function Hero({ data }: { data: HeroData }) {
               {/* floating card B */}
               <motion.div
                 {...float(1.1, 14)}
-                className="absolute -right-4 bottom-24 hidden w-40 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block lg:-right-10"
+                className="absolute -right-3 bottom-24 hidden w-36 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/50 sm:block sm:w-40 lg:-right-6"
               >
                 <Photo
                   src={data.cardBImage}
@@ -288,19 +294,26 @@ export default function Hero({ data }: { data: HeroData }) {
                 </div>
               </motion.div>
 
-              {/* floating stat chip */}
-              <motion.div
-                {...float(0.8, 10)}
-                className="absolute -bottom-6 -left-4 hidden items-center gap-3 rounded-2xl glass px-4 py-3 shadow-xl shadow-black/40 md:flex lg:-left-14"
-              >
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-400/15 text-emerald-300">
-                  <TrendingUp className="h-4.5 w-4.5" />
-                </span>
-                <div>
-                  <p className="font-display text-sm font-bold text-white">{data.statTop}</p>
-                  <p className="text-[11px] text-zinc-400">{data.statSub}</p>
-                </div>
-              </motion.div>
+            </motion.div>
+            {/*
+              Stat chip. Floating it on the photo's bottom-left put it straight
+              through the episode card, which sits in the same corner. Below
+              `xl` there is not enough photo height for both, so it is a normal
+              card under the photo — outside the wrapper the tiles are
+              positioned against, so it cannot move them. From `xl` the photo is
+              tall enough and it floats in the clear band above that card.
+            */}
+            <motion.div
+              {...float(0.8, 10)}
+              className="mt-4 flex items-center gap-3 rounded-2xl glass px-4 py-3 shadow-xl shadow-black/40 xl:absolute xl:-left-8 xl:bottom-24 xl:mt-0"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-400/15 text-emerald-300">
+                <TrendingUp className="h-4.5 w-4.5" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-display text-sm font-bold text-white">{data.statTop}</p>
+                <p className="text-[11px] text-zinc-400">{data.statSub}</p>
+              </div>
             </motion.div>
           </div>
         </div>

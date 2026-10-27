@@ -4,6 +4,7 @@ import { GripVertical, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { FooterSocial } from "../store/siteContent";
 import { SOCIAL_ICONS, resolveSocialIcon } from "../components/ui/SocialIcons";
 import Switch from "./Switch";
+import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -329,14 +330,6 @@ export default function SocialIconsEditor({
                 placeholder="Name"
                 className={cn(inputCls, "min-w-0 flex-1 py-1.5 text-xs")}
               />
-              <input
-                type="color"
-                value={active.color || "#f5b301"}
-                onChange={(e) => onPatch(active.id, { color: e.target.value })}
-                aria-label={`Custom colour for ${active.label || "this icon"}`}
-                title="Custom colour"
-                className="h-7 w-9 shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/[0.05] p-0.5"
-              />
               <button
                 type="button"
                 onClick={resetEntry}
@@ -347,7 +340,19 @@ export default function SocialIconsEditor({
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </div>
-            <div className="grid max-h-64 grid-cols-6 gap-1.5 overflow-y-auto pr-1">
+            {/* The bubble is only 288px wide, so the colour boxes get their
+                own compact block and the icon grid gives up some height for
+                it. Same picker as everywhere else in the dashboard. */}
+            <ColorPicker
+              label={`Colour for ${active.label || "this icon"}`}
+              value={active.color ?? ""}
+              onChange={(hex) => onPatch(active.id, { color: hex })}
+              fallback="#f5b301"
+              fallbackLabel="Default gold"
+              size="sm"
+              className="mb-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-2"
+            />
+            <div className="grid max-h-40 grid-cols-6 gap-1.5 overflow-y-auto pr-1">
               {SOCIAL_ICONS.map((spec) => {
                 const PickIcon = spec.Icon;
                 const isActive = spec.key === active.icon;

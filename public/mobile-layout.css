@@ -56,3 +56,63 @@ section#stories > [aria-hidden] { max-width: 100%; }
   #pricing article { padding-inline: 20px; }
   #pricing article .items-end { flex-wrap: wrap; }
 }
+
+/* ── Phone fit ─────────────────────────────────────────────────────────────
+   On a phone the page is one narrow column, and a section that is even a few
+   pixels too wide is clipped by `body { overflow-x: hidden }` — which reads as
+   a photo hanging off the side of the screen, not as a scrollbar. These rules
+   are the safety net under every section: whatever an individual block asks
+   for, nothing may end up wider than the phone. */
+@media (max-width: 767px) {
+  html,
+  body {
+    max-width: 100%;
+    /* `clip`, not `hidden`: it stops the sideways scroll without turning the
+       page into a scroll container (which would break `position: sticky`). */
+    overflow-x: clip;
+  }
+  #root > * {
+    max-width: 100%;
+  }
+  /* A grid track is at least as wide as its widest item's minimum content;
+     without this a long word or a fixed-width child pushes the track — and the
+     section — past the screen edge. */
+  section .grid > * {
+    min-width: 0;
+  }
+  section img,
+  section video,
+  section iframe {
+    max-width: 100%;
+  }
+  section {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+  /* Decorative light pools are deliberately painted wider than the screen;
+     at phone width they are also the main thing that spills. */
+  section > [aria-hidden="true"],
+  section > div > [aria-hidden="true"] {
+    max-width: 100%;
+  }
+}
+
+/* ── The Gear: the rider photo ─────────────────────────────────────────────
+   The rider photo is a 2:3 portrait. At full phone width that is about 1.5
+   screens tall, so the rider's kit — and the rider himself — sat off the
+   bottom of the display. Cap the frame's height instead of its width, and let
+   the width follow the 2:3 shape, so the whole rider stays in view. */
+@media (max-width: 767px) {
+  #riderkit .rider-frame {
+    width: min(100%, calc(66vh * 2 / 3));
+    width: min(100%, calc(66svh * 2 / 3));
+    max-width: 100%;
+    margin-inline: auto;
+  }
+}
+/* A phone on its side has very little height; the same cap follows it. */
+@media (max-width: 767px) and (orientation: landscape) {
+  #riderkit .rider-frame {
+    width: min(100%, calc(72vh * 2 / 3));
+  }
+}

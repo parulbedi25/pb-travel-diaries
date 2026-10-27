@@ -209,7 +209,7 @@ export default function LiveMapPage() {
       </header>
 
       {/* ---------- The map ---------- */}
-      <div className="relative min-h-[520px] flex-1">
+      <div className="relative min-h-[360px] flex-1 sm:min-h-[520px]">
         <PositionMap
           lat={location.lat}
           lng={location.lng}

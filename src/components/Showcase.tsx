@@ -15,6 +15,26 @@ import Photo from "./ui/Photo";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
 
+/**
+ * The bundled journey photographs ship twice: a 1536×1024 master and a 768×512
+ * `-sm` sibling. Handing both to the browser means a phone downloads ~80 KB
+ * instead of ~330 KB, and a large screen still gets the full-resolution file.
+ *
+ * Only files from the bundled shelf get this: an image the owner uploaded is a
+ * single file, and guessing a sibling that does not exist would 404.
+ */
+const BUNDLED_JOURNEY = /^\/media\/starter\/[a-z0-9-]+\.webp$/;
+
+function responsiveJourneyImage(src: string): { srcSet?: string; sizes?: string } {
+  if (!BUNDLED_JOURNEY.test(src)) return {};
+  return {
+    srcSet: `${src.replace(/\.webp$/, "-sm.webp")} 768w, ${src} 1536w`,
+    // The photo is full width on a phone, and shares the row with a 300px
+    // destination list from lg up (inside a 1280px container).
+    sizes: "(min-width: 1024px) min(980px, 76vw), 100vw",
+  };
+}
+
 export default function Showcase({ data }: { data: JourneyData }) {
   const destinations: Destination[] = data.destinations.filter(isOn);
   const [active, setActive] = useState(0);
@@ -27,6 +47,21 @@ export default function Showcase({ data }: { data: JourneyData }) {
     const id = setInterval(() => setActive((a) => (a + 1) % destinations.length), 6000);
     return () => clearInterval(id);
   }, [paused, destinations.length]);
+
+  // The carousel swaps slides every six seconds. Fetching the next one *after*
+  // the swap shows an empty frame while the HD file arrives, so warm the next
+  // two once this one is up. Browsers cache them, and a repeated URL is free.
+  useEffect(() => {
+    for (const step of [1, 2]) {
+      const next = destinations[(safe + step) % destinations.length];
+      if (!next || next.image === dest?.image) continue;
+      const file = responsiveJourneyImage(next.image);
+      const img = new Image();
+      if (file.srcSet) img.srcset = file.srcSet;
+      img.sizes = file.sizes ?? "100vw";
+      img.src = next.image;
+    }
+  }, [safe, destinations, dest?.image]);
 
   return (
     <section id="journey" aria-labelledby="journey-title" className="relative py-24 sm:py-32">
@@ -166,6 +201,7 @@ export default function Showcase({ data }: { data: JourneyData }) {
                     >
                       <Photo
                         src={dest.image}
+                        {...responsiveJourneyImage(dest.image)}
                         alt={`${dest.name} — ${dest.tagline}`}
                         className="aspect-[4/3.2] w-full object-cover sm:aspect-[16/9]"
                         label="Journey photo unavailable"

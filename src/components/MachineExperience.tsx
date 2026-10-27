@@ -295,12 +295,24 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     ? data.gallery.map((photo, sourceIndex) => ({ photo, sourceIndex })).filter(({ photo }) => isOn(photo))
     : [];
   // Pointer hover is temporary; clicking a pointer pins it until you click
-  // elsewhere. List clicks only expand a row in place — never reorder it.
+  // elsewhere. A row in the parts list drives the very same focus, so the bike
+  // zooms to the part whether it was chosen on the photo or in the list.
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [pinnedIdx, setPinnedIdx] = useState<number | null>(null);
   const [listOpen, setListOpen] = useState<number | null>(null);
-  const focusIdx = hoverIdx ?? pinnedIdx;
-  const bubbleIdx = hoverIdx ?? pinnedIdx;
+  /**
+   * The row under the cursor in the "Click a part" list.
+   *
+   * Pointing at a row and pointing at the pointer on the photo mean the same
+   * thing now: the bike zooms to that part, the other pointers settle, and the
+   * part's card opens beside it. Reading a list and then hunting for the part
+   * on the bike was the whole difficulty of the section.
+   */
+  const [listHoverIdx, setListHoverIdx] = useState<number | null>(null);
+  /** A pin that came from the list keeps the list still; a pointer's pin reorders it. */
+  const [pinFromList, setPinFromList] = useState(false);
+  const focusIdx = hoverIdx ?? listHoverIdx ?? pinnedIdx;
+  const bubbleIdx = hoverIdx ?? listHoverIdx ?? pinnedIdx;
   // The bike's pointers pulse exactly like the rider map's; visitors who ask
   // for less motion get the still ring instead.
   const reduceMotion = useReducedMotion();
@@ -412,7 +424,10 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     const onDoc = (e: MouseEvent) => {
       if (dragRef.current) return;
       const target = e.target as HTMLElement | null;
+      // A pointer, or a row in the parts panel: those two own their own state,
+      // and clearing here would undo the pin a row click just set.
       if (target?.closest?.("[data-pointer-index]")) return;
+      if (target?.closest?.("[data-machine-parts]")) return;
       setPinnedIdx(null);
       setHoverIdx(null);
     };
@@ -420,9 +435,40 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // List clicks expand in place only — no reorder, no bubble.
+  /**
+   * A row in the parts list: expand it, and show that part on the bike.
+   *
+   * On a desktop the hover already did the showing; on a phone there is no
+   * hover, so the tap is what pins the part — the photo swaps to it, the chip
+   * keeps its pressed state, and the photo is scrolled into view because on a
+   * narrow screen the chips sit *below* it.
+   */
   const selectFromList = (i: number) => {
-    setListOpen((prev) => (prev === i ? null : i));
+    const closing = listOpen === i;
+    setListOpen(closing ? null : i);
+    setPinFromList(!closing);
+    setPinnedIdx(closing ? null : i);
+    setHoverIdx(null);
+    setListHoverIdx(null);
+    if (!closing) scrollStageIntoViewOnPhone();
+  };
+
+  /**
+   * On a phone the photo sits above the chips, so a tapped part can zoom in
+   * completely off screen. Nudge the photo into view only when it is not.
+   */
+  const scrollStageIntoViewOnPhone = () => {
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    const photo = imageAreaRef.current?.getBoundingClientRect();
+    if (!photo) return;
+    const visible = Math.min(photo.bottom, window.innerHeight) - Math.max(photo.top, 0);
+    // Enough of the photo is already showing — leave the scroll alone.
+    if (visible >= photo.height * 0.6) return;
+    imageAreaRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "center",
+    });
   };
 
   /**
@@ -465,11 +511,14 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       })
     : "";
   const indexed = spots.map((spot, idx) => ({ spot, idx }));
-  // Only pointer hover/pin moves an item to the top of the list.
+  // Only a pointer on the photo moves an item to the top of the list. A row
+  // that reorders itself the moment the cursor touches it would slide out from
+  // under the pointer — so list focus and a list pin both leave the order be.
+  const reorderIdx = hoverIdx ?? (pinFromList ? null : pinnedIdx);
   const ordered =
-    focusIdx === null || !indexed[focusIdx]
+    reorderIdx === null || !indexed[reorderIdx]
       ? indexed
-      : [indexed[focusIdx], ...indexed.filter((o) => o.idx !== focusIdx)];
+      : [indexed[reorderIdx], ...indexed.filter((o) => o.idx !== reorderIdx)];
   const partsPanel: PanelBox = {
     top: data.subsectionLayout?.partsPanel?.top ?? 16,
     right: data.subsectionLayout?.partsPanel?.right ?? 16,
@@ -573,7 +622,12 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             <button
               type="button"
               data-pointer-index={i}
-              onClick={() => setPinnedIdx((prev) => (prev === i ? null : i))}
+              onClick={() => {
+                // A pin made on the photo may reorder the list; only a pin
+                // made in the list keeps it still.
+                setPinFromList(false);
+                setPinnedIdx((prev) => (prev === i ? null : i));
+              }}
               aria-pressed={pinnedIdx === i}
               aria-label={`Show ${h.title}`}
               style={{
@@ -637,6 +691,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
             onClose={() => {
               setPinnedIdx(null);
               setHoverIdx(null);
+              setListHoverIdx(null);
             }}
           />
         )}
@@ -658,7 +713,10 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       </div>
 
       {/* On smaller screens, controls live BELOW the photo so no pointer is obscured. */}
-      <div className="machine-mobile-controls flex h-16 items-center gap-2 border-t border-white/10 bg-ink-950/70 px-4">
+      <div
+        data-machine-parts
+        className="machine-mobile-controls flex h-16 items-center gap-2 border-t border-white/10 bg-ink-950/70 px-4"
+      >
         <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
           {spots.length === 0 && <p className="text-xs text-zinc-500">No bike pointers yet.</p>}
           {spots.map((h, i) => (
@@ -697,6 +755,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       {/* Desktop list sits in the stage's reserved right padding. */}
       <div
         ref={partsPanelRef}
+        data-machine-parts
         className={cn(
           "machine-list absolute z-10 min-h-0",
           admin && panelResizing && "outline outline-2 outline-saffron-400"
@@ -726,8 +785,29 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                     <li key={`${h.title}-${idx}`}>
                       <button
                         type="button"
+                        data-parts-row={idx}
                         onClick={() => selectFromList(idx)}
+                        // Pointing at a row (or tabbing to it) shows that part
+                        // on the bike. Touch has no hover — the tap below does
+                        // the same job and keeps it.
+                        onPointerEnter={(event) => {
+                          if (event.pointerType === "touch") return;
+                          cancelLeave();
+                          setListHoverIdx(idx);
+                          setHoverIdx(null);
+                        }}
+                        onPointerLeave={() => {
+                          setListHoverIdx((current) => (current === idx ? null : current));
+                        }}
+                        onFocus={() => {
+                          setListHoverIdx(idx);
+                          setHoverIdx(null);
+                        }}
+                        onBlur={() => {
+                          setListHoverIdx((current) => (current === idx ? null : current));
+                        }}
                         aria-expanded={isOn}
+                        aria-current={focusIdx === idx ? "true" : undefined}
                         className={cn(
                           "machine-parts-row flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all duration-300",
                           isOn

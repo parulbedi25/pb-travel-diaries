@@ -8,6 +8,7 @@ import { pointerColors, waveDelay, withAlpha } from "../utils/pointerColors";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { EASE, Reveal, SectionHeader } from "./ui/motion";
 import Photo from "./ui/Photo";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
 type BodyZone = "head" | "torso" | "hands" | "waist" | "legs" | "feet";
 type PercentPoint = { x: number; y: number };
@@ -25,6 +26,14 @@ const ZONE_LABELS: Record<BodyZone, string> = {
 
 /** How far the rider photo magnifies when a gear zone takes focus. */
 const RIDER_ZOOM = 1.65;
+/**
+ * A phone frame is far smaller than the same photo on a desktop, so 1.65×
+ * pushed the head or the boots clean out of the picture. The phone keeps a
+ * gentler magnification — the part still fills the frame, and the rider stays
+ * recognisably whole — and the frame itself is height-capped in
+ * `public/mobile-layout.css` so the whole rider fits on the screen.
+ */
+const RIDER_ZOOM_PHONE = 1.32;
 
 const ZONE_ZOOM_POINTS: Record<BodyZone, PercentPoint> = {
   head: { x: 50, y: 16 },
@@ -253,6 +262,8 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
     mapPointerEntries.find((pointer) => pointer.entry.index === entry.index)?.point ?? ZONE_ZOOM_POINTS[entry.zone];
   const bubblePoint = bubbleEntry ? zoomPoint ?? pointForEntry(bubbleEntry) : null;
   const zoomed = Boolean(zoomPoint && bubbleEntry);
+  const isPhone = useMediaQuery("(max-width: 767px)");
+  const zoomScale = isPhone ? RIDER_ZOOM_PHONE : RIDER_ZOOM;
   const sameZoneEntries = mapFocusedEntry ? entries.filter((entry) => entry.zone === mapFocusedEntry.zone) : [];
   const orderedEntries = mapFocusedEntry
     ? [
@@ -386,7 +397,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
           <Reveal>
             <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/60 p-2.5 shadow-2xl shadow-black/25 sm:p-3">
               <div
-                className="relative mx-auto aspect-[2/3] w-full max-w-[34rem] cursor-zoom-in overflow-hidden rounded-[1.55rem] bg-ink-950"
+                className="rider-frame relative mx-auto aspect-[2/3] w-full max-w-[34rem] cursor-zoom-in overflow-hidden rounded-[1.55rem] bg-ink-950"
                 role="group"
                 aria-label="The Gear interactive rider map. Hover or select a product to zoom to its gear zone."
                 onPointerMove={handleMapPointerMove}
@@ -396,7 +407,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                 <div
                   className="absolute inset-0 will-change-transform"
                   style={{
-                    transform: zoomed ? `scale(${RIDER_ZOOM})` : "scale(1)",
+                    transform: zoomed ? `scale(${zoomScale})` : "scale(1)",
                     transformOrigin: zoomed && zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
                     transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1), transform-origin 180ms ease-out",
                   }}
@@ -420,7 +431,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                   {mapPointerEntries.map(({ pointer, entry, point, label }, markerIndex) => {
                     const focused = bubbleIndex === entry.index;
                     const dimmed = zoomed && !focused;
-                    const scale = (zoomed ? 1 / RIDER_ZOOM : 1) * (dimmed ? 0.6 : 1);
+                    const scale = (zoomed ? 1 / zoomScale : 1) * (dimmed ? 0.6 : 1);
                     const pulse = !reduceMotion && !dimmed;
                     // Dashboard colours: `color` tints the pointer itself,
                     // `pulseColor` drives the ring. Both fall back to gold.

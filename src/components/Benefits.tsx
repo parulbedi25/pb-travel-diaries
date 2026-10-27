@@ -117,7 +117,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
         {/* portrait + personas */}
         <div className="mt-14 grid gap-6 lg:grid-cols-12">
           <Reveal className="lg:col-span-5">
-            <div className="group relative h-full min-h-[420px] overflow-hidden rounded-[2rem] border border-white/10">
+            <div className="group relative h-full min-h-[320px] overflow-hidden rounded-[2rem] border border-white/10 sm:min-h-[420px]">
               <Photo
                 src={IMAGES.portrait}
                 alt="PB filming the mountains with his camera"

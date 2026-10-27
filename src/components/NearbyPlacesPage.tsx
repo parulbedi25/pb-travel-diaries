@@ -368,7 +368,7 @@ export default function NearbyPlacesPage() {
         {/* ---------- Map + the list that lives on it ---------- */}
         <div
           ref={hostRef}
-          className="map-paper relative mt-5 h-[70vh] max-h-[760px] min-h-[540px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50"
+          className="map-paper relative mt-5 h-[58svh] max-h-[760px] min-h-[360px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:h-[70vh] sm:min-h-[540px]"
         >
           <VectorBasemap
             view={view}

@@ -675,6 +675,11 @@ test("mobile layout stylesheet is served as CSS, not the SPA fallback", async ()
   assert.match(css, /max-width: 1279px/);
   assert.match(css, /overflow-y: auto/);
   assert.match(css, /100dvh/);
+  // Phone fit: the rider photo is capped by height so the whole rider stays on
+  // screen, and no section may reach past the phone's edge.
+  assert.match(css, /#riderkit \.rider-frame/);
+  assert.match(css, /max-width: 767px/);
+  assert.match(css, /overflow-x: clip/);
 });
 
 test("unlisted commandcenter opens the login route without authenticating visitors", async () => {
