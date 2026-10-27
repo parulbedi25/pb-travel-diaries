@@ -393,8 +393,15 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
           sub={data.sub}
         />
 
-        <div className="mt-12 grid items-start gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)] xl:gap-7">
-          <Reveal>
+        {/* The two panels share one height on wide screens: the rider map sets
+            it (its frame is a fixed 2:3 box, so it is the predictable side) and
+            the gear list fills exactly that height, scrolling inside itself
+            however many pieces there are. `items-stretch` is what makes the
+            second column take the first one's height, and the list card is
+            absolutely positioned inside its cell so a long list cannot stretch
+            the row — and with it the rider — taller instead. */}
+        <div className="mt-12 grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)] xl:gap-7">
+          <Reveal className="min-w-0">
             <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900/60 p-2.5 shadow-2xl shadow-black/25 sm:p-3">
               <div
                 className="rider-frame relative mx-auto aspect-[2/3] w-full max-w-[34rem] cursor-zoom-in overflow-hidden rounded-[1.55rem] bg-ink-950"
@@ -555,9 +562,9 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
             </div>
           </Reveal>
 
-          <Reveal delay={0.08}>
-            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] shadow-2xl shadow-black/20">
-              <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] px-5 py-5 sm:px-6">
+          <Reveal delay={0.08} className="relative min-w-0 lg:h-full">
+            <div className="flex h-full flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.025] shadow-2xl shadow-black/20 lg:absolute lg:inset-0">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.08] px-5 py-5 sm:px-6">
                 <div>
                   <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-saffron-300">
                     <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Gear by body zone
@@ -569,7 +576,7 @@ export default function RiderKitExperience({ data }: { data: RiderKitData }) {
                 </span>
               </div>
 
-              <div className="no-scrollbar max-h-[54rem] overflow-y-auto p-3 sm:p-4">
+              <div className="no-scrollbar max-h-[54rem] overflow-y-auto p-3 sm:p-4 lg:min-h-0 lg:max-h-none lg:flex-1">
                 {entries.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/15 px-5 py-12 text-center">
                     <ShieldCheck className="mx-auto h-6 w-6 text-saffron-300/70" aria-hidden="true" />
