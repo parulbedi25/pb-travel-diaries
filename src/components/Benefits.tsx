@@ -79,7 +79,7 @@ export default function Benefits({ data }: { data: BenefitsData }) {
               loop
               playsInline
               preload="none"
-              aria-label="Drone film of a green Himalayan valley"
+              aria-label="Looping drone film of a green Himalayan valley, a mountain stream and misty tea terraces"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950/90 via-ink-950/20 to-ink-950/30" />
 
