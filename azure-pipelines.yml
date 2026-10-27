@@ -17,6 +17,8 @@ jobs:
         displayName: Use Node.js 22
       - bash: npm ci --ignore-scripts --no-audit --no-fund && npm run test:server
         displayName: Install and test server
+      - bash: npm run audit
+        displayName: Audit production dependencies (fails on high or critical)
       - bash: |
           export TEST_DB_PASSWORD="$(openssl rand -hex 24)"
           export TEST_DB_ROOT_PASSWORD="$(openssl rand -hex 24)"

@@ -18,6 +18,10 @@ jobs:
           cache: npm
       - name: Install and test server
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run test:server
+      # Separately from the install so a blocked registry call cannot look like
+      # a dependency problem. Fails the job on high or critical advisories.
+      - name: Audit production dependencies
+        run: npm run audit
       - name: Deploy isolated test stack and verify
         shell: bash
         run: |
