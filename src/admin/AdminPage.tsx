@@ -684,8 +684,8 @@ export function FieldRow({
           placeholder={"One item per line"}
         />
       ) : field.kind === "color" ? (
-        // Boxes, not the browser's drag picker. Empty means "use the site
-        // gold", so the first box is that default.
+        // A swatch of the applied colour that opens the chart — never the
+        // browser's drag picker. Empty means "use the site gold".
         <ColorPicker
           label={field.label}
           value={String(value ?? "")}
