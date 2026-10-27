@@ -15,6 +15,7 @@ import {
   type ThemeTokens,
 } from "../store/siteContent";
 import VectorBasemap from "../components/VectorBasemap";
+import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -286,20 +287,20 @@ export function ThemePanel() {
         <div className="rounded-3xl glass p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             {TOKENS.map((tok) => (
-              <div key={tok.key} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
-                <input
-                  type="color"
-                  value={t[tok.key]}
-                  onChange={(e) => setToken(tok.key, e.target.value)}
-                  aria-label={`${tok.label} colour`}
-                  className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-white/10 bg-transparent p-0.5"
-                />
+              <div key={tok.key} className="min-w-0 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-zinc-200">{tok.label}</p>
                   <p className="text-[11px] text-zinc-500">
                     {tok.hint} · <span className="font-mono text-zinc-400">{t[tok.key]}</span>
                   </p>
                 </div>
+                <ColorPicker
+                  label={tok.label}
+                  value={t[tok.key]}
+                  onChange={(hex) => setToken(tok.key, hex)}
+                  size="sm"
+                  className="mt-2.5"
+                />
               </div>
             ))}
           </div>
