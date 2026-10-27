@@ -16,6 +16,8 @@ import { cn } from "../../utils/cn";
  */
 export default function Photo({
   src,
+  srcSet,
+  sizes,
   alt,
   className,
   aspect,
@@ -23,6 +25,14 @@ export default function Photo({
   label = "Photo unavailable",
 }: {
   src: string;
+  /**
+   * Optional candidates at different widths, so a phone downloads the phone
+   * file instead of the full-resolution one. Leave out when there is only one
+   * file — the browser then simply uses `src`.
+   */
+  srcSet?: string;
+  /** How wide the image is displayed, so the browser can pick a candidate. */
+  sizes?: string;
   alt: string;
   className?: string;
   /**
@@ -69,10 +79,14 @@ export default function Photo({
   return (
     <img
       src={src}
+      srcSet={srcSet}
+      sizes={srcSet ? sizes : undefined}
       alt={alt}
       loading={priority ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : undefined}
       decoding="async"
+      // The browser only fetches the candidate it needs, so an HD master is
+      // never downloaded for a phone screen.
       onLoad={() => setLoaded(true)}
       onError={() => setFailed(true)}
       // The expected shape, held open until the bytes arrive. An <img> with no
