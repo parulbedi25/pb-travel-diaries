@@ -17,34 +17,10 @@ import {
 import VectorBasemap from "../components/VectorBasemap";
 import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
-
-const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
+import Switch from "./Switch";
+import { inputCls } from "./fieldStyles";
 
 const pillBtn = "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors";
-
-function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative h-6 w-11 shrink-0 rounded-full transition-colors duration-300",
-        on ? "bg-saffron-400" : "bg-white/15"
-      )}
-    >
-      <span
-        className={cn(
-          "shrink-0 aspect-square absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all duration-300",
-          on ? "left-[22px]" : "left-0.5"
-        )}
-      />
-    </button>
-  );
-}
 
 /** "Restore defaults" for one settings group. Two clicks, so it can't fire by accident. */
 export function RestoreBar({ scope, label }: { scope: RestoreScope; label: string }) {
@@ -199,7 +175,7 @@ export function HeaderButtonsEditor() {
               </label>
               <div className="ml-auto flex items-center gap-3">
                 <span className="text-[11px] font-semibold text-zinc-400">{b.enabled ? "Disable" : "Enable"}</span>
-                <Toggle on={b.enabled} onChange={(v) => patch(b.id, { enabled: v })} label={`Show ${b.label}`} />
+                <Switch on={b.enabled} onChange={(v) => patch(b.id, { enabled: v })} label={`Show ${b.label}`} />
                 <button
                   type="button"
                   onClick={() => remove(b.id, b.label)}

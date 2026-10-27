@@ -5,10 +5,9 @@ import { isOn } from "../utils/enabled";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { Item, Reveal, SectionHeader, Stagger } from "./ui/motion";
 import Photo from "./ui/Photo";
+import { gearItemCategory, gearItemMaker } from "../utils/gearItem";
 
-function categoryName(item: GearItem): string {
-  return (item.category ?? "").trim() || "Riding gear";
-}
+const categoryName = (item: GearItem) => gearItemCategory(item, "Riding gear");
 
 export default function Gears({ data }: { data: GearsData }) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -138,7 +137,7 @@ export default function Gears({ data }: { data: GearsData }) {
               >
                 {visibleItems.map((item, index) => {
                   const title = item.name?.trim() || [item.brand, item.model].filter(Boolean).join(" ") || "Gear item";
-                  const maker = [item.brand, item.model].map((value) => value?.trim()).filter(Boolean).join(" · ");
+                  const maker = gearItemMaker(item);
                   const highlights = Array.isArray(item.highlights)
                     ? item.highlights.map((value) => value.trim()).filter(Boolean).slice(0, 3)
                     : [];

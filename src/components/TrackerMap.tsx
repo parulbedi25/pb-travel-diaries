@@ -141,8 +141,17 @@ const roadKey = (stops: LiveStop[]): string =>
 function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
   const [road, setRoad] = useState<LatLng[] | null>(null);
 
+  // Depend on what actually matters, not on array identity: the tracker
+  // re-renders on every live ping, and a fresh `stops` array each time used to
+  // re-run this effect — re-parsing localStorage and re-requesting the road
+  // every second. The key changes only when a stop really moves.
+  const stopsKey = roadKey(stops);
+  const storedCount = stored.length;
+  const stopsRef = useRef(stops);
+  stopsRef.current = stops;
+
   useEffect(() => {
-    if (stored.length >= 2 || stops.length < 2) {
+    if (storedCount >= 2 || stopsRef.current.length < 2) {
       setRoad(null);
       return;
     }
@@ -151,7 +160,7 @@ function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
     // disposable cache of a third-party road route, worth a network request
     // but not worth a database round-trip. It never holds site content,
     // accounts or history — those live in MariaDB.
-    const key = roadKey(stops);
+    const key = stopsKey;
     try {
       const cached = window.localStorage.getItem(key);
       if (cached) {
@@ -169,7 +178,7 @@ function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
     let cancelled = false;
     void (async () => {
       try {
-        const result = await fetchRoadGeometry(stops);
+        const result = await fetchRoadGeometry(stopsRef.current);
         if (cancelled || !result.ok || result.geometry.length < 2) return;
         setRoad(result.geometry);
         try {
@@ -188,7 +197,8 @@ function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
     return () => {
       cancelled = true;
     };
-  }, [stored, stops]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by coordinates on purpose
+  }, [stopsKey, storedCount]);
 
   return road;
 }

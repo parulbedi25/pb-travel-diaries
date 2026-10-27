@@ -3,9 +3,7 @@ import { BLOCK_FIELDS, type BlockField } from "../blocks/fields";
 import { MAX_BLOCK_H, MIN_BLOCK_H, WIDTHS, blockSpec, type SectionBlock } from "../blocks/types";
 import { cn } from "../utils/cn";
 import ImageField from "./ImageField";
-
-const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
+import { inputCls } from "./fieldStyles";
 
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500";
 

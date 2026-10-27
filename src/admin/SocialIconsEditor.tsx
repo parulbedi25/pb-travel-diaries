@@ -6,9 +6,7 @@ import { SOCIAL_ICONS, resolveSocialIcon } from "../components/ui/SocialIcons";
 import Switch from "./Switch";
 import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
-
-const inputCls =
-  "w-full rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-saffron-400/60 focus:outline-none transition-colors";
+import { inputCls } from "./fieldStyles";
 
 const BUBBLE_W = 288; // matches w-72 below
 const BUBBLE_MAX_H = 320;

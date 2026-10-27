@@ -564,7 +564,6 @@ export interface HeroData {
   epMeta: string;
   statTop: string;
   statSub: string;
-  showreelHref: string;
   mainImage: string;
   cardAImage: string;
   cardBImage: string;
@@ -911,7 +910,6 @@ export interface FaqData {
   sub: string;
   discordLabel: string;
   discordMeta: string;
-  emailLabel: string;
   email: string;
   emailMeta: string;
   items: { q: string; a: string }[];
@@ -971,8 +969,6 @@ export interface CountdownData {
 
 /* ═══════════════════════ Defaults ═══════════════════════ */
 
-const showreelHref = "#showreel";
-
 const HERO: HeroData = {
   liveTag: "Now riding the Spiti Circuit — new film every Sunday",
   headA: "Chasing ",
@@ -996,7 +992,6 @@ const HERO: HeroData = {
   epMeta: "38:12 · Premieres Sunday, 7 PM IST",
   statTop: "1,412 days",
   statSub: "on the road since 2017",
-  showreelHref,
   // Shipped photographs, listed in Dashboard → Media and replaceable from the
   // Hero section editor.
   mainImage:
@@ -1408,7 +1403,6 @@ const FAQ: FaqData = {
   sub: "Straight answers, no fine print. Still curious? The tribe Discord answers faster than I can.",
   discordLabel: "Join the tribe Discord",
   discordMeta: "48,000 members online daily",
-  emailLabel: "",
   email: "hello@pbfrompb.in",
   emailMeta: "Replies within 72 hours",
   items: [
@@ -1530,11 +1524,31 @@ export function defaultDataFor(type: SectionType): Record<string, unknown> {
   return found ? structuredClone(found.data) : {};
 }
 
-/** Pure (hook-free) section data lookup — safe in early returns. */
+/**
+ * Pure (hook-free) section data lookup — safe in early returns.
+ *
+ * Deep-merging a section against its defaults clones the whole thing, and this
+ * runs inside render paths (and inside hooks that re-run on every render), so
+ * the result is memoised against the saved section's own data object. The store
+ * replaces that object whenever content changes, which is exactly when the
+ * merge needs to run again — nothing here has to guess.
+ */
+const sectionCache = new WeakMap<object, Map<string, unknown>>();
+
 export function sectionData<T>(content: SiteContent, type: SectionType): T {
   const entry = content.sections.find((s) => s.type === type);
   if (!entry) return structuredClone(defaultDataFor(type)) as T;
-  return deepMerge(defaultDataFor(type), entry.data) as T;
+  const saved = entry.data as object;
+  let byType = sectionCache.get(saved);
+  if (!byType) {
+    byType = new Map();
+    sectionCache.set(saved, byType);
+  }
+  const hit = byType.get(type);
+  if (hit !== undefined) return hit as T;
+  const merged = deepMerge(defaultDataFor(type), entry.data) as T;
+  byType.set(type, merged);
+  return merged;
 }
 
 /** True when a maintenance schedule has been set and its moment has arrived. */
