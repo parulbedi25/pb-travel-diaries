@@ -168,6 +168,16 @@ export const MIGRATIONS = [
     // bike. Additive and short — safe to run while the site is serving.
     up: sql("CREATE INDEX member_journeys_bike ON member_journeys (bike_id)"),
   },
+  {
+    version: 7,
+    name: "media tags",
+    // Free-text tags for a photo, kept with the file so a picture can describe
+    // itself — used for the alt text and the library's search. One short
+    // comma-separated string rather than a join table: it is read and written
+    // whole, the same way on MySQL, SQLite and the in-memory driver, and a
+    // backup carries it without needing a second table restored in order.
+    up: sql("ALTER TABLE media ADD COLUMN tags VARCHAR(400) NOT NULL DEFAULT ''"),
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

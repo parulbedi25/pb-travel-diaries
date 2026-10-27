@@ -13,6 +13,8 @@ export interface MediaItem {
   kind?: MediaKind;
   /** Lower-case extension without the dot, e.g. "xlsx". */
   ext?: string;
+  /** Free-text tags, used as the alt text and to find the photo again. */
+  tags?: string[];
 }
 
 /* ── Format support ──────────────────────────────────────────────────────
@@ -154,6 +156,48 @@ export async function getMedia(id: string): Promise<MediaItem | undefined> {
 
 export async function removeMedia(id: string): Promise<void> {
   await siteApi.deleteMedia(id);
+}
+
+/** Replace a photo's tags. Returns the saved item, tags already normalised. */
+export async function saveMediaTags(id: string, tags: string[]): Promise<MediaItem> {
+  return siteApi.setMediaTags(id, tags);
+}
+
+/** Save an edited copy over the original, keeping the id and the URL. */
+export async function saveMediaImage(id: string, file: File): Promise<MediaItem> {
+  return siteApi.replaceMediaImage(id, file);
+}
+
+/**
+ * "27 Oct 2026, 6:41 pm" — the card footnote. Short enough for a thumbnail,
+ * and always with the full timestamp in its title attribute.
+ */
+export function formatAdded(iso: string): string {
+  if (!iso) return "Date unknown";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Date unknown";
+  return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** The same instant, spelled out, for a tooltip. */
+export function formatAddedFull(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-IN", { dateStyle: "full", timeStyle: "medium" });
+}
+
+/** Tags joined the way the server stores them, for the editable field. */
+export const tagsToText = (tags: string[] | undefined) => (tags ?? []).join(", ");
+
+/**
+ * All of a photo's tags as one alt-text sentence, so a tagged photo has
+ * something SEO-worthy to say even when the field it sits in has no caption.
+ */
+export function tagsToAlt(name: string, tags: string[] | undefined): string {
+  const list = tags ?? [];
+  if (!list.length) return name;
+  return list.join(", ");
 }
 
 /** A data URL back into a Blob, for uploading a client-side compression. */

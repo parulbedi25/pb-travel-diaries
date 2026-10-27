@@ -53,6 +53,42 @@ function kindFor(ext) {
 /** The public URL a stored file is served from. */
 const publicUrl = (filename) => `/media/${filename}`;
 
+/**
+ * Tags travel as one comma-separated string in the row and as an array in the
+ * API, so the dashboard never has to split on the client and a tag can never
+ * contain the separator.
+ */
+const splitTags = (value) =>
+  String(value ?? "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+const MAX_TAGS = 12;
+const MAX_TAG_LENGTH = 40;
+
+/** Trim, drop empties and duplicates, and cap the count — in that order. */
+function normaliseTags(input) {
+  const list = Array.isArray(input) ? input : String(input ?? "").split(",");
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const tag = String(raw ?? "")
+      // A comma inside a tag would come back as two tags, so it goes.
+      .replace(/[,\u0000-\u001f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, MAX_TAG_LENGTH);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= MAX_TAGS) break;
+  }
+  return out;
+}
+
 const toItem = (row) => ({
   id: row.id,
   name: row.originalName,
@@ -66,6 +102,7 @@ const toItem = (row) => ({
     row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt ?? ""),
   kind: row.kind,
   ext: row.ext,
+  tags: splitTags(row.tags),
 });
 
 mediaRouter.get("/media", requireEditor, async (req, res, next) => {
@@ -105,10 +142,72 @@ mediaRouter.post("/media", requireEditor, upload.single("file"), async (req, res
       size: req.file.size,
       kind: kindFor(ext),
       ext,
+      tags: normaliseTags(req.body?.tags).join(","),
       createdBy: req.user.username,
     });
 
     res.status(201).json({ item: toItem(row) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Bundled photographs are files in the repo, not rows — neither can be edited. */
+const isBundled = (id) => bundledMedia.some((item) => item.id === id);
+
+/** Set a photo's tags. */
+mediaRouter.patch("/media/:id", requireEditor, async (req, res, next) => {
+  try {
+    if (isBundled(req.params.id)) {
+      return res.status(403).json({ error: "This photo ships with the website and cannot be tagged." });
+    }
+    const repo = await getRepo();
+    const row = await repo.findMedia(String(req.params.id));
+    if (!row) return res.status(404).json({ error: "No such file." });
+
+    const tags = normaliseTags(req.body?.tags);
+    await repo.updateMediaTags(row.id, tags.join(","));
+    res.json({ item: toItem({ ...row, tags: tags.join(",") }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Replace the pixels of an existing photo, keeping its id, its URL and its
+ * place in the library. This is what the editor in the media popup saves:
+ * contrast and brightness are baked into a new file, and everything already
+ * pointing at the image picks the change up without being edited.
+ */
+mediaRouter.put("/media/:id/file", requireEditor, upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file arrived." });
+    if (isBundled(req.params.id)) {
+      return res.status(403).json({ error: "This photo ships with the website and cannot be edited." });
+    }
+
+    const repo = await getRepo();
+    const row = await repo.findMedia(String(req.params.id));
+    if (!row) return res.status(404).json({ error: "No such file." });
+    if (row.kind !== "image") {
+      return res.status(415).json({ error: "Only photos can be edited." });
+    }
+    if (req.file.mimetype !== row.mime && !String(req.file.mimetype).startsWith("image/")) {
+      return res.status(415).json({ error: "That is not an image." });
+    }
+    if (req.file.size > config.maxUploadMb * 1024 * 1024) {
+      return res.status(413).json({ error: "That image is too large to store." });
+    }
+
+    // Same filename, so the URL — and every field using it — stays put.
+    await fs.writeFile(path.join(config.mediaDir, row.filename), req.file.buffer);
+    const updated = await repo.updateMediaFile(row.id, {
+      mime: req.file.mimetype || row.mime,
+      size: req.file.size,
+    });
+    if (!updated) return res.status(404).json({ error: "No such file." });
+
+    res.json({ item: toItem({ ...row, mime: req.file.mimetype || row.mime, size: req.file.size }) });
   } catch (error) {
     next(error);
   }

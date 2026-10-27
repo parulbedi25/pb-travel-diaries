@@ -302,6 +302,26 @@ export const siteApi = {
     await api.delete(`/api/media/${encodeURIComponent(id)}`);
   },
 
+  /** Tags for a photo: what it shows, for alt text and for finding it again. */
+  async setMediaTags(id: string, tags: string[]): Promise<MediaItem> {
+    const { item } = await api.patch<{ item: MediaItem }>(
+      `/api/media/${encodeURIComponent(id)}`,
+      { tags },
+    );
+    return item;
+  },
+
+  /** Write edited pixels back over the original file, same id and URL. */
+  async replaceMediaImage(id: string, file: File): Promise<MediaItem> {
+    const { item } = await api.upload<{ item: MediaItem }>(
+      `/api/media/${encodeURIComponent(id)}/file`,
+      file,
+      "file",
+      "PUT",
+    );
+    return item;
+  },
+
   /* ── site identity ───────────────────────────────────────────────────── */
 
   async getSiteSettings(): Promise<SiteSettings> {

@@ -80,13 +80,16 @@ export const api = {
   patch: <T>(url: string, body?: unknown) => request<T>("PATCH", url, body),
   delete: <T>(url: string) => request<T>("DELETE", url),
 
-  /** Uploads use multipart, so they bypass the JSON helper above. */
-  async upload<T>(url: string, file: File, field = "file"): Promise<T> {
+  /**
+   * Uploads use multipart, so they bypass the JSON helper above. `method` is
+   * "POST" for a new file and "PUT" when replacing the bytes of an existing one.
+   */
+  async upload<T>(url: string, file: File, field = "file", method: "POST" | "PUT" = "POST"): Promise<T> {
     const form = new FormData();
     form.append(field, file, file.name);
     let response: Response;
     try {
-      response = await fetch(url, { method: "POST", body: form, credentials: "same-origin" });
+      response = await fetch(url, { method, body: form, credentials: "same-origin" });
     } catch (error) {
       throw new ApiError(describe(error), 0);
     }

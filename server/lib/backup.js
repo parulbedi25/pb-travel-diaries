@@ -595,7 +595,7 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
       counts.media = await insertRows(
         connection,
         "media",
-        ["id", "filename", "original_name", "mime", "size", "kind", "ext", "created_at", "created_by"],
+        ["id", "filename", "original_name", "mime", "size", "kind", "ext", "tags", "created_at", "created_by"],
         (data.media ?? []).map((item) => [
           item.id,
           item.filename,
@@ -604,6 +604,8 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
           item.size ?? 0,
           item.kind ?? "other",
           item.ext ?? "",
+          // Archives made before tags existed simply have none.
+          typeof item.tags === "string" ? item.tags : "",
           sqlDateMs(item.createdAt) ?? sqlDateMs(new Date()),
           item.createdBy ?? null,
         ]),
