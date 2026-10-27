@@ -1329,8 +1329,11 @@ const BENEFITS: BenefitsData = {
   titleHi: "Three ways to live it.",
   titleB: "",
   sub: "Whether you shoot, ride, or just itch to get out of the city — there's a lane for you here.",
-  // A drone pass over a green Kangra valley. Ships with the site, but it is an
-  // ordinary media field: swap in your own film from the dashboard.
+  // A 19-second loop cut from three scenes — a green Himalayan valley and its
+  // turquoise river, a mountain stream over mossy boulders, and misty tea
+  // terraces — with slow camera moves and cross-fades, so it never hard-cuts
+  // (not even at the loop point). Ships with the site, but it is an ordinary
+  // media field: swap in your own film from the dashboard.
   videoSrc: "/media/starter/valley-drone.mp4",
   videoPoster: "/media/starter/valley-drone-poster.webp",
   videoLine: "8 years · 28 states · 140,000 km — in 40 seconds",
