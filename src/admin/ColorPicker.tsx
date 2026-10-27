@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown } from "lucide-react";
 import { cn } from "../utils/cn";
 import { normalizeHex } from "../utils/pointerColors";
 
 /**
- * The dashboard's colour picker: the swatch chart, as a real grid of cells.
+ * The dashboard's colour picker: the applied colour, which opens the chart.
  *
- * Layout matches the reference chart — a strip of greys along the top, then a
- * 12 × 8 field where the columns run blue → purple → magenta → red → orange →
- * yellow → green, the top rows are dark, the middle rows are vivid and the
- * bottom rows are pastel. Every cell is a discrete colour you click; there is
- * no canvas, no drag and nothing to aim at.
+ * Closed, it is a single control — a swatch of the colour in use plus its hex —
+ * so a panel full of colours stays readable instead of every field reserving
+ * room for a 108-cell grid. Click the swatch and the chart opens beneath it:
+ * a strip of greys along the top, then a 12 × 8 field where the columns run
+ * blue → purple → magenta → red → orange → yellow → green, the top rows dark,
+ * the middle rows vivid and the bottom rows pastel. Pick a cell and it applies
+ * and closes, the way clicking an already-applied colour does everywhere else.
  *
  * The cells have rounded corners and a hairline gap rather than hard, aliased
- * edges, which is what keeps the chart soft against the dashboard's dark
- * panels. The selected cell is outlined in white, like the reference.
+ * edges, which keeps the chart soft against the dashboard's dark panels. The
+ * swatch in use is outlined in white, like the reference chart.
+ *
+ * The chart is portalled to `document.body` and placed against the trigger, so
+ * a picker inside a scrolling panel or a rounded card cannot be clipped by it.
  *
  * One component, used everywhere a colour is chosen: the Machine and Gear
  * pointers, the brand mark, the theme tokens and the footer social icons.
@@ -158,129 +165,275 @@ export default function ColorPicker({
   const [hex, setHex] = useState(value);
   useEffect(() => setHex(value), [value]);
 
-  const commit = (raw: string) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // Positioned in px inside the wrapper. `null` until measured, so the panel
+  // never flashes at the wrong spot.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  const small = size === "sm";
+  const panelWidth = small ? 252 : 272;
+
+  const commit = (raw: string, close = false) => {
     setHex(raw);
     const next = normalizeHex(raw);
     if (next) onChange(next);
     else if (raw.trim() === "") onChange("");
+    if (close) setOpen(false);
   };
+
+  /**
+   * Keep the panel on screen. It hangs off whichever side of the trigger has
+   * room — down normally, up at the foot of a long panel — and is nudged
+   * sideways so a picker in the corner of a narrow column still fits.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const place = () => {
+      const wrap = wrapRef.current;
+      const panel = panelRef.current;
+      if (!wrap || !panel) return;
+      const rect = wrap.getBoundingClientRect();
+      const width = panel.offsetWidth || panelWidth;
+      const height = panel.offsetHeight;
+      const margin = 10;
+
+      const left = Math.min(
+        Math.max(margin, rect.left),
+        Math.max(margin, window.innerWidth - width - margin)
+      );
+
+      // Below the trigger unless there is no room there and more above it.
+      const below = window.innerHeight - rect.bottom;
+      const above = rect.top;
+      let top = below < height + margin + 8 && above > below ? rect.top - height - 6 : rect.bottom + 6;
+      top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+
+      setPos((current) =>
+        current && current.left === left && current.top === top ? current : { left, top }
+      );
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, panelWidth]);
+
+  // Close on Escape and on a click anywhere outside the trigger or the panel.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (wrapRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
 
   // Square, rounded cells with a hairline gap. `aspect-square` keeps them
   // square at any panel width, so the chart never skews or wraps.
   const cell = cn(
     "relative grid aspect-square w-full place-items-center transition-[transform,box-shadow] duration-150",
-    size === "sm" ? "rounded-[2px]" : "rounded-[3px]"
+    small ? "rounded-[2px]" : "rounded-[3px]"
   );
   /** The reference marks the chosen swatch with a white box around it. */
   const ringOn = "z-10 outline-2 outline-white outline-offset-1";
-  const gap = size === "sm" ? "gap-[2px]" : "gap-[3px]";
+  const gap = small ? "gap-[2px]" : "gap-[3px]";
+  const swatchSize = small ? "h-5 w-5" : "h-6 w-6";
+  const triggerText = selected ? selected.toUpperCase() : fallback ? fallbackLabel : "Not set";
 
   return (
-    <div className={cn("min-w-0", className)}>
-      {/* ── greys ── */}
-      <div
-        role="group"
-        aria-label={`${label} greys`}
-        className={cn("grid", gap)}
-        style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
-      >
-        {GREYS.map((grey) => {
-          const isOn = marked === grey;
-          return (
-            <button
-              key={grey}
-              type="button"
-              onClick={() => commit(grey)}
-              aria-pressed={isOn}
-              aria-label={`${label}: ${grey}`}
-              title={grey.toUpperCase()}
-              style={{ background: grey }}
-              className={cn(cell, "border border-white/15", isOn ? ringOn : "hover:scale-110 hover:border-white/50")}
-            />
-          );
-        })}
-      </div>
-
-      {/* ── the colour field ── */}
-      <div
-        role="group"
-        aria-label={`${label} colours`}
-        className={cn("mt-1 grid", gap)}
-        style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
-      >
-        {CHART.map((row, rowIndex) =>
-          row.map((colour, colIndex) => {
-            const isOn = marked === colour;
-            return (
-              <button
-                key={`${rowIndex}-${colIndex}`}
-                type="button"
-                onClick={() => commit(colour)}
-                aria-pressed={isOn}
-                aria-label={`${label}: ${colour}`}
-                title={colour.toUpperCase()}
-                style={{ background: colour }}
-                className={cn(
-                  cell,
-                  "border border-black/10",
-                  isOn ? ringOn : "hover:z-10 hover:scale-110 hover:border-white/50"
-                )}
-              />
-            );
-          })
+    <div ref={wrapRef} className={cn("relative min-w-0", className)}>
+      {/* ── the applied colour: opens the chart ── */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`${label} — ${triggerText}. Choose a colour`}
+        title={label}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-lg border bg-white/[0.05] text-left transition-colors",
+          small ? "px-2 py-1" : "px-2.5 py-1.5",
+          open
+            ? "border-saffron-300/60 ring-1 ring-saffron-300/30"
+            : "border-white/10 hover:border-white/30"
         )}
-      </div>
-
-      <div className="mt-2 flex items-center gap-2">
+      >
         <span
           aria-hidden="true"
-          className={cn("shrink-0 border border-white/20", size === "sm" ? "h-5 w-5 rounded" : "h-6 w-6 rounded-md")}
-          style={{ background: selected ?? "transparent" }}
-        />
-        <input
-          type="text"
-          value={hex}
-          onChange={(e) => commit(e.target.value)}
-          onBlur={() => {
-            // Anything unreadable is put back rather than silently kept.
-            if (hex.trim() && !normalizeHex(hex)) setHex(value);
-          }}
-          placeholder={fallback ? "Default" : "#f5b301"}
-          maxLength={7}
-          spellCheck={false}
-          aria-label={`${label} hex`}
-          aria-invalid={Boolean(hex.trim()) && !normalizeHex(hex)}
           className={cn(
-            "min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.05] font-mono text-white placeholder:text-zinc-500 transition-colors focus:border-saffron-400/60 focus:outline-none",
-            size === "sm" ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs",
-            hex.trim() && !normalizeHex(hex) && "border-rose-400/60"
+            "shrink-0 rounded border border-white/25",
+            swatchSize,
+            // Empty values show the fallback, hatched, so "Default" reads as a
+            // choice rather than a missing colour.
+            !selected && "opacity-90"
+          )}
+          style={{
+            background: selected
+              ? selected
+              : fallback
+                ? `repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 3px, transparent 3px 6px), ${fallback}`
+                : "repeating-linear-gradient(135deg, rgba(255,255,255,0.12) 0 3px, transparent 3px 6px)",
+          }}
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate font-mono",
+            small ? "text-[11px]" : "text-xs",
+            selected ? "text-zinc-200" : "text-zinc-500"
+          )}
+        >
+          {triggerText}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            "shrink-0 text-zinc-500 transition-transform duration-200",
+            small ? "h-3.5 w-3.5" : "h-4 w-4",
+            open && "rotate-180 text-zinc-300"
           )}
         />
-        {fallback ? (
-          <button
-            type="button"
-            onClick={() => commit("")}
-            aria-pressed={selected === null}
-            title={fallbackLabel}
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 font-semibold transition-colors",
-              size === "sm" ? "text-[10px]" : "text-[11px]",
-              selected === null
-                ? "border-saffron-300/70 bg-saffron-400/10 text-white"
-                : "border-white/15 bg-white/[0.04] text-zinc-400 hover:border-white/35 hover:text-white"
-            )}
+      </button>
+
+      {/* ── the chart ── */}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label={`${label} colours`}
+          style={{
+            width: panelWidth,
+            left: pos?.left ?? 0,
+            top: pos?.top ?? 0,
+            visibility: pos ? "visible" : "hidden",
+          }}
+          className="fixed z-[70] rounded-2xl border border-white/10 bg-zinc-950/95 p-2.5 shadow-2xl shadow-black/70 backdrop-blur-md"
+        >
+          {/* greys */}
+          <div
+            role="group"
+            aria-label={`${label} greys`}
+            className={cn("grid", gap)}
+            style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
           >
-            <span
-              aria-hidden="true"
-              className="h-3.5 w-3.5 rounded border border-white/25"
-              style={{
-                background: `repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 3px, transparent 3px 6px), ${fallback}`,
+            {GREYS.map((grey) => {
+              const isOn = marked === grey;
+              return (
+                <button
+                  key={grey}
+                  type="button"
+                  onClick={() => commit(grey, true)}
+                  aria-pressed={isOn}
+                  aria-label={`${label}: ${grey}`}
+                  title={grey.toUpperCase()}
+                  style={{ background: grey }}
+                  className={cn(
+                    cell,
+                    "border border-white/15",
+                    isOn ? ringOn : "hover:scale-110 hover:border-white/50"
+                  )}
+                />
+              );
+            })}
+          </div>
+
+          {/* the colour field */}
+          <div
+            role="group"
+            aria-label={`${label} colours`}
+            className={cn("mt-1 grid", gap)}
+            style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
+          >
+            {CHART.map((row, rowIndex) =>
+              row.map((colour, colIndex) => {
+                const isOn = marked === colour;
+                return (
+                  <button
+                    key={`${rowIndex}-${colIndex}`}
+                    type="button"
+                    onClick={() => commit(colour, true)}
+                    aria-pressed={isOn}
+                    aria-label={`${label}: ${colour}`}
+                    title={colour.toUpperCase()}
+                    style={{ background: colour }}
+                    className={cn(
+                      cell,
+                      "border border-black/10",
+                      isOn ? ringOn : "hover:z-10 hover:scale-110 hover:border-white/50"
+                    )}
+                  />
+                );
+              })
+            )}
+          </div>
+
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={hex}
+              onChange={(e) => commit(e.target.value)}
+              onBlur={() => {
+                // Anything unreadable is put back rather than silently kept.
+                if (hex.trim() && !normalizeHex(hex)) setHex(value);
               }}
+              placeholder={fallback ? "Default" : "#f5b301"}
+              maxLength={7}
+              spellCheck={false}
+              aria-label={`${label} hex`}
+              aria-invalid={Boolean(hex.trim()) && !normalizeHex(hex)}
+              className={cn(
+                "min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.05] font-mono text-white placeholder:text-zinc-500 transition-colors focus:border-saffron-400/60 focus:outline-none",
+                small ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs",
+                hex.trim() && !normalizeHex(hex) && "border-rose-400/60"
+              )}
             />
-            {fallbackLabel}
-          </button>
-        ) : null}
-      </div>
+            {fallback ? (
+              <button
+                type="button"
+                onClick={() => commit("", true)}
+                aria-pressed={selected === null}
+                title={fallbackLabel}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 font-semibold transition-colors",
+                  small ? "text-[10px]" : "text-[11px]",
+                  selected === null
+                    ? "border-saffron-300/70 bg-saffron-400/10 text-white"
+                    : "border-white/15 bg-white/[0.04] text-zinc-400 hover:border-white/35 hover:text-white"
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5 rounded border border-white/25"
+                  style={{
+                    background: `repeating-linear-gradient(135deg, rgba(255,255,255,0.16) 0 3px, transparent 3px 6px), ${fallback}`,
+                  }}
+                />
+                {fallbackLabel}
+              </button>
+            ) : null}
+          </div>
+        </div>,
+          document.body
+        )
+        : null}
     </div>
   );
 }
