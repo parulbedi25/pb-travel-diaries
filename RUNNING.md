@@ -88,5 +88,21 @@ than running a frontend build. Source in `src/` is reference material, not
 compiled by npm scripts. Dashboard content edits are stored in the database
 and do not require frontend compilation.
 
+## Dependency security
+
+Run `npm audit` after any install or update. The site installs only eight
+production packages (`express`, `multer`, `mysql2`, `bcryptjs`, `cookie-parser`,
+`dotenv`, `yauzl`, `yazl`), so the report is short and every finding is real.
+
+`npm run audit` fails on high and critical advisories, and both deployment
+pipelines run it, so a vulnerable package cannot ship silently. Fix one with
+`npm audit fix` (a patch/minor bump inside the declared range), then run
+`npm run test:server` and restart the site. If a fix needs a major bump, read
+the advisory first — an upload library is not something to upgrade blindly.
+
+`server/tests/runtime-package.test.js` also pins the version floor for each
+advisory fixed so far, so a fresh `npm install` cannot resolve back onto a bad
+range while the tests still pass.
+
 See [NAMECHEAP.md](NAMECHEAP.md) for panel details and
 [DEPLOYMENT.md](DEPLOYMENT.md) for environment variables, backups and restore.
