@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import { ArrowUp } from "lucide-react";
 import { Logo } from "./Navbar";
 import { externalLinkProps, resolveSocialIcon } from "./ui/SocialIcons";
@@ -91,18 +91,53 @@ export function FooterView({
           </div>
         </div>
 
-        {/* bottom bar */}
-        <div className="flex flex-col items-center justify-between gap-5 border-t border-white/[0.06] py-8 sm:flex-row">
-          <p className="text-xs text-zinc-600">
+        {/* bottom bar — the last thing on the page, so it is given enough
+            contrast to be read rather than skimmed past. */}
+        <div className="flex flex-col items-center justify-between gap-5 border-t border-white/[0.12] py-8 sm:flex-row">
+          <p className="text-[13px] text-zinc-400">
             © {year} {settings.copyright}
           </p>
-          {settings.credit && <p className="text-xs text-zinc-600">{settings.credit}</p>}
+          {settings.credit && <Credit text={settings.credit} />}
         </div>
       </div>
 
       {/* Not in the bottom bar any more: the button floats over the page. */}
       {settings.showBackToTop && !preview && <BackToTop />}
     </footer>
+  );
+}
+
+/**
+ * The footer's credit line, with its heart made to beat.
+ *
+ * The line is free text from the dashboard, so the heart is found in it rather
+ * than being a separate field: wherever a ♥ appears it becomes a red heart that
+ * pumps — two quick thumps and a rest, its glow fading between them — while the
+ * words around it stay ordinary text. A line written without a heart simply
+ * reads as it was typed. The movement is dropped for anyone who has asked their
+ * system not to animate things (see the reduced-motion block in index.css), and
+ * the heart is hidden from screen readers in favour of the word "love", so the
+ * sentence is still a sentence when it is spoken.
+ */
+function Credit({ text }: { text: string }) {
+  const pieces = text.split("♥");
+  if (pieces.length === 1) return <p className="text-[13px] text-zinc-300">{text}</p>;
+  return (
+    <p className="text-[13px] text-zinc-300">
+      {pieces.map((piece, index) => (
+        <Fragment key={index}>
+          {index > 0 && (
+            <>
+              <span aria-hidden="true" className="credit-heart mx-[0.2em] inline-block animate-heartbeat text-red-500">
+                ♥
+              </span>
+              <span className="sr-only">love</span>
+            </>
+          )}
+          {piece}
+        </Fragment>
+      ))}
+    </p>
   );
 }
 
