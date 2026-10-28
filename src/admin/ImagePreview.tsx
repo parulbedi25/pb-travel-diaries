@@ -22,6 +22,12 @@ export default function ImagePreview({
   /** Show the stored size — useful once an upload has been compressed. */
   showSize = false,
   note,
+  /**
+   * Put a product photo on a white plate, the way the shop shows it. A cut-out
+   * on white or on nothing would otherwise read as a black block, since the
+   * frame behind it is dark.
+   */
+  plate = false,
   className,
 }: {
   src: string;
@@ -31,6 +37,7 @@ export default function ImagePreview({
   fit?: number;
   showSize?: boolean;
   note?: string;
+  plate?: boolean;
   className?: string;
 }) {
   const isDataUrl = src.startsWith("data:");
@@ -39,7 +46,8 @@ export default function ImagePreview({
   return (
     <div
       className={cn(
-        "relative mt-2 w-full min-w-0 overflow-hidden rounded-xl border border-white/10 bg-black/40",
+        "relative mt-2 w-full min-w-0 overflow-hidden rounded-xl border border-white/10",
+        plate ? "product-plate" : "bg-black/40",
         className
       )}
     >

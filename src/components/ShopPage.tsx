@@ -3,7 +3,7 @@ import { ArrowUpRight, Check, PackageOpen, ShoppingBag } from "lucide-react";
 import { useSite, type GearItem } from "../store/siteContent";
 import { isOn } from "../utils/enabled";
 import { cn } from "../utils/cn";
-import { gearItemCategory, gearItemTitle, gearItemMaker } from "../utils/gearItem";
+import { gearItemCategory, gearItemTitle, gearItemMaker, isProductPhoto } from "../utils/gearItem";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { Item, Reveal, Stagger } from "./ui/motion";
 import ProductGallery from "./ProductGallery";
@@ -133,7 +133,7 @@ export default function ShopPage() {
                     const highlights = Array.isArray(item.highlights)
                       ? item.highlights.map((value) => value?.trim()).filter((value): value is string => Boolean(value)).slice(0, 3)
                       : [];
-                    const localImage = item.image?.startsWith("/images/gear/") ?? false;
+                    const localImage = isProductPhoto(item.image);
                     return (
                       <Item key={productKey(item)}>
                         <article className="group flex h-full flex-col overflow-hidden rounded-[1.75rem] border border-white/[0.09] bg-white/[0.025] transition-colors hover:border-saffron-300/30 hover:bg-white/[0.04]">

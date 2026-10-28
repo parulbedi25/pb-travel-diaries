@@ -79,6 +79,7 @@ export default function ImageField({
   hint,
   budget,
   previewNote,
+  plate = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -90,6 +91,8 @@ export default function ImageField({
   budget?: CompressBudget;
   /** Caption shown over the preview, e.g. where the image is used. */
   previewNote?: string;
+  /** Preview a product photo on the white plate the shop puts behind it. */
+  plate?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -167,6 +170,7 @@ export default function ImageField({
           ratio="16 / 9"
           showSize={Boolean(budget)}
           note={previewNote}
+          plate={plate}
         />
       ) : (
         <div className="mt-2 flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10 text-zinc-600">

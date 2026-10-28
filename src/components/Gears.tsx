@@ -5,7 +5,7 @@ import { isOn } from "../utils/enabled";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { Item, Reveal, SectionHeader, Stagger } from "./ui/motion";
 import Photo from "./ui/Photo";
-import { gearItemCategory, gearItemMaker } from "../utils/gearItem";
+import { gearItemCategory, gearItemMaker, isProductPhoto } from "../utils/gearItem";
 
 const categoryName = (item: GearItem) => gearItemCategory(item, "Riding gear");
 
@@ -142,7 +142,7 @@ export default function Gears({ data }: { data: GearsData }) {
                     ? item.highlights.map((value) => value.trim()).filter(Boolean).slice(0, 3)
                     : [];
                   const alt = item.imageAlt?.trim() || title;
-                  const localGearPhoto = item.image?.startsWith("/images/gear/") ?? false;
+                  const localGearPhoto = isProductPhoto(item.image);
 
                   return (
                     <Item key={`${title}-${index}`}>

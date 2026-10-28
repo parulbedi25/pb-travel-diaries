@@ -153,6 +153,8 @@ export interface Field {
   hint?: string;
   fields?: Field[];
   template?: unknown;
+  /** Set on a product photo, so its preview is shown on the shop's white plate. */
+  plate?: boolean;
 }
 
 const T = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "text", hint });
@@ -174,6 +176,15 @@ function localInputToIso(value: string): string {
 const TA = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "textarea", hint });
 const IMG = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "image", hint });
 const IMAGES = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "images", hint });
+/** A product photo: previewed on the white plate the shop puts behind it. */
+const PRODUCT_IMG = (path: string, label: string, hint?: string): Field => ({
+  ...IMG(path, label, hint),
+  plate: true,
+});
+const PRODUCT_IMAGES = (path: string, label: string, hint?: string): Field => ({
+  ...IMAGES(path, label, hint),
+  plate: true,
+});
 const STR = (path: string, label: string, hint?: string): Field => ({ path, label, kind: "strings", hint });
 
 const GEAR_ITEM_FIELDS: Field[] = [
@@ -182,8 +193,8 @@ const GEAR_ITEM_FIELDS: Field[] = [
   T("name", "Gear name"),
   T("brand", "Brand"),
   T("model", "Model"),
-  IMG("image", "Gear photo"),
-  IMAGES(
+  PRODUCT_IMG("image", "Gear photo"),
+  PRODUCT_IMAGES(
     "images",
     "More photos",
     "Optional. Every photo here joins the main one as a slider on the shop page — the first slide is the photo above.",
@@ -384,7 +395,7 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
         T("price", "Price", "e.g. ₹4,250 or OEM · included"),
         CLR("color", "Pointer colour", "Empty = default gold"),
         CLR("pulseColor", "Pulsing ring colour", "The wave that ripples out of the dot. Empty = matches the pointer colour"),
-        IMG("image", "Product image URL"),
+        PRODUCT_IMG("image", "Product image URL"),
         T("link", "Product link", "Opens in a new tab"),
         { path: "x", label: "X position % (0–100, left → right)", kind: "number" },
         { path: "y", label: "Y position % (0–100, top → bottom)", kind: "number" },
@@ -707,12 +718,14 @@ export function FieldRow({
           value={(value as string) ?? ""}
           onChange={(v) => onChange(v)}
           hint={field.hint}
+          plate={field.plate}
         />
       ) : field.kind === "images" ? (
         <ImagesField
           value={(value as string[]) ?? []}
           onChange={(v) => onChange(v)}
           hint={field.hint}
+          plate={field.plate}
         />
       ) : (
         <input
@@ -5534,7 +5547,7 @@ function ShopPanel() {
                     </div>
                   </div>
                   {open && (
-                    <div className="grid gap-3.5 border-t border-white/[0.07] bg-black/10 p-3.5 sm:p-4">
+                    <div className="grid gap-3.5 border-t border-white/[0.07] p-3.5 sm:p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-saffron-200">Edit this pick</p>
