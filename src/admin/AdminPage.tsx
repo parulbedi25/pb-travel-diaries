@@ -3805,14 +3805,27 @@ function SectionNote({ children }: { children: React.ReactNode }) {
  * behind a menu, and sticks to the top on a wide one so switching sections
  * never means scrolling back.
  */
+/**
+ * A backup holds every account's password hash, every email address and the
+ * database password, so it belongs to the owner alone — the server refuses it
+ * for anybody else, and the dashboard does not offer it either. Everybody can
+ * still change their own password: that part of the account section stays.
+ */
+const OWNER_ONLY_SECTIONS: SettingsSection[] = ["backup"];
+
 function SettingsPanel() {
+  const { account } = useSite();
+  const owner = account?.role === "owner";
+  const sections = owner
+    ? SETTINGS_SECTIONS
+    : SETTINGS_SECTIONS.filter((s) => !OWNER_ONLY_SECTIONS.includes(s.id));
   const [section, setSection] = useState<SettingsSection>("identity");
-  const active = SETTINGS_SECTIONS.find((s) => s.id === section) ?? SETTINGS_SECTIONS[0];
+  const active = sections.find((s) => s.id === section) ?? sections[0];
 
   return (
     <div className="grid items-start gap-6 xl:grid-cols-[230px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2 xl:sticky xl:top-24 xl:flex-col">
-        {SETTINGS_SECTIONS.map((s) => (
+        {sections.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -3839,7 +3852,7 @@ function SettingsPanel() {
         {section === "map" && <SettingsMap />}
         {section === "loader" && <SettingsLoader />}
         {section === "account" && <SettingsAccount />}
-        {section === "backup" && <SettingsBackup />}
+        {section === "backup" && owner && <SettingsBackup />}
         {section === "history" && <SettingsHistory />}
       </div>
     </div>
@@ -4171,6 +4184,7 @@ function SettingsLoader() {
 
 /** The owner's own password, and who may edit the site. */
 function SettingsAccount() {
+  const { account } = useSite();
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
   const [cf, setCf] = useState("");
@@ -4246,7 +4260,17 @@ function SettingsAccount() {
             </div>
           </form>
 
-      <AccessPanel />
+      {/* The account list is every editor's name and email address, and only
+          the owner may add, disable or delete one. The server enforces it; this
+          keeps an admin from being offered a panel that would only 403. */}
+      {account?.role === "owner" ? (
+        <AccessPanel />
+      ) : (
+        <p className="rounded-3xl glass p-5 text-xs leading-relaxed text-zinc-500">
+          Accounts are managed by the site owner. Ask them to add, disable or remove an editor —
+          you can still change your own password above.
+        </p>
+      )}
     </div>
   );
 }

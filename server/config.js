@@ -128,6 +128,14 @@ export const config = {
   /** Requests per minute per IP across the whole API. 0 turns it off. */
   rateLimitPerMinute: int(process.env.RATE_LIMIT_PER_MINUTE, 240),
   /**
+   * How long the sign-in log is kept, in days.
+   *
+   * Each row holds an IP address and a browser string — personal data held for
+   * one purpose (noticing an attack on the account) and deleted once that is
+   * no longer plausible. 0 keeps it forever, which is not recommended.
+   */
+  authEventRetentionDays: Math.max(0, int(process.env.AUTH_EVENT_RETENTION_DAYS, 180)),
+  /**
    * Usernames allowed to sign up after the first account exists. This is only
    * the fallback: the dashboard's "Allow public sign-up" setting, stored in
    * the database, is what actually decides once the site is installed.

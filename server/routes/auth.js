@@ -11,6 +11,7 @@ import {
   passwordProblem,
   recordEvent,
   requireEditor,
+  requireOwner,
   requireUser,
   signupAllowed,
   startSession,
@@ -245,7 +246,7 @@ authRouter.post("/password", requireUser, async (req, res, next) => {
 
 /* ── account management, admin only ─────────────────────────────────────── */
 
-authRouter.get("/users", requireEditor, async (req, res, next) => {
+authRouter.get("/users", requireOwner, async (req, res, next) => {
   try {
     const repo = await getRepo();
     res.json({ users: await repo.listUsers() });
@@ -254,7 +255,7 @@ authRouter.get("/users", requireEditor, async (req, res, next) => {
   }
 });
 
-authRouter.post("/users", requireEditor, async (req, res, next) => {
+authRouter.post("/users", requireOwner, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const username = normaliseUsername(req.body?.username);
@@ -298,7 +299,7 @@ authRouter.post("/users", requireEditor, async (req, res, next) => {
  * the next request — including when the flag was set straight in the database,
  * because a session is looked up through `users.disabled` on every call.
  */
-authRouter.patch("/users/:id", requireEditor, async (req, res, next) => {
+authRouter.patch("/users/:id", requireOwner, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const id = Number(req.params.id);
@@ -337,7 +338,7 @@ authRouter.patch("/users/:id", requireEditor, async (req, res, next) => {
   }
 });
 
-authRouter.delete("/users/:id", requireEditor, async (req, res, next) => {
+authRouter.delete("/users/:id", requireOwner, async (req, res, next) => {
   try {
     const repo = await getRepo();
     const id = Number(req.params.id);
@@ -362,7 +363,7 @@ authRouter.delete("/users/:id", requireEditor, async (req, res, next) => {
   }
 });
 
-authRouter.get("/events", requireEditor, async (req, res, next) => {
+authRouter.get("/events", requireOwner, async (req, res, next) => {
   try {
     const repo = await getRepo();
     res.json({ events: await repo.listAuthEvents(Number(req.query.limit) || 100) });

@@ -7,6 +7,7 @@ import { config } from "../config.js";
 import { getRepo } from "../db/index.js";
 import { requireEditor } from "../lib/auth.js";
 import { bundledMedia } from "../lib/bundledMedia.js";
+import { stripImageMetadata } from "../lib/imageMetadata.js";
 
 export const mediaRouter = express.Router();
 
@@ -132,14 +133,19 @@ mediaRouter.post("/media", requireEditor, upload.single("file"), async (req, res
     // Random name on disk: no collisions, no path traversal, no leaking the
     // original filename in a public URL.
     const filename = `${id}.${ext}`;
-    await fs.writeFile(path.join(config.mediaDir, filename), req.file.buffer);
+    // A photo straight off a phone carries GPS coordinates, the device serial
+    // and the time it was taken. Every upload is served from a public URL, so
+    // that metadata is dropped before the bytes are stored — the pixels are
+    // untouched, only the personal data goes.
+    const clean = stripImageMetadata(req.file.buffer, req.file.mimetype);
+    await fs.writeFile(path.join(config.mediaDir, filename), clean.buffer);
 
     const row = await repo.insertMedia({
       id,
       filename,
       originalName,
       mime: req.file.mimetype || "",
-      size: req.file.size,
+      size: clean.buffer.length,
       kind: kindFor(ext),
       ext,
       tags: normaliseTags(req.body?.tags).join(","),
@@ -199,15 +205,17 @@ mediaRouter.put("/media/:id/file", requireEditor, upload.single("file"), async (
       return res.status(413).json({ error: "That image is too large to store." });
     }
 
-    // Same filename, so the URL — and every field using it — stays put.
-    await fs.writeFile(path.join(config.mediaDir, row.filename), req.file.buffer);
+    // Same filename, so the URL — and every field using it — stays put. The
+    // edited image is scrubbed of metadata just like a fresh upload.
+    const clean = stripImageMetadata(req.file.buffer, req.file.mimetype);
+    await fs.writeFile(path.join(config.mediaDir, row.filename), clean.buffer);
     const updated = await repo.updateMediaFile(row.id, {
       mime: req.file.mimetype || row.mime,
-      size: req.file.size,
+      size: clean.buffer.length,
     });
     if (!updated) return res.status(404).json({ error: "No such file." });
 
-    res.json({ item: toItem({ ...row, mime: req.file.mimetype || row.mime, size: req.file.size }) });
+    res.json({ item: toItem({ ...row, mime: req.file.mimetype || row.mime, size: clean.buffer.length }) });
   } catch (error) {
     next(error);
   }

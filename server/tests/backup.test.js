@@ -221,12 +221,14 @@ test("restoring writes every account, image row and setting back", async () => {
   assert.equal(result.mediaFiles, 1, "the photograph was unpacked into MEDIA_DIR");
 
   const sql = connection.queries.map((entry) => entry.sql);
+  // Table names are quoted for MySQL, which is also the visible proof that
+  // they went through the allowlist in sqlSafety before reaching the driver.
   const insertUsers = connection.queries.find((entry) =>
-    entry.sql.startsWith("INSERT INTO users (id, username, email, password_hash, role, disabled, created_at, last_login_at)"),
+    entry.sql.startsWith("INSERT INTO `users` (id, username, email, password_hash, role, disabled, created_at, last_login_at)"),
   );
   assert.ok(insertUsers, "users are inserted by their real column names");
   assert.ok(insertUsers.params.includes("$2b$10$abcdefghijklmnopqrstuv"), "the password hash travels");
-  assert.ok(sql.some((statement) => statement.startsWith("INSERT INTO media")));
+  assert.ok(sql.some((statement) => statement.startsWith("INSERT INTO `media`")));
   assert.ok(sql.some((statement) => statement.includes("INSERT INTO site_content")));
   assert.ok(sql.some((statement) => statement.includes("INSERT INTO settings")));
   assert.ok(

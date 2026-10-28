@@ -141,6 +141,35 @@ export async function requireEditor(req, res, next) {
 }
 
 /**
+ * 403 unless the account is the owner.
+ *
+ * A backup carries every account's password hash, every email address and the
+ * database password; the access log carries every visitor's IP address; the
+ * account list is people's personal details. An admin edits the website —
+ * that is a different job from holding everyone's data, so these stay with the
+ * one account that owns the site. The owner is the first account created and
+ * cannot be demoted from the dashboard.
+ */
+export async function requireOwner(req, res, next) {
+  try {
+    const user = await currentUser(req);
+    if (!user) return res.status(401).json({ error: "Sign in to continue." });
+    if (user.role !== "owner") {
+      return res.status(403).json({ error: "Only the site owner can do that." });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** True for the one account that owns the site. */
+export function isOwner(user) {
+  return Boolean(user) && user.role === "owner";
+}
+
+/**
  * Whether the public sign-up page is open. The dashboard setting wins; the
  * environment variable is the fallback for a database created before the
  * setting existed.

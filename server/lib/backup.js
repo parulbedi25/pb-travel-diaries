@@ -1,4 +1,4 @@
-import { databaseIdentifier } from "./sqlSafety.js";
+import { databaseIdentifier, tableIdentifier } from "./sqlSafety.js";
 /**
  * The daily backup, and the importer that puts one back.
  *
@@ -394,12 +394,21 @@ function sqlDateMs(value) {
  */
 async function insertRows(connection, table, columns, rows) {
   if (!rows?.length) return 0;
+  // Both the table and the column names are put into the statement as text, so
+  // neither may come from the archive: the table is checked against the app's
+  // own list, and every column name must be a plain identifier.
+  const target = tableIdentifier(table);
+  for (const column of columns) {
+    if (!/^[a-z_][a-z0-9_]*$/i.test(column)) {
+      throw new Error(`Refusing to restore into an unknown column: ${String(column).slice(0, 40)}`);
+    }
+  }
   const CHUNK = 100;
   for (let start = 0; start < rows.length; start += CHUNK) {
     const slice = rows.slice(start, start + CHUNK);
     const placeholders = slice.map(() => `(${columns.map(() => "?").join(", ")})`).join(", ");
     await connection.query(
-      `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${placeholders}`,
+      `INSERT INTO ${target} (${columns.join(", ")}) VALUES ${placeholders}`,
       slice.flat(),
     );
   }
@@ -513,7 +522,9 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
           "users",
           "settings",
         ]) {
-          await connection.query(`DELETE FROM ${table}`);
+          // The name is checked against the tables the app owns, so this
+          // cannot become a place where a stray value reaches the driver.
+          await connection.query(`DELETE FROM ${tableIdentifier(table)}`);
         }
       }
 
@@ -662,10 +673,10 @@ export async function restoreBackup({ zipPath, database, replace = false, connec
     if (hasMemberTables) {
       for (const table of ["member_bikes", "member_journeys"]) {
         const [max] = await connection
-          .query(`SELECT COALESCE(MAX(id), 0) AS n FROM ${table}`)
+          .query(`SELECT COALESCE(MAX(id), 0) AS n FROM ${tableIdentifier(table)}`)
           .catch(() => [[{ n: 0 }]]);
         await connection
-          .query(`ALTER TABLE ${table} AUTO_INCREMENT = ${Number(max?.[0]?.n ?? 0) + 1}`)
+          .query(`ALTER TABLE ${tableIdentifier(table)} AUTO_INCREMENT = ${Number(max?.[0]?.n ?? 0) + 1}`)
           .catch(() => undefined);
       }
     }
