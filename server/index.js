@@ -13,15 +13,18 @@ import { config } from "./config.js";
 import { createApp } from "./app.js";
 import { closeRepo, getRepo } from "./db/index.js";
 import { startBackupScheduler, stopBackupScheduler } from "./lib/backup.js";
+import { startAlertScheduler } from "./lib/alertSweeper.js";
 
 const app = createApp();
 
 // Prove the database answers before accepting traffic, but do not refuse to
 // start if it is down: the health endpoint is more useful than a crash loop,
 // and the setup screen has to open even when nothing is configured.
+let readyRepo = null;
 if (config.hasDatabase) {
   try {
     const repo = await getRepo();
+    readyRepo = repo;
     await repo.ping();
     const schema = await repo.migrate();
     console.log(`[db] connected (${repo.kind}), schema v${schema.version}`);
@@ -49,10 +52,17 @@ const server = app.listen(config.port, () => {
 // a server that was asleep at the appointed hour still gets its backup.
 startBackupScheduler();
 
+// The weather for the route in the live tracker, swept every half hour. It runs
+// on the server so every member reads one shared answer, and it is started only
+// once the database answered — an alert sweep with no content has nothing to
+// sweep.
+const stopAlerts = readyRepo ? startAlertScheduler({ repo: readyRepo }) : () => {};
+
 /** Finish in-flight work before exiting, so a deploy never truncates a save. */
 async function shutdown(signal) {
   console.log(`[server] ${signal} — closing`);
   stopBackupScheduler();
+  stopAlerts();
   server.close(async () => {
     await closeRepo();
     process.exit(0);

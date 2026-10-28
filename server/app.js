@@ -12,6 +12,7 @@ import { mediaRouter } from "./routes/media.js";
 import { backupsRouter } from "./routes/backups.js";
 import { mapsRouter } from "./routes/maps.js";
 import { memberRouter } from "./routes/member.js";
+import { alertsRouter } from "./routes/alerts.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
 import { isMissingSchema } from "./db/migrationErrors.js";
@@ -187,6 +188,7 @@ const SITE_CSP = [
   // A member's own garage and rides. Session-scoped, owner-scoped, and
   // deliberately apart from the site's content: nothing here publishes.
   api.use(memberRouter);
+  api.use(alertsRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
   app.use("/api", api);
@@ -292,6 +294,13 @@ const SITE_CSP = [
     }
     if (error?.type === "entity.too.large") {
       return res.status(413).json({ error: "That request was too large." });
+    }
+
+    // A route that says what is wrong with the input, and how wrong: these are
+    // the sentences a person reads and acts on, not a stack trace.
+    const stated = Number(error?.status);
+    if (Number.isInteger(stated) && stated >= 400 && stated < 500) {
+      return res.status(stated).json({ error: error.message });
     }
 
     // The code is ahead of the database: this deploy arrived before its

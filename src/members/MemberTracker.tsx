@@ -56,6 +56,8 @@ import {
   type MemberJourney,
   type MemberStop,
 } from "../api/memberApi";
+import { useAlerts } from "../hooks/useAlerts";
+import AlertBell from "../components/AlertBell";
 import { useSite } from "../store/siteContent";
 import { parseRouteLink } from "../utils/mapLinks";
 import { cn } from "../utils/cn";
@@ -492,6 +494,16 @@ export default function MemberTracker() {
   const [stopLat, setStopLat] = useState("");
   const [stopLng, setStopLng] = useState("");
 
+  /**
+   * The alerts about the road ahead.
+   *
+   * Weather on the live route is raised by the server's half-hourly sweep, so
+   * every member reads the same answer; a road closure is posted by the owner.
+   * Neither belongs to this page's own data, so a failure here stays a quiet
+   * bell rather than an error over the garage.
+   */
+  const alerts = useAlerts(Boolean(account));
+
   /* garage editing */
   const [addingBike, setAddingBike] = useState(false);
   const [editingBike, setEditingBike] = useState<MemberBike | null>(null);
@@ -849,6 +861,15 @@ export default function MemberTracker() {
               <dd className="font-display text-sm font-semibold">{totalKm.toFixed(1)} km</dd>
             </div>
           </dl>
+          <AlertBell
+            alerts={alerts.alerts}
+            unread={alerts.unread}
+            loading={alerts.loading}
+            canPost={alerts.canPost}
+            onMarkRead={alerts.markRead}
+            onPostNotice={alerts.postNotice}
+            onRemove={alerts.remove}
+          />
         </div>
       </header>
 

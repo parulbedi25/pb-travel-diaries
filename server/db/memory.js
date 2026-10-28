@@ -24,8 +24,11 @@ export function createMemoryRepo() {
     settings: new Map([["theme", '"dark"']]),
     bikes: [],
     journeys: [],
+    alerts: [],
+    alertReads: [],
     nextBikeId: 1,
     nextJourneyId: 1,
+    nextAlertId: 1,
     nextUserId: 1,
   };
 
@@ -224,6 +227,75 @@ export function createMemoryRepo() {
       const before = state.journeys.length;
       state.journeys = state.journeys.filter((j) => !(j.id === Number(id) && j.userId === Number(userId)));
       return state.journeys.length < before;
+    },
+
+    /* ── route alerts ─────────────────────────────────────────────────── */
+
+    async listAlerts({ now = new Date().toISOString(), limit = 60 } = {}) {
+      const capped = Math.max(1, Math.min(200, Number(limit) || 60));
+      const at = String(now);
+      return state.alerts
+        .filter((alert) => !alert.expiresAt || String(alert.expiresAt) > at)
+        .sort((a, b) => (String(b.createdAt) === String(a.createdAt) ? b.id - a.id : String(b.createdAt) < String(a.createdAt) ? -1 : 1))
+        .slice(0, capped)
+        .map((alert) => clone(alert));
+    },
+
+    async insertAlerts(rows) {
+      let inserted = 0;
+      for (const alert of rows) {
+        if (!alert?.dedupeKey) continue;
+        if (state.alerts.some((existing) => existing.dedupeKey === alert.dedupeKey)) continue;
+        state.alerts.push({
+          id: state.nextAlertId++,
+          kind: alert.kind ?? "weather",
+          severity: alert.severity ?? "info",
+          title: alert.title ?? "",
+          body: alert.body ?? "",
+          place: alert.place ?? "",
+          lat: alert.lat ?? null,
+          lng: alert.lng ?? null,
+          source: alert.source ?? "weather",
+          routeSignature: alert.routeSignature ?? "",
+          dedupeKey: alert.dedupeKey,
+          createdAt: new Date().toISOString(),
+          expiresAt: alert.expiresAt ?? null,
+        });
+        inserted += 1;
+      }
+      return inserted;
+    },
+
+    async markAlertsRead(userId, ids, at = new Date().toISOString()) {
+      let marked = 0;
+      for (const id of ids) {
+        const key = `${Number(userId)}:${Number(id)}`;
+        if (state.alertReads.some((read) => `${read.userId}:${read.alertId}` === key)) continue;
+        state.alertReads.push({ userId: Number(userId), alertId: Number(id), readAt: at });
+        marked += 1;
+      }
+      return marked;
+    },
+
+    async readAlertIds(userId) {
+      return state.alertReads
+        .filter((read) => read.userId === Number(userId))
+        .map((read) => read.alertId);
+    },
+
+    async deleteAlert(id) {
+      const before = state.alerts.length;
+      state.alerts = state.alerts.filter((alert) => alert.id !== Number(id));
+      state.alertReads = state.alertReads.filter((read) => read.alertId !== Number(id));
+      return state.alerts.length < before;
+    },
+
+    async pruneAlerts(before = new Date().toISOString()) {
+      const at = String(before);
+      const beforeCount = state.alerts.length;
+      state.alerts = state.alerts.filter((alert) => !alert.expiresAt || String(alert.expiresAt) >= at);
+      state.alerts = state.alerts.filter((alert) => alert.expiresAt);
+      return beforeCount - state.alerts.length;
     },
 
     async createSession({ tokenHash, userId, expiresAt, ip, userAgent }) {

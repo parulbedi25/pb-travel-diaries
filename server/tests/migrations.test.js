@@ -84,12 +84,14 @@ test("a fresh database ends at the latest version, member garage included", asyn
 
   assert.equal(result.version, LATEST_VERSION);
   assert.equal(result.upgradedFrom, 0);
-  assert.deepEqual(result.applied, [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(result.applied, [1, 2, 3, 4, 5, 6, 7, 8]);
 
   const statements = db.statements().join("\n");
   assert.match(statements, /CREATE TABLE IF NOT EXISTS member_bikes/);
   assert.match(statements, /CREATE TABLE IF NOT EXISTS member_journeys/);
   assert.match(statements, /CREATE INDEX member_journeys_bike/);
+  assert.match(statements, /CREATE TABLE IF NOT EXISTS route_alerts/);
+  assert.match(statements, /CREATE TABLE IF NOT EXISTS alert_reads/);
   assert.equal(db.ledger.size, LATEST_VERSION, "every version is in the ledger");
 });
 
@@ -98,7 +100,7 @@ test("a database that is behind runs only what is new", async () => {
   const result = await applySchema(db);
 
   assert.equal(result.upgradedFrom, 4);
-  assert.deepEqual(result.applied, [5, 6, 7], "the member garage, its index and media tags");
+  assert.deepEqual(result.applied, [5, 6, 7, 8], "the member garage, its index, media tags and route alerts");
 
   const statements = db.statements().join("\n");
   assert.ok(!statements.includes("MODIFY event ENUM"), "no shipped migration is replayed");
@@ -142,7 +144,7 @@ test("an upgrade interrupted halfway is finished by running it again", async () 
   });
 
   const result = await applySchema(second);
-  assert.deepEqual(result.applied, [3, 4, 5, 6, 7]);
+  assert.deepEqual(result.applied, [3, 4, 5, 6, 7, 8]);
   assert.equal(second.ledger.has(3), true, "and it finishes, rather than failing forever");
 });
 
@@ -176,15 +178,15 @@ test("a dry run says what is waiting and changes nothing", async () => {
   assert.equal(plan.latest, LATEST_VERSION);
   assert.deepEqual(
     plan.pending.map((entry) => entry.version),
-    [5, 6, 7],
+    [5, 6, 7, 8],
   );
   assert.deepEqual(
     plan.pending.map((entry) => entry.name),
-    ["member garages and journeys", "member garage lookups", "media tags"],
+    ["member garages and journeys", "member garage lookups", "media tags", "route alerts"],
   );
   assert.deepEqual(
     plan.pending.map((entry) => entry.statements),
-    [2, 1, 1],
+    [2, 1, 1, 2],
     "each step says how many statements it is made of",
   );
   assert.ok(
@@ -198,9 +200,10 @@ test("migration status still hands back the entries themselves", async () => {
   const status = await migrationStatus(db);
   assert.equal(status.installed, 5);
   assert.equal(status.latest, LATEST_VERSION);
-  assert.equal(status.pending.length, 2);
+  assert.equal(status.pending.length, 3);
   assert.equal(status.pending[0].version, 6);
   assert.equal(status.pending[1].version, 7);
+  assert.equal(status.pending[2].version, 8);
   assert.equal(typeof status.pending[0].up, "function", "callers can still run it");
 });
 
@@ -276,14 +279,14 @@ test("every SQLite upgrade lands, including the member indexes", async () => {
   const repo = await createSqliteRepo(file);
   try {
     const first = await repo.migrate();
-    assert.equal(first.version, 5, "the SQLite ledger reaches its own latest");
-    assert.deepEqual(first.applied, [1, 2, 3, 4, 5]);
+    assert.equal(first.version, 6, "the SQLite ledger reaches its own latest");
+    assert.deepEqual(first.applied, [1, 2, 3, 4, 5, 6]);
 
     const twice = await repo.migrate();
     assert.deepEqual(twice.applied, [], "a second run has nothing to do");
 
     const status = await repo.schemaStatus();
-    assert.equal(status.installed, 5);
+    assert.equal(status.installed, 6);
     assert.deepEqual(status.pending, []);
   } finally {
     await repo.close();
@@ -323,13 +326,13 @@ test("an interrupted SQLite upgrade resumes instead of failing", async () => {
   // Pretend the last version was interrupted after its statement ran but before
   // the ledger row was written.
   const db = new DatabaseSync(file);
-  db.prepare("DELETE FROM pb_schema_migrations WHERE version = 5").run();
+  db.prepare("DELETE FROM pb_schema_migrations WHERE version = 6").run();
   db.close();
 
   const again = await createSqliteRepo(file);
   try {
     const result = await again.migrate();
-    assert.deepEqual(result.applied, [5], "it is replayed, not refused");
+    assert.deepEqual(result.applied, [6], "it is replayed, not refused");
   } finally {
     await again.close();
   }
@@ -352,7 +355,7 @@ test("SQLite status names what is waiting, before anything runs", async () => {
     assert.equal(plan.latest, SQLITE_VERSION);
     assert.deepEqual(
       plan.pending.map((entry) => entry.version),
-      [1, 2, 3, 4, 5],
+      [1, 2, 3, 4, 5, 6],
     );
     for (const entry of plan.pending) {
       assert.equal(typeof entry.statements, "number");
@@ -373,13 +376,14 @@ test("SQLite status names what is waiting, before anything runs", async () => {
   // skipped a release: the index and the media tags column never landed.
   const behind = new DatabaseSync(file);
   try {
-    behind.prepare("DELETE FROM pb_schema_migrations WHERE version IN (4, 5)").run();
+    behind.prepare("DELETE FROM pb_schema_migrations WHERE version IN (4, 5, 6)").run();
     behind.exec("DROP INDEX member_journeys_bike");
     const plan = sqliteMigrationStatus(behind);
     assert.equal(plan.installed, 3);
-    assert.deepEqual(plan.pending.map((entry) => entry.version), [4, 5]);
+    assert.deepEqual(plan.pending.map((entry) => entry.version), [4, 5, 6]);
     assert.equal(plan.pending[0].name, "member garage lookups");
     assert.equal(plan.pending[1].name, "media tags");
+    assert.equal(plan.pending[2].name, "route alerts");
   } finally {
     behind.close();
   }
@@ -388,7 +392,7 @@ test("SQLite status names what is waiting, before anything runs", async () => {
   // column is already on the table, so its replay meets its own work.
   const again = await createSqliteRepo(file);
   try {
-    assert.deepEqual((await again.migrate()).applied, [4, 5]);
+    assert.deepEqual((await again.migrate()).applied, [4, 5, 6]);
   } finally {
     await again.close();
   }

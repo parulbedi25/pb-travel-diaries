@@ -82,7 +82,7 @@ test("the schema creates tables, records its version and upgrades only once", as
   const first = await applySchema(fresh);
   assert.equal(first.version, LATEST_VERSION);
   assert.equal(first.upgradedFrom, 0);
-  assert.deepEqual(first.applied, [1, 2, 3, 4, 5, 6, 7], "a new database replays every migration in order");
+  assert.deepEqual(first.applied, [1, 2, 3, 4, 5, 6, 7, 8], "a new database replays every migration in order");
 
   const statements = fresh.seen.map((entry) => entry.sql);
   assert.ok(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS users")));
@@ -134,7 +134,7 @@ test("a database from before the ledger is adopted, not re-migrated", async () =
   const result = await applySchema(legacy);
 
   assert.equal(result.upgradedFrom, 2);
-  assert.deepEqual(result.applied, [3, 4, 5, 6, 7], "only the new migrations run");
+  assert.deepEqual(result.applied, [3, 4, 5, 6, 7, 8], "only the new migrations run");
 
   const statements = legacy.seen.map((entry) => entry.sql);
   assert.ok(
@@ -151,7 +151,7 @@ test("a database from before the ledger is adopted, not re-migrated", async () =
       String(entry.params?.[1] ?? "").includes("(adopted)"),
   );
   assert.equal(adopted.length, 2, "versions 1 and 2 are recorded as adopted");
-  assert.deepEqual(legacy.applied, new Set([1, 2, 3, 4, 5, 6, 7]));
+  assert.deepEqual(legacy.applied, new Set([1, 2, 3, 4, 5, 6, 7, 8]));
 });
 
 test("a restore can stop at the backup's schema version and catch up afterwards", async () => {
@@ -165,7 +165,7 @@ test("a restore can stop at the backup's schema version and catch up afterwards"
   );
 
   const rest = await applySchema(executor);
-  assert.deepEqual(rest.applied, [2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(rest.applied, [2, 3, 4, 5, 6, 7, 8]);
 });
 
 test("setup input is validated before any connection is opened", () => {

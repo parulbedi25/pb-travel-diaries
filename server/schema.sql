@@ -14,7 +14,7 @@
 --
 -- Written for MariaDB 10.3+ and MySQL 5.7/8.0: no JSON column type, no CHECK
 -- constraints and no RETURNING. JSON is kept in LONGTEXT and parsed in the
--- application. Schema version: 6.
+-- application. Schema version: 8.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS site_content (
@@ -163,6 +163,39 @@ CREATE INDEX member_journeys_bike ON member_journeys (bike_id);
 
 INSERT IGNORE INTO schema_migrations (version, name) VALUES (6, 'member garage lookups');
 
-INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '6');
+ALTER TABLE media ADD COLUMN tags VARCHAR(400) NOT NULL DEFAULT '';
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (7, 'media tags');
+
+CREATE TABLE IF NOT EXISTS route_alerts (
+        id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        kind            VARCHAR(24) NOT NULL DEFAULT 'weather',
+        severity        VARCHAR(16) NOT NULL DEFAULT 'info',
+        title           VARCHAR(200) NOT NULL,
+        body            VARCHAR(1000) NOT NULL DEFAULT '',
+        place           VARCHAR(160) NOT NULL DEFAULT '',
+        lat             DECIMAL(9,6) NULL,
+        lng             DECIMAL(9,6) NULL,
+        source          VARCHAR(24) NOT NULL DEFAULT 'weather',
+        dedupe_key      VARCHAR(200) NOT NULL DEFAULT '',
+        route_signature VARCHAR(4000) NOT NULL DEFAULT '',
+        created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at      DATETIME NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY route_alerts_dedupe (dedupe_key),
+        KEY route_alerts_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS alert_reads (
+        alert_id  BIGINT UNSIGNED NOT NULL,
+        user_id   BIGINT UNSIGNED NOT NULL,
+        read_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (alert_id, user_id),
+        KEY alert_reads_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (version, name) VALUES (8, 'route alerts');
+
+INSERT IGNORE INTO settings (setting_key, value) VALUES ('schema_version', '8');
 
 INSERT IGNORE INTO settings (setting_key, value) VALUES ('theme', '"dark"');
