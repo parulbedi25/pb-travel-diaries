@@ -358,6 +358,20 @@ export default function MachineExperience({ data }: { data: MachineData }) {
    * is. The row opens when it is clicked, and closes when it is clicked again.
    */
   const isExpanded = (idx: number) => listOpen === idx;
+  /** Whether an event's destination is still somewhere inside the parts list. */
+  const isInsidePartsPanel = (target: EventTarget | null) => {
+    const panel = partsPanelRef.current;
+    const node = target as Node | null;
+    return Boolean(panel && node && node.nodeType === 1 && panel.contains(node));
+  };
+  /** Whether the cursor is physically over the parts list right now. */
+  const isPointerOverPartsPanel = () => {
+    try {
+      return Boolean(partsPanelRef.current?.matches(":hover"));
+    } catch {
+      return false;
+    }
+  };
   /** The part being shown on the bike, whether that came from hover or a click. */
   const isFocused = (idx: number) => focusIdx === idx;
   const [dragging, setDragging] = useState<string | null>(null);
@@ -469,13 +483,17 @@ export default function MachineExperience({ data }: { data: MachineData }) {
    * keeps its pressed state, and the photo is scrolled into view because on a
    * narrow screen the chips sit *below* it.
    */
-  const selectFromList = (i: number) => {
+  const selectFromList = (i: number, fromList = false) => {
     const closing = listOpen === i;
     setListOpen(closing ? null : i);
     setPinFromList(!closing);
     setPinnedIdx(closing ? null : i);
     setHoverIdx(null);
-    setListHoverIdx(null);
+    // A click in the list is also the cursor *being on* the list. Keeping the
+    // row as the list's focus means closing an expanded part leaves the bike
+    // where it is, instead of zooming out from under the cursor that is still
+    // sitting on the row. It is released when the cursor leaves the panel.
+    setListHoverIdx(fromList ? i : null);
     if (!closing) scrollStageIntoViewOnPhone();
   };
 
@@ -821,7 +839,7 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                       <button
                         type="button"
                         data-parts-row={idx}
-                        onClick={() => selectFromList(idx)}
+                        onClick={() => selectFromList(idx, true)}
                         // Pointing at a row (or tabbing to it) shows that part
                         // on the bike. Touch has no hover — the tap below does
                         // the same job and keeps it.
@@ -831,14 +849,24 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                           setListHoverIdx(idx);
                           setHoverIdx(null);
                         }}
-                        onPointerLeave={() => {
+                        onPointerLeave={(event) => {
+                          // Moving from a row to another row, or to the panel's
+                          // own edge, is still being on the list: the bike has
+                          // no business zooming out between two rows. Only
+                          // leaving the panel releases the focus.
+                          if (isInsidePartsPanel(event.relatedTarget)) return;
                           setListHoverIdx((current) => (current === idx ? null : current));
                         }}
                         onFocus={() => {
                           setListHoverIdx(idx);
                           setHoverIdx(null);
                         }}
-                        onBlur={() => {
+                        onBlur={(event) => {
+                          // Same rule as leaving the row: the list keeps the
+                          // bike focused while the cursor is still on it, so a
+                          // click that lands on the panel rather than on a row
+                          // does not zoom the photo back out.
+                          if (isInsidePartsPanel(event.relatedTarget) || isPointerOverPartsPanel()) return;
                           setListHoverIdx((current) => (current === idx ? null : current));
                         }}
                         aria-expanded={isOn}
