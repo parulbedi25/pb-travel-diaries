@@ -257,6 +257,7 @@ export default function TrackerMap({
   );
   const markWeather = useWeatherDetails(marks);
 
+
   const toPx = useCallback(
     (point: LatLng) => {
       const projected = projector.toXY({ lat: point[0], lng: point[1] });
@@ -268,6 +269,24 @@ export default function TrackerMap({
     (point: { lat: number; lng: number }) => projector.toXY(point),
     [projector],
   );
+
+  // A pill of icon + degrees is about forty pixels wide, and a hundred
+  // kilometres of a two-thousand-kilometre ride is not: on a phone the whole
+  // route can be ninety pixels tall, so every bubble would land on its
+  // neighbour and the row would read as a smear. Bubbles are placed in order
+  // and one that would sit on top of one already placed is left out — the
+  // forecast for that stretch is still in the card of the bubble beside it,
+  // and nothing overlaps at any screen size.
+  const bubbleSpots = useMemo(() => {
+    const gap = 40;
+    const kept: { mark: (typeof marks)[number]; x: number; y: number }[] = [];
+    for (const mark of marks) {
+      const point = toPx([mark.lat, mark.lng]);
+      if (kept.some((seen) => Math.hypot(seen.x - point.x, seen.y - point.y) < gap)) continue;
+      kept.push({ mark, x: point.x, y: point.y });
+    }
+    return kept;
+  }, [marks, toPx]);
 
   const { covered, remaining } = useMemo(
     () => splitRouteAtProgress(geometry, stops),
@@ -384,20 +403,17 @@ export default function TrackerMap({
 
       {/* A weather bubble every hundred kilometres, each one opening into the
           forecast for its own stretch of road. */}
-      {marks.map((mark, index) => {
-        const point = toPx([mark.lat, mark.lng]);
-        return (
-          <WeatherBubble
-            key={`km-${mark.km}`}
-            mark={mark}
-            detail={markWeather?.[index] ?? null}
-            x={point.x}
-            y={point.y}
-            width={width}
-            height={height}
-          />
-        );
-      })}
+      {bubbleSpots.map((spot) => (
+        <WeatherBubble
+          key={`km-${spot.mark.km}`}
+          mark={spot.mark}
+          detail={markWeather?.[marks.indexOf(spot.mark)] ?? null}
+          x={spot.x}
+          y={spot.y}
+          width={width}
+          height={height}
+        />
+      ))}
 
       {/* Radar rings on wherever PB actually is. */}
       {liveIndex >= 0 && (
@@ -477,11 +493,7 @@ export default function TrackerMap({
                     point.x > 86 ? "-left-6" : "-right-6",
                   )}
                 >
-                  <WeatherBadge
-                    conditions={conditions?.[index]}
-                    compact
-                    showTemp={stops.length <= 8}
-                  />
+                  <WeatherBadge conditions={conditions?.[index]} compact />
                 </span>
               )}
               {labels && (
