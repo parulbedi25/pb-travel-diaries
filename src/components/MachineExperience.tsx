@@ -311,7 +311,16 @@ export default function MachineExperience({ data }: { data: MachineData }) {
   const [listHoverIdx, setListHoverIdx] = useState<number | null>(null);
   /** A pin that came from the list keeps the list still; a pointer's pin reorders it. */
   const [pinFromList, setPinFromList] = useState(false);
-  const focusIdx = hoverIdx ?? listHoverIdx ?? pinnedIdx;
+  /**
+   * What the bike is showing.
+   *
+   * Hover wins (it is the newest intent), then a pin made on the photo, then
+   * the *open row*: clicking a part expands it to be read, and the bike must
+   * stay on that part while it is read rather than drifting back to the whole
+   * photo. `listOpen` is the last resort, so the focus survives anything that
+   * clears a transient pin while a row is still expanded.
+   */
+  const focusIdx = hoverIdx ?? listHoverIdx ?? pinnedIdx ?? listOpen;
   const bubbleIdx = hoverIdx ?? listHoverIdx ?? pinnedIdx;
   // The bike's pointers pulse exactly like the rider map's; visitors who ask
   // for less motion get the still ring instead.
@@ -337,6 +346,8 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
     : null;
   const zoomed = Boolean(zoomPoint);
+  const panX = zoomPoint ? (zoomPoint.x / 100 - 0.5) * (1 - MACHINE_ZOOM) * 100 : 0;
+  const panY = zoomPoint ? (zoomPoint.y / 100 - 0.5) * (1 - MACHINE_ZOOM) * 100 : 0;
   /**
    * Expansion is a click, and only a click.
    *
@@ -441,6 +452,10 @@ export default function MachineExperience({ data }: { data: MachineData }) {
       if (target?.closest?.("[data-machine-parts]")) return;
       setPinnedIdx(null);
       setHoverIdx(null);
+      // Clicking away is the way out of the whole thing: the expanded row
+      // closes too, so the bike returns to the full photo in the same gesture
+      // rather than leaving a part zoomed with nothing explaining why.
+      setListOpen(null);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -560,15 +575,24 @@ export default function MachineExperience({ data }: { data: MachineData }) {
         <div
           className="relative will-change-transform"
           style={{
-            transform: zoomed ? `scale(${MACHINE_ZOOM})` : "scale(1)",
-            transformOrigin: zoomPoint ? `${zoomPoint.x}% ${zoomPoint.y}%` : "50% 50%",
-            // Only the scale is animated. The origin is snapped: while it
-            // animates from the centre to the pointer, the pointer itself
-            // slides out from under the cursor, the hover drops, the photo
-            // zooms back out and the pointer returns — a zoom in / zoom out
-            // loop. Snapping the origin means the point under the cursor is
-            // the one that stays put.
-            transition: "transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1)",
+            // Zooming on a *translation* rather than on a moving
+            // transform-origin is what lets the photo travel between two
+            // pointers. With the origin, the point under the cursor stayed put
+            // and everything else jumped to its new place in one frame; here
+            // the whole transform is animatable, so moving the cursor from one
+            // part to the next is a short slide instead of a snap.
+            //
+            // translate keeps the focused point exactly where it was on
+            // screen — the same framing the origin gave — so the photo still
+            // does not slide out from under a hovering cursor:
+            //   tx = (x − 0.5) · (1 − zoom)   as a percentage of the width.
+            transform: zoomed
+              ? `translate(${panX.toFixed(3)}%, ${panY.toFixed(3)}%) scale(${MACHINE_ZOOM})`
+              : "translate(0%, 0%) scale(1)",
+            transformOrigin: "50% 50%",
+            transition: reduceMotion
+              ? "none"
+              : "transform 520ms cubic-bezier(0.22, 0.61, 0.36, 1)",
           }}
         >
       {/* Length ratio of the shipped file (1920×1080): the box holds this
