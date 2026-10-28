@@ -56,7 +56,13 @@
  *  - **The link arrives wrapped.** Copied out of a chat or a notes app it can
  *    come as `[text](https://…)`, with `&amp;` for `&`, or inside `<>`. None of
  *    that is part of the address, so it is peeled off before anything else.
+ *  - **Google's own state is not a stop.** A shared directions URL carries
+ *    `am=t` (travel mode) beside the camera. Read as a place it becomes an
+ *    unplaceable stop called "am=t", and because one unplaceable stop used to
+ *    fail the whole import, pasting a perfectly good link did nothing at all.
  */
+
+import { shortPlaceName } from "./placeNames";
 
 /** Which service the link came from — and what the dashboard selects. */
 export type MapLinkSource = "google" | "bing" | "apple" | "openstreetmap" | "other";
@@ -143,9 +149,14 @@ function pointFromSegment(segment: string): RoutePoint | null {
   if (text.startsWith("@")) return null;
   const coords = readCoords(text);
   if (coords) return coords;
-  // Google writes URL state into the path (`data=!4m2!4m1!3e0`), which is not
-  // a place and must never become a stop called "data=!4m2".
+  // Google writes its own state into the path — `data=!4m2!4m1!3e0`, but also
+  // `am=t` for the travel mode. That is not a place, and must never become a
+  // stop called "am=t": it cannot be placed, and one unplaceable stop is enough
+  // to refuse the whole route, which is how a perfectly good seven-stop link
+  // ended up doing nothing when it was imported. Anything shaped `key=value`
+  // is URL state, not somewhere a rider stops.
   if (/^(data=|!|\?)/.test(text)) return null;
+  if (/^[a-z_][a-z0-9_]*=/i.test(text)) return null;
   return { label: text.replace(/\s+/g, " ") };
 }
 
@@ -565,5 +576,9 @@ export function describePoint(point: RoutePoint, index: number, total: number): 
   const coords = point.lat !== undefined && point.lng !== undefined
     ? `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
     : "looked up on import";
-  return point.label ? `${role} · ${point.label} · ${coords}` : `${role} · ${coords}`;
+  // The readable name, not the whole postal address: the preview should show
+  // what the tracker will say, not a plus code and a postcode.
+  return point.label
+    ? `${role} · ${shortPlaceName(point.label)} · ${coords}`
+    : `${role} · ${coords}`;
 }
