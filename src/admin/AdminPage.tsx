@@ -2810,9 +2810,11 @@ function SectionsPanel() {
                       key="stops"
                       stops={(getAt(selected.data, "stops") as LiveStop[]) ?? []}
                       routeGeometry={(getAt(selected.data, "routeGeometry") as LatLng[]) ?? []}
+                      routeDistanceKm={Number(getAt(selected.data, "routeDistanceKm") ?? 0)}
                       mapSource={(getAt(selected.data, "mapSource") as MapLinkSource) ?? "google"}
                       onChange={(value) => setSectionData(selected.id, "stops", value)}
                       onGeometryChange={(value) => setSectionData(selected.id, "routeGeometry", value)}
+                      onDistanceChange={(value) => setSectionData(selected.id, "routeDistanceKm", value)}
                       onMapSourceChange={(value) => setSectionData(selected.id, "mapSource", value)}
                     />
                   );

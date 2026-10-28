@@ -118,17 +118,22 @@ const LINK_SOURCES: MapLinkSource[] = ["google", "bing", "apple", "openstreetmap
 export default function RouteStopsEditor({
   stops,
   routeGeometry,
+  routeDistanceKm,
   mapSource,
   onChange,
   onGeometryChange,
+  onDistanceChange,
   onMapSourceChange,
 }: {
   stops: LiveStop[];
   routeGeometry: LatLng[];
+  /** The routing service's own length for that road. Zero when not measured. */
+  routeDistanceKm: number;
   /** Which map service the last pasted link came from — picked, never typed. */
   mapSource: MapLinkSource;
   onChange: (stops: LiveStop[]) => void;
   onGeometryChange: (geometry: LatLng[]) => void;
+  onDistanceChange: (km: number) => void;
   onMapSourceChange: (source: MapLinkSource) => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -193,7 +198,10 @@ export default function RouteStopsEditor({
     const timer = window.setTimeout(() => setBackdropView(view), 500);
     return () => window.clearTimeout(timer);
   }, [view.lat, view.lng, zoom]);
-  const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
+  const totals = useMemo(
+    () => cumulativeKm(stops, routeGeometry, { totalKm: routeDistanceKm }),
+    [stops, routeGeometry, routeDistanceKm],
+  );
 
   // The replace button arms for a moment rather than asking with a dialog:
   // it cannot fire by accident, and it cannot trap the operator behind a modal.
@@ -449,6 +457,7 @@ export default function RouteStopsEditor({
         }
         geometry = road.geometry;
         onGeometryChange(road.geometry);
+        onDistanceChange(road.distanceKm);
       }
       const { stops: found, source } = await findMajorStops(geometry, {
         avoid: stops.map((stop) => stop.name),
@@ -542,10 +551,15 @@ export default function RouteStopsEditor({
     onChange(filled.stops);
     // The road is stored with the route, so the tracker reports real road
     // distance on the first visit instead of joining the stops with rulers.
-    if (filled.road.ok) onGeometryChange(filled.road.geometry);
-    // The stored road geometry belongs to the old stops; leaving it would draw
-    // a route through points that are no longer on it.
-    else if (routeGeometry.length) onGeometryChange([]);
+    if (filled.road.ok) {
+      onGeometryChange(filled.road.geometry);
+      onDistanceChange(filled.road.distanceKm);
+    } else if (routeGeometry.length) {
+      // The stored road geometry belongs to the old stops; leaving it would
+      // draw a route through points that are no longer on it.
+      onGeometryChange([]);
+      onDistanceChange(0);
+    }
 
     setImportNote(
       `${mode === "replace" ? "Route replaced with" : "Added"} ${fresh.length} ${
@@ -568,6 +582,7 @@ export default function RouteStopsEditor({
     setFetching(false);
     if (result.ok) {
       onGeometryChange(result.geometry);
+      onDistanceChange(result.distanceKm);
     } else {
       setFetchError(result.message);
     }
@@ -845,7 +860,9 @@ export default function RouteStopsEditor({
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
           {routeGeometry.length
-            ? `${routeGeometry.length} points of real road stored. Refetch after moving a stop so distances follow the road again.`
+            ? `${routeGeometry.length} points of real road stored${
+                routeDistanceKm > 0 ? `, measured at ${formatKm(routeDistanceKm)}` : ""
+              }. Refetch after moving a stop so distances follow the road again.`
             : "No road geometry yet — distances are measured straight between stops. Fetch the road to measure the actual route."}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
