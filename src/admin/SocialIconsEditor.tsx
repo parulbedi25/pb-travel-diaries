@@ -6,6 +6,7 @@ import { SOCIAL_ICONS, resolveSocialIcon } from "../components/ui/SocialIcons";
 import Switch from "./Switch";
 import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
+import { LAYER } from "./layers";
 import { inputCls } from "./fieldStyles";
 
 const BUBBLE_W = 288; // matches w-72 below
@@ -47,6 +48,11 @@ export default function SocialIconsEditor({
   // the URL field still behaves normally.
   const armed = useRef<string | null>(null);
 
+  // Whether the colour chart inside the bubble is showing. The bubble stays
+  // open while a colour is being chosen — the chart is a second layer on top of
+  // it, not a replacement for it — so this only decides where Escape goes.
+  const [colorOpen, setColorOpen] = useState(false);
+
   /**
    * The bubble is rendered into the body rather than inside the row: the
    * dashboard's editor column scrolls and clips, and the cards below it were
@@ -67,8 +73,18 @@ export default function SocialIconsEditor({
   const closePicker = useCallback(() => {
     setPickerFor(null);
     setBubble(null);
+    setColorOpen(false);
     anchorRef.current = null;
   }, []);
+
+  /**
+   * A click inside the bubble's colour chart is a click inside the bubble. The
+   * chart is portalled to the body, so it is not a DOM descendant of the bubble
+   * and has to be recognised by its marker — otherwise picking a colour would
+   * dismiss the popover that offers the colour.
+   */
+  const insideLayer = (target: HTMLElement | null) =>
+    Boolean(target?.closest("[data-icon-bubble]") || target?.closest("[data-icon-anchor]") || target?.closest("[data-color-panel]"));
 
   const togglePicker = (id: string, el: HTMLElement) => {
     if (pickerFor === id) {
@@ -85,11 +101,15 @@ export default function SocialIconsEditor({
   useEffect(() => {
     if (!pickerFor) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePicker();
+      if (e.key !== "Escape") return;
+      // Escape peels one layer at a time: the colour chart first, then the
+      // bubble. Otherwise a single press would close both and lose the row the
+      // colour was being picked for.
+      if (colorOpen || document.querySelector("[data-color-panel]")) return;
+      closePicker();
     };
     const onDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("[data-icon-bubble]") || target?.closest("[data-icon-anchor]")) return;
+      if (insideLayer(e.target as HTMLElement | null)) return;
       closePicker();
     };
     window.addEventListener("keydown", onKey);
@@ -104,7 +124,7 @@ export default function SocialIconsEditor({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [pickerFor, place, closePicker]);
+  }, [pickerFor, place, closePicker, colorOpen]);
 
   const resetDrag = () => {
     armed.current = null;
@@ -312,8 +332,8 @@ export default function SocialIconsEditor({
             data-icon-bubble
             role="dialog"
             aria-label="Choose an icon"
-            style={{ top: bubble.top, left: bubble.left, width: BUBBLE_W }}
-            className="fixed z-[200] rounded-2xl border border-white/10 bg-ink-950/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl"
+            style={{ top: bubble.top, left: bubble.left, width: BUBBLE_W, zIndex: LAYER.popover }}
+            className="fixed rounded-2xl border border-white/10 bg-ink-950/95 p-3 shadow-2xl shadow-black/70 backdrop-blur-xl"
           >
             <span
               aria-hidden="true"
@@ -348,6 +368,7 @@ export default function SocialIconsEditor({
               fallback="#f5b301"
               fallbackLabel="Default gold"
               size="sm"
+              onOpenChange={setColorOpen}
               className="mb-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-2"
             />
             <div className="grid max-h-40 grid-cols-6 gap-1.5 overflow-y-auto pr-1">

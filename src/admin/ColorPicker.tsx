@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cn } from "../utils/cn";
+import { LAYER } from "./layers";
 import { normalizeHex } from "../utils/pointerColors";
 
 /**
@@ -21,6 +22,10 @@ import { normalizeHex } from "../utils/pointerColors";
  *
  * The chart is portalled to `document.body` and placed against the trigger, so
  * a picker inside a scrolling panel or a rounded card cannot be clipped by it.
+ * It takes `LAYER.color`, which is above every other overlay in the dashboard:
+ * a colour chosen from inside a popover (the social-icon bubble) must open over
+ * that popover, not behind it. The panel carries `data-color-panel` so the
+ * popover that opened it can tell a click on the chart from a click outside.
  *
  * One component, used everywhere a colour is chosen: the Machine and Gear
  * pointers, the brand mark, the theme tokens and the footer social icons.
@@ -150,6 +155,7 @@ export default function ColorPicker({
   fallbackLabel = "Default",
   size = "md",
   className,
+  onOpenChange,
 }: {
   label: string;
   value: string;
@@ -159,6 +165,8 @@ export default function ColorPicker({
   fallbackLabel?: string;
   size?: "sm" | "md";
   className?: string;
+  /** Told whether the chart is showing, so a host popover can make room. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const selected = normalizeHex(value);
   const marked = useMemo(() => (selected ? nearestCell(selected) : ""), [selected]);
@@ -166,6 +174,9 @@ export default function ColorPicker({
   useEffect(() => setHex(value), [value]);
 
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // Positioned in px inside the wrapper. `null` until measured, so the panel
@@ -317,15 +328,17 @@ export default function ColorPicker({
         ? createPortal(
         <div
           ref={panelRef}
+          data-color-panel
           role="dialog"
           aria-label={`${label} colours`}
           style={{
             width: panelWidth,
             left: pos?.left ?? 0,
             top: pos?.top ?? 0,
+            zIndex: LAYER.color,
             visibility: pos ? "visible" : "hidden",
           }}
-          className="fixed z-[70] rounded-2xl border border-white/10 bg-zinc-950/95 p-2.5 shadow-2xl shadow-black/70 backdrop-blur-md"
+          className="fixed rounded-2xl border border-white/10 bg-zinc-950/95 p-2.5 shadow-2xl shadow-black/70 backdrop-blur-md"
         >
           {/* greys */}
           <div
