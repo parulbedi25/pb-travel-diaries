@@ -1,14 +1,15 @@
 /**
  * The dashboard's window onto `backup/`.
  *
- * Listing, taking one now, and downloading one. Every route needs an editor
- * session — a backup holds every account's password hash and the database
- * password, so it is the most sensitive file the app produces.
+ * Listing, taking one now, and downloading one. Every route is owner-only: a
+ * backup holds every account's password hash, every email address and the
+ * database password, so it is the most sensitive file the app produces — an
+ * admin who edits the site has no business downloading the user table.
  */
 import fs from "node:fs";
 import path from "node:path";
 import express from "express";
-import { requireEditor } from "../lib/auth.js";
+import { requireOwner } from "../lib/auth.js";
 import {
   backupPath,
   backupScheduleSummary,
@@ -27,7 +28,7 @@ function nextRunAt(now = new Date()) {
   return next.toISOString();
 }
 
-backupsRouter.get("/backups", requireEditor, async (req, res, next) => {
+backupsRouter.get("/backups", requireOwner, async (req, res, next) => {
   try {
     const backups = await listBackups();
     res.json({
@@ -41,7 +42,7 @@ backupsRouter.get("/backups", requireEditor, async (req, res, next) => {
   }
 });
 
-backupsRouter.post("/backups", requireEditor, async (req, res, next) => {
+backupsRouter.post("/backups", requireOwner, async (req, res, next) => {
   try {
     const backup = await createBackup({ reason: "dashboard" });
     res.status(201).json({
@@ -52,7 +53,7 @@ backupsRouter.post("/backups", requireEditor, async (req, res, next) => {
   }
 });
 
-backupsRouter.get("/backups/:name", requireEditor, async (req, res, next) => {
+backupsRouter.get("/backups/:name", requireOwner, async (req, res, next) => {
   try {
     const file = backupPath(req.params.name);
     if (!file) return res.status(400).json({ error: "That is not a backup file name." });

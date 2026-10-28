@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 import { createSqlRepository } from "./sqlRepository.js";
+import { tableName } from "../lib/sqlSafety.js";
 import { migrateSqlite, sqliteMigrationStatus } from "./sqliteMigrations.js";
 
 /** Fixed by server code, never derived from a request or uploaded backup path. */
@@ -59,11 +60,14 @@ export async function createSqliteRepo(file = path.join(config.root, "server/dat
   const exportAll = repo.exportAll;
   repo.exportAll = () => transaction(() => exportAll.call(repo));
   repo.importAll = data => transaction(async () => {
-    for (const table of ["sessions", "member_journeys", "member_bikes", "auth_events", "media", "revisions", "site_content", "users", "settings"]) db.exec(`DELETE FROM ${table}`);
+    // importAll restores a backup, and a backup is an untrusted file: the
+    // table names below are checked against the app's own list before they
+    // are put into a statement.
+    for (const table of ["sessions", "member_journeys", "member_bikes", "auth_events", "media", "revisions", "site_content", "users", "settings"]) db.exec(`DELETE FROM ${tableName(table)}`);
     const now = new Date().toISOString();
     const date = v => v ? new Date(/[zZ]|[+-]\d\d:\d\d$/.test(v) ? v : v.replace(" ", "T") + "Z").toISOString() : null;
     function insert(table, columns, rows) {
-      const stmt = db.prepare(`INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`);
+      const stmt = db.prepare(`INSERT INTO ${tableName(table)} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`);
       for (const row of rows) stmt.run(...row.map(normalize));
     }
     insert("users", ["id","username","email","password_hash","role","disabled","disabled_at","created_at","last_login_at"], (data.users ?? []).map(r => [r.id,r.username,r.email,r.passwordHash,r.role ?? "reader",r.disabled ? 1 : 0,date(r.disabledAt),date(r.createdAt) ?? now,date(r.lastLoginAt)]));

@@ -280,6 +280,14 @@ export function createMemoryRepo() {
       });
     },
 
+    async deleteAuthEventsBefore(before) {
+      const cutoff = new Date(before).getTime();
+      const kept = state.events.filter((event) => new Date(event.createdAt ?? 0).getTime() >= cutoff);
+      const removed = state.events.length - kept.length;
+      state.events = kept;
+      return removed;
+    },
+
     async listAuthEvents(limit = 100) {
       return state.events.slice(0, Math.max(1, Math.min(500, Number(limit) || 100))).map(clone);
     },

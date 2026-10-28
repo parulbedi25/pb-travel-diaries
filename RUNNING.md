@@ -88,6 +88,37 @@ than running a frontend build. Source in `src/` is reference material, not
 compiled by npm scripts. Dashboard content edits are stored in the database
 and do not require frontend compilation.
 
+## Database safety and personal data
+
+**SQL is never built from request data.** Every value is bound (`?`); the only
+two things a driver cannot bind — a database name and a table name — go through
+`server/lib/sqlSafety.js` first, which accepts a database name of letters,
+digits, `_`, `-` and `$`, and a table name only from the list of tables this
+application owns. `server/tests/sqlInjection.test.js` fails the suite if a
+request value is ever interpolated into a statement, and drives injection-shaped
+ids, tags and query strings through the real routes to prove they come back as
+ordinary refusals with the database intact.
+
+**Personal data is kept to what the site needs, and only where it belongs.**
+
+- *Who can see it.* Accounts, the sign-in log (IP addresses) and backups are
+  **owner-only**; backups also hold every password hash and the database
+  password. Admins edit the website and cannot reach any of them. A member's
+  garage and rides are scoped to their own account, and an id they do not own is
+  "not found" rather than "forbidden", so its existence is not confirmed.
+- *Where it is not.* No API answer is cached (`Cache-Control: no-store`), and
+  every API response carries `Content-Security-Policy: default-src 'none'` and
+  `X-Robots-Tag: noindex`.
+- *How long it stays.* Sign-in records are deleted after
+  `AUTH_EVENT_RETENTION_DAYS` (default 180).
+- *In uploaded photos.* A phone photo carries GPS coordinates, the device serial
+  and the time it was taken. Those blocks are removed from JPEG, PNG and WebP
+  uploads before the bytes are stored (`server/lib/imageMetadata.js`); the pixels
+  and the ICC colour profile are untouched. Nothing is re-encoded.
+- *In the log.* Passwords, tokens, session cookies, connection strings, bcrypt
+  hashes, email addresses and IP addresses are replaced before anything is
+  written to the console (`server/lib/logRedaction.js`).
+
 ## Dependency security
 
 Run `npm audit` after any install or update. The site installs only eight

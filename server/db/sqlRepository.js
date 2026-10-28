@@ -267,6 +267,17 @@ export function createSqlRepository({ pool, transaction, kind, migrate, schemaSt
       );
     },
 
+    /**
+     * Drop access-log rows older than `before`.
+     *
+     * The log records an IP address and a browser string per sign-in attempt —
+     * personal data, kept only as long as it is useful for spotting an attack.
+     */
+    async deleteAuthEventsBefore(before) {
+      const [result] = await pool.execute("DELETE FROM auth_events WHERE created_at < ?", [before]);
+      return Number(result.affectedRows ?? 0);
+    },
+
     async listAuthEvents(limit = 100) {
       const safe = authEventLimit(limit);
       const [rows] = await pool.query(
