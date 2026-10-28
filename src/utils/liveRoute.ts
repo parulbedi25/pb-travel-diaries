@@ -23,18 +23,31 @@ export function currentStop(stops: readonly LiveStop[]): LiveStop | undefined {
 }
 
 /**
- * Marking a stop "Here now" rewrites the whole route around it: everything
- * before it has been ridden, everything after it is still to come. Exactly one
- * stop ends up live, so the tracker can never show two current positions.
+ * Marking a stop "Ridden" carries the stops above it with it.
  *
- * Every other status is left alone — marking a stop "Ridden" by hand is an
- * edit, not an instruction about where the bike is.
+ * The list is the route, in order, so a stop cannot be behind the rider while
+ * the ones before it are still ahead: marking the fourth stop ridden while the
+ * second still reads "Still to come" describes a journey nobody took. Choosing
+ * "Ridden" therefore marks that stop and every stop above it ridden, and leaves
+ * everything below it exactly as it was — a stop already marked "Here now"
+ * further down the route stays where the bike is.
  */
 export function cascadeHereNow(stops: readonly LiveStop[], index: number): LiveStop[] {
   return stops.map((stop, i) => {
     if (i === index) return { ...stop, status: "live" as const };
     return { ...stop, status: i < index ? ("done" as const) : ("next" as const) };
   });
+}
+
+/**
+ * The stops above `index`, and `index` itself, marked ridden.
+ *
+ * Only the ones above: what comes after the stop just reached is still to
+ * come, and a "Here now" below it is the bike's own position, not something
+ * this edit has any business moving.
+ */
+export function cascadeRidden(stops: readonly LiveStop[], index: number): LiveStop[] {
+  return stops.map((stop, i) => (i <= index ? { ...stop, status: "done" as const } : stop));
 }
 
 /** Ask the places page for a point a place can be measured from. */

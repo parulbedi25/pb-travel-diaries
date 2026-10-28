@@ -174,7 +174,8 @@ export function WeatherCard({
   /** The condition under a place's name — left out when the title is it. */
   subtitle?: string;
   detail: WeatherDetail;
-  width: number;
+  /** Pixels inside the map panel, or `100%` when the card sits in a column. */
+  width: number | string;
   style?: CSSProperties;
   onClose: () => void;
 }) {
