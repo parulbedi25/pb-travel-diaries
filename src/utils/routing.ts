@@ -29,7 +29,20 @@ export interface RouteFetchResult {
   message: string;
 }
 
-const OSRM_BASE = "https://router.project-osrm.org/route/v1/driving";
+/**
+ * Where a road is asked for, in order.
+ *
+ * Both speak the same OSRM API, so the answering server does not matter — only
+ * that one of them answers. The first is OSRM's demo server, which is the more
+ * generous of the two but has busy days; the second is the FOSSGIS instance
+ * that runs on the same data. Trying a second host is the difference between a
+ * measured road and a set of straight lines through the Himalaya, which is a
+ * distance nobody would call right.
+ */
+const ROUTING_HOSTS = [
+  "https://router.project-osrm.org/route/v1/driving",
+  "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+];
 
 interface RoutePoint {
   lat: number;
@@ -55,14 +68,29 @@ export async function fetchRoadGeometry(
     return { ok: false, geometry: [], distanceKm: 0, message: "Add at least two stops with coordinates." };
   }
 
+  const path = stops.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
+  let lastMessage = "Could not reach the routing service.";
+
+  for (const host of ROUTING_HOSTS) {
+    const attempt = await askHost(host, path, timeoutMs);
+    if (attempt.ok) return attempt;
+    lastMessage = attempt.message;
+  }
+  return { ok: false, geometry: [], distanceKm: 0, message: lastMessage };
+}
+
+/** One routing host, one try. */
+async function askHost(
+  base: string,
+  path: string,
+  timeoutMs: number,
+): Promise<RouteFetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const path = stops.map((s) => `${s.lng.toFixed(6)},${s.lat.toFixed(6)}`).join(";");
-    const response = await fetch(
-      `${OSRM_BASE}/${path}?overview=full&geometries=geojson`,
-      { signal: controller.signal },
-    );
+    const response = await fetch(`${base}/${path}?overview=full&geometries=geojson`, {
+      signal: controller.signal,
+    });
     if (!response.ok) {
       return {
         ok: false,

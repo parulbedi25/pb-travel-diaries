@@ -27,6 +27,7 @@ import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from "../utils/majorStops";
+import { lookupQueries, placeRegion, shortPlaceName } from "../utils/placeNames";
 import { cascadeHereNow } from "../utils/liveRoute";
 import { cn } from "../utils/cn";
 import { inputCls } from "./fieldStyles";
@@ -67,24 +68,64 @@ const round = (n: number) => Math.round(n * 1e4) / 1e4;
  * ------------------------------------------------------------------ */
 
 /**
- * Look a place up by name. Nominatim (OpenStreetMap) needs no key; it is only
- * ever called when you press Find, and failing is not fatal — the coordinates
- * can always be typed in by hand.
+ * Look a place up by name.
+ *
+ * Two keyless services, tried in turn: Nominatim (OpenStreetMap) first because
+ * it knows landmarks as well as towns, then Open-Meteo's geocoder, which is
+ * smaller but answers fast and is not rate-limited per second the way
+ * Nominatim is. Failing both is not fatal — the coordinates can always be
+ * typed in by hand — but it should be rare, because a single unplaceable stop
+ * used to refuse a whole route.
  */
-async function geocode(
+async function geocodeOne(
   query: string,
 ): Promise<{ lat: number; lng: number } | null> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
-    query,
-  )}`;
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) return null;
-  const json = (await response.json()) as { lat?: string; lon?: string }[];
-  const first = Array.isArray(json) ? json[0] : undefined;
-  if (!first) return null;
-  const lat = Number(first.lat);
-  const lng = Number(first.lon);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat: round(lat), lng: round(lng) } : null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
+      query,
+    )}`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (response.ok) {
+      const json = (await response.json()) as { lat?: string; lon?: string }[];
+      const first = Array.isArray(json) ? json[0] : undefined;
+      const lat = Number(first?.lat);
+      const lng = Number(first?.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { lat: round(lat), lng: round(lng) };
+      }
+    }
+  } catch {
+    // Fall through to the second service.
+  }
+
+  try {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=${encodeURIComponent(
+      query,
+    )}`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      results?: { latitude?: number; longitude?: number }[];
+    };
+    const first = json.results?.[0];
+    if (typeof first?.latitude !== "number" || typeof first?.longitude !== "number") return null;
+    return { lat: round(first.latitude), lng: round(first.longitude) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Place a stop named only by its address, trying the readable name before the
+ * full postal string — "Manali" resolves where "Manali, Himachal Pradesh,
+ * India, 175131" can miss.
+ */
+async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
+  for (const attempt of lookupQueries(query)) {
+    const found = await geocodeOne(attempt);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -154,6 +195,8 @@ export default function RouteStopsEditor({
   const [importNote, setImportNote] = useState("");
   const [replaceArmed, setReplaceArmed] = useState(false);
   const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
+  /** The replace button, so arming it is not undone by its own click. */
+  const replaceRef = useRef<HTMLButtonElement | null>(null);
   const [resolving, setResolving] = useState(false);
   const [expandError, setExpandError] = useState("");
 
@@ -203,12 +246,24 @@ export default function RouteStopsEditor({
     [stops, routeGeometry, routeDistanceKm],
   );
 
-  // The replace button arms for a moment rather than asking with a dialog:
-  // it cannot fire by accident, and it cannot trap the operator behind a modal.
+  // The replace button arms rather than asking with a dialog: it cannot fire
+  // by accident, and it cannot trap the operator behind a modal.
+  //
+  // It stays armed until it is used, the link changes, or the operator clicks
+  // away from it — deliberately no timer. It used to disarm itself after four
+  // seconds, so reading the button before clicking it meant the second click
+  // merely armed it again: nothing happened, twice, and the route looked
+  // impossible to replace.
   useEffect(() => {
     if (!replaceArmed) return;
-    const timer = window.setTimeout(() => setReplaceArmed(false), 4000);
-    return () => window.clearTimeout(timer);
+    const disarm = (event: Event) => {
+      // The click that arms it — and the one that fires it — both start on the
+      // button itself; only a click somewhere else puts it back.
+      if (replaceRef.current?.contains(event.target as Node)) return;
+      setReplaceArmed(false);
+    };
+    document.addEventListener("pointerdown", disarm);
+    return () => document.removeEventListener("pointerdown", disarm);
   }, [replaceArmed]);
 
   const patch = useCallback(
@@ -407,12 +462,15 @@ export default function RouteStopsEditor({
   ): Promise<LiveStop | null> => {
     let lat = point.lat;
     let lng = point.lng;
-    let name = point.label;
-    let state: string | undefined;
+    const address = point.label?.trim() ?? "";
+    // The map gets the readable name, the note keeps the full address: nothing
+    // is lost, it is just filed where it can be read.
+    let name = address ? shortPlaceName(address) : "";
+    let state = address ? placeRegion(address) : undefined;
 
     if (lat === undefined || lng === undefined) {
-      if (!name) return null;
-      const found = await geocode(name);
+      if (!address) return null;
+      const found = await geocode(address);
       if (!found) return null;
       lat = found.lat;
       lng = found.lng;
@@ -426,9 +484,10 @@ export default function RouteStopsEditor({
 
     const role = index === 0 ? "Start" : index === total - 1 ? "Destination" : "On the way";
     const status: LiveStop["status"] = index === 0 ? "live" : "next";
+    const extra = address && address !== name ? ` · ${address}` : "";
     const stop: LiveStop = {
-      name: name ?? `${lat.toFixed(3)}, ${lng.toFixed(3)}`,
-      note: `${role} · from ${SOURCE_LABELS[source]}`,
+      name: name || `${lat.toFixed(3)}, ${lng.toFixed(3)}`,
+      note: `${role} · from ${SOURCE_LABELS[source]}${extra}`,
       status,
       lat: round(lat),
       lng: round(lng),
@@ -505,8 +564,14 @@ export default function RouteStopsEditor({
     }
 
     setImporting(false);
-    if (unread.length) {
-      setImportError(`Could not place ${unread.join(", ")}. Add it by hand below and try the rest.`);
+    // A single stop that cannot be placed must not sink the whole route: the
+    // one unplaceable point is reported and left out, everything else is
+    // imported. Refusing the lot is what made "Use as the route" look broken —
+    // one stale URL fragment in the link, and nothing happened at all.
+    if (built.length < 2) {
+      setImportError(
+        `Could not place ${unread.join(", ") || "any stop in that link"}. Add the stops by hand below.`,
+      );
       return;
     }
 
@@ -562,9 +627,9 @@ export default function RouteStopsEditor({
     }
 
     setImportNote(
-      `${mode === "replace" ? "Route replaced with" : "Added"} ${fresh.length} ${
-        fresh.length === 1 ? "stop" : "stops"
-      } from ${SOURCE_LABELS[parsedLink.source]}${
+      `${unread.length ? `${unread.join(", ")} could not be placed and was left out. ` : ""}${
+        mode === "replace" ? "Route replaced with" : "Added"
+      } ${fresh.length} ${fresh.length === 1 ? "stop" : "stops"} from ${SOURCE_LABELS[parsedLink.source]}${
         skipped ? ` — ${skipped} already on the tracker` : ""
       }.${filled.added.length ? ` Filled in ${filled.added.length} major stops on the way: ${filled.added.join(", ")}.` : ""}${
         filled.road.ok ? "" : " Could not measure the road just now — fetch it below."
@@ -819,10 +884,13 @@ export default function RouteStopsEditor({
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
+            ref={replaceRef}
             type="button"
             onClick={() => {
               if (!replaceArmed) {
                 setReplaceArmed(true);
+                setImportNote("");
+                setImportError("");
                 return;
               }
               void handleImport("replace");
@@ -848,6 +916,12 @@ export default function RouteStopsEditor({
             Add to the end
           </button>
         </div>
+        {replaceArmed && (
+          <p className="mt-2 text-[11px] text-saffron-300">
+            Click the highlighted button to delete all {stops.length} saved stops and use the{" "}
+            {parsedLink.points.length} in this link instead.
+          </p>
+        )}
         {importError && <p className="mt-2 text-[11px] text-amber-200">{importError}</p>}
         {importNote && <p className="mt-2 text-[11px] text-emerald-300">{importNote}</p>}
       </div>
