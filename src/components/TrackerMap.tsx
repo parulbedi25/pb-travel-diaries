@@ -11,7 +11,7 @@ import { fitRouteToBand, routeFramePoints } from "../utils/routeFrame";
 import { useRouteWeather } from "../hooks/useRouteWeather";
 import { useWeatherDetails } from "../hooks/useWeatherDetails";
 import { WeatherBadge } from "./WeatherBadge";
-import { WeatherBubble } from "./WeatherBubble";
+import { WeatherBubble, WeatherCardAt } from "./WeatherBubble";
 import { kmMarksAlong } from "../utils/routeBubbles";
 
 /** The smallest band the drawn route is allowed to have, in pixels. */
@@ -160,6 +160,8 @@ export default function TrackerMap({
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  /** Which checkpoint's temperature is open, by index. */
+  const [openStop, setOpenStop] = useState<number | null>(null);
 
   // The overlay has to match the map pixel for pixel, so the panel is measured
   // rather than assumed.
@@ -256,7 +258,27 @@ export default function TrackerMap({
     [weather, stops.length, geometry, routeKm],
   );
   const markWeather = useWeatherDetails(marks);
+  // The same forecast, point by point, for the temperatures over each
+  // checkpoint: one request for the route, cached for a quarter of an hour, so
+  // tapping a temperature opens a card that is already filled in.
+  const stopWeather = useWeatherDetails(weather ? stops : []);
 
+
+  // A tapped temperature closes when the tap lands anywhere else on the panel.
+  useEffect(() => {
+    if (openStop === null) return;
+    const onPointerDown = (event: PointerEvent | MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("[data-weather-card]") || target?.closest?.("[data-weather-temp]")) return;
+      setOpenStop(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [openStop]);
 
   const toPx = useCallback(
     (point: LatLng) => {
@@ -448,13 +470,7 @@ export default function TrackerMap({
             className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${point.x}%`, top: `${point.y}%` }}
           >
-            <button
-              type="button"
-              className="group relative grid place-items-center focus:outline-none"
-              title={`${isStart ? "Start" : isEnd ? "Destination" : "Checkpoint"} · ${stop.name}${
-                stop.note ? ` — ${stop.note}` : ""
-              }`}
-            >
+            <div className="group relative grid place-items-center">
               {isLive && status === "live" && (
                 <>
                   <span className="shrink-0 aspect-square absolute h-10 w-10 rounded-full bg-saffron-400/40 animate-radar" aria-hidden="true" />
@@ -463,6 +479,9 @@ export default function TrackerMap({
               )}
               <span
                 role={isLive ? "status" : undefined}
+                title={`${isStart ? "Start" : isEnd ? "Destination" : "Checkpoint"} · ${stop.name}${
+                  stop.note ? ` — ${stop.note}` : ""
+                }`}
                 aria-label={isLive ? `PB's location: ${liveLabel}` : undefined}
                 className={cn(
                   "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
@@ -484,16 +503,31 @@ export default function TrackerMap({
                 )}
                 {isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
               </span>
-              {weather && (
-                <span
-                  className={cn(
-                    "pointer-events-none absolute -top-1.5",
-                    // A checkpoint against the right edge wears its badge on
-                    // the inside, or the panel would clip it.
-                    point.x > 86 ? "-left-6" : "-right-6",
+              {weather && conditions?.[index] && (
+                // Above the pin, centred on it — the name hangs below, the
+                // temperature sits on top, and the two never argue for the
+                // same pixels. Tapping it opens that place's forecast.
+                <span className="absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2">
+                  {stopWeather?.[index] ? (
+                    <button
+                      type="button"
+                      data-weather-temp=""
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenStop((current) => (current === index ? null : index));
+                      }}
+                      aria-expanded={openStop === index}
+                      aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
+                      className={cn(
+                        "block rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
+                        openStop === index ? "scale-110" : "",
+                      )}
+                    >
+                      <WeatherBadge conditions={conditions[index]} compact />
+                    </button>
+                  ) : (
+                    <WeatherBadge conditions={conditions[index]} compact />
                   )}
-                >
-                  <WeatherBadge conditions={conditions?.[index]} compact />
                 </span>
               )}
               {labels && (
@@ -513,10 +547,28 @@ export default function TrackerMap({
                   {stop.name}
                 </span>
               )}
-            </button>
+            </div>
           </div>
         );
       })}
+
+      {/* The forecast for a tapped checkpoint, placed so it stays inside the
+          panel whichever edge the pin sits against. */}
+      {openStop !== null && stops[openStop] && stopWeather?.[openStop] ? (
+        <WeatherCardAt
+          eyebrow={`${
+            openStop === 0 ? "Start" : openStop === count - 1 ? "Destination" : "Checkpoint"
+          } · ${formatKm(totals[openStop] ?? 0)}`}
+          title={stops[openStop].name}
+          subtitle={stopWeather[openStop]!.now.label}
+          detail={stopWeather[openStop]!}
+          x={toPx([stops[openStop].lat, stops[openStop].lng]).x}
+          y={toPx([stops[openStop].lat, stops[openStop].lng]).y}
+          width={width}
+          height={height}
+          onClose={() => setOpenStop(null)}
+        />
+      ) : null}
 
       {count > 0 && (
         <div className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5">

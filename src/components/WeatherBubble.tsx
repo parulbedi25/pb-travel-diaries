@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Clock, Droplets, Thermometer, Umbrella, Wind, X } from "lucide-react";
 import { cn } from "../utils/cn";
 import type { WeatherDetail } from "../utils/weather";
@@ -21,9 +21,9 @@ import type { KmMark } from "../utils/routeBubbles";
  * to show a whole forecast.
  */
 
-const CARD_WIDTH = 272;
+export const CARD_WIDTH = 272;
 /** Enough for now + three hours + a week, and used only to place the card. */
-const CARD_HEIGHT = 344;
+export const CARD_HEIGHT = 344;
 
 function hourLabel(time: string): string {
   const date = new Date(time);
@@ -135,118 +135,207 @@ export function WeatherBubble({
       </button>
 
       {open && (
-        <div
-          className="absolute z-30 rounded-2xl border border-white/15 bg-ink-950/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl"
-          style={{ left: left - x, top: top - y, width: cardWidth }}
-          role="dialog"
-          aria-label={`Weather ${mark.km} km along the route`}
+        <WeatherCard
+          eyebrow={`${mark.km} km along the route`}
+          title={detail.now.label}
+          detail={detail}
+          width={cardWidth}
+          style={{ left: left - x, top: top - y }}
+          onClose={() => {
+            setPinned(false);
+            setHovered(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The forecast card itself: what it is doing now, the next three hours and the
+ * coming week.
+ *
+ * Shared by the bubbles strung along the road and by the temperatures above
+ * each checkpoint, so a forecast looks the same wherever it is opened.
+ */
+export function WeatherCard({
+  eyebrow,
+  title,
+  subtitle,
+  detail,
+  width,
+  style,
+  onClose,
+}: {
+  /** The line above the title: `300 km along the route`, or the place's role. */
+  eyebrow?: string;
+  /** The place's name, or the condition when the card stands for a distance. */
+  title: string;
+  /** The condition under a place's name — left out when the title is it. */
+  subtitle?: string;
+  detail: WeatherDetail;
+  width: number;
+  style?: CSSProperties;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      data-weather-card=""
+      className="absolute z-30 rounded-2xl border border-white/15 bg-ink-950/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-xl"
+      style={{ ...style, width }}
+      role="dialog"
+      aria-label={eyebrow ? `${title} — ${eyebrow}` : title}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {eyebrow && (
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-saffron-300">{eyebrow}</p>
+          )}
+          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-white">
+            <WeatherIcon kind={detail.now.kind} className="h-4 w-4 shrink-0" />
+            <span className="truncate" title={title}>{title}</span>
+          </p>
+          {subtitle && <p className="mt-0.5 truncate text-[11px] text-zinc-400" title={subtitle}>{subtitle}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close weather"
+          className="rounded-full p-1 text-zinc-500 transition-colors hover:text-white"
         >
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-saffron-300">
-                {mark.km} km along the route
-              </p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[13px] font-semibold text-white">
-                <WeatherIcon kind={detail.now.kind} className="h-4 w-4" />
-                {detail.now.label}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setPinned(false);
-                setHovered(false);
-              }}
-              aria-label="Close weather"
-              className="rounded-full p-1 text-zinc-500 transition-colors hover:text-white"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-300">
-            <span className="flex items-center gap-1">
-              <Thermometer className={cn("h-3 w-3", weatherTone(detail.now.kind))} />
-              {detail.now.tempC === null ? "—" : `${detail.now.tempC}°C`}
-              {detail.now.feelsC !== null && (
-                <span className="text-zinc-500">feels {detail.now.feelsC}°</span>
-              )}
-            </span>
-            {detail.now.windKph !== null && (
-              <span className="flex items-center gap-1">
-                <Wind className="h-3 w-3 text-sky-300" />
-                {Math.round(detail.now.windKph)} km/h
-              </span>
-            )}
-            {detail.now.humidity !== null && (
-              <span className="flex items-center gap-1">
-                <Droplets className="h-3 w-3 text-sky-300" />
-                {Math.round(detail.now.humidity)}%
-              </span>
-            )}
-          </div>
-
-          {detail.hours.length > 0 && (
-            <div className="mt-3">
-              <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                <Clock className="h-3 w-3" aria-hidden="true" /> Next three hours
-              </p>
-              <ul className="mt-1.5 grid grid-cols-3 gap-1.5">
-                {detail.hours.slice(0, 3).map((hour) => (
-                  <li
-                    key={hour.time}
-                    className="rounded-lg border border-white/[0.07] bg-white/[0.04] px-1.5 py-1.5 text-center"
-                  >
-                    <p className="font-mono text-[9px] uppercase text-zinc-500">{hourLabel(hour.time)}</p>
-                    <WeatherIcon kind={hour.kind} className="mx-auto mt-0.5 h-3.5 w-3.5" />
-                    <p className="mt-0.5 text-[11px] font-semibold text-white">
-                      {hour.tempC === null ? "—" : `${hour.tempC}°`}
-                    </p>
-                    {hour.rainPct !== null && (
-                      <p className="text-[9px] text-sky-300">{Math.round(hour.rainPct)}%</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-300">
+        <span className="flex items-center gap-1">
+          <Thermometer className={cn("h-3 w-3", weatherTone(detail.now.kind))} />
+          {detail.now.tempC === null ? "—" : `${Math.round(detail.now.tempC)}°C`}
+          {detail.now.feelsC !== null && (
+            <span className="text-zinc-500">feels {Math.round(detail.now.feelsC)}°</span>
           )}
+        </span>
+        {detail.now.windKph !== null && (
+          <span className="flex items-center gap-1">
+            <Wind className="h-3 w-3 text-sky-300" />
+            {Math.round(detail.now.windKph)} km/h
+          </span>
+        )}
+        {detail.now.humidity !== null && (
+          <span className="flex items-center gap-1">
+            <Droplets className="h-3 w-3 text-sky-300" />
+            {Math.round(detail.now.humidity)}%
+          </span>
+        )}
+      </div>
 
-          {detail.days.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                The coming week
-              </p>
-              <ul className="mt-1.5 flex flex-col">
-                {detail.days.slice(0, 7).map((day, index) => (
-                  <li
-                    key={day.date}
-                    className="flex items-center gap-2 border-b border-white/[0.05] py-1 last:border-0"
-                  >
-                    <span className="w-14 shrink-0 text-[10px] font-semibold text-zinc-300">
-                      {dayLabel(day.date, index)}
-                    </span>
-                    <WeatherIcon kind={day.kind} className="h-3.5 w-3.5 shrink-0" />
-                    <span className="flex-1 truncate text-[10px] text-zinc-500" title={day.label}>
-                      {day.label}
-                    </span>
-                    {day.rainPct !== null && day.rainPct > 0 && (
-                      <span className="flex items-center gap-0.5 text-[9px] text-sky-300">
-                        <Umbrella className="h-2.5 w-2.5" />
-                        {Math.round(day.rainPct)}%
-                      </span>
-                    )}
-                    <span className="w-14 shrink-0 text-right font-mono text-[10px] text-zinc-300">
-                      {day.maxC === null ? "—" : `${Math.round(day.maxC)}°`}
-                      <span className="text-zinc-500"> / {day.minC === null ? "—" : `${Math.round(day.minC)}°`}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+      {detail.hours.length > 0 && (
+        <div className="mt-3">
+          <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+            <Clock className="h-3 w-3" aria-hidden="true" /> Next three hours
+          </p>
+          <ul className="mt-1.5 grid grid-cols-3 gap-1.5">
+            {detail.hours.slice(0, 3).map((hour) => (
+              <li
+                key={hour.time}
+                className="rounded-lg border border-white/[0.07] bg-white/[0.04] px-1.5 py-1.5 text-center"
+              >
+                <p className="font-mono text-[9px] uppercase text-zinc-500">{hourLabel(hour.time)}</p>
+                <WeatherIcon kind={hour.kind} className="mx-auto mt-0.5 h-3.5 w-3.5" />
+                <p className="mt-0.5 text-[11px] font-semibold text-white">
+                  {hour.tempC === null ? "—" : `${hour.tempC}°`}
+                </p>
+                {hour.rainPct !== null && (
+                  <p className="text-[9px] text-sky-300">{Math.round(hour.rainPct)}%</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {detail.days.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+            The coming week
+          </p>
+          <ul className="mt-1.5 flex flex-col">
+            {detail.days.slice(0, 7).map((day, index) => (
+              <li
+                key={day.date}
+                className="flex items-center gap-2 border-b border-white/[0.05] py-1 last:border-0"
+              >
+                <span className="w-14 shrink-0 text-[10px] font-semibold text-zinc-300">
+                  {dayLabel(day.date, index)}
+                </span>
+                <WeatherIcon kind={day.kind} className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate text-[10px] text-zinc-500" title={day.label}>
+                  {day.label}
+                </span>
+                {day.rainPct !== null && day.rainPct > 0 && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-sky-300">
+                    <Umbrella className="h-2.5 w-2.5" />
+                    {Math.round(day.rainPct)}%
+                  </span>
+                )}
+                <span className="w-14 shrink-0 text-right font-mono text-[10px] text-zinc-300">
+                  {day.maxC === null ? "—" : `${Math.round(day.maxC)}°`}
+                  <span className="text-zinc-500"> / {day.minC === null ? "—" : `${Math.round(day.minC)}°`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A forecast card that keeps itself inside the panel.
+ *
+ * The temperature that opened it sits on a checkpoint near the edge as often as
+ * not, and a card hanging off the panel is a card nobody can read, so it is
+ * placed on whichever side has room and then clamped.
+ */
+export function WeatherCardAt({
+  eyebrow,
+  title,
+  subtitle,
+  detail,
+  x,
+  y,
+  width,
+  height,
+  onClose,
+}: {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  detail: WeatherDetail;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  onClose: () => void;
+}) {
+  const cardWidth = Math.max(Math.min(CARD_WIDTH, width - 16), 200);
+  const left = Math.min(Math.max(8, x - cardWidth / 2), Math.max(8, width - cardWidth - 8));
+  const below = y + 20 + CARD_HEIGHT <= height - 8;
+  const top = Math.min(
+    Math.max(8, below ? y + 20 : y - CARD_HEIGHT - 20),
+    Math.max(8, height - CARD_HEIGHT - 8),
+  );
+  return (
+    <WeatherCard
+      eyebrow={eyebrow}
+      title={title}
+      subtitle={subtitle}
+      detail={detail}
+      width={cardWidth}
+      style={{ left, top }}
+      onClose={onClose}
+    />
   );
 }
 
