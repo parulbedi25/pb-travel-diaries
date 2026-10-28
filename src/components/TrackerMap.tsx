@@ -194,8 +194,8 @@ export default function TrackerMap({
         ? givenGeometry
         : routeGeometry.length >= 2
           ? routeGeometry
-          : road && road.length >= 2
-            ? road
+          : road && road.geometry.length >= 2
+            ? road.geometry
             : stops.map((s) => [s.lat, s.lng] as LatLng),
     [givenGeometry, routeGeometry, road, stops],
   );
