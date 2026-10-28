@@ -5503,7 +5503,11 @@ function ShopPanel() {
                       aria-label={`Edit ${title}`}
                       className="flex min-w-[8rem] flex-1 items-center gap-3 rounded-xl p-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-saffron-300"
                     >
-                      <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white">
+                      {/* `product-plate` is a literal #ffffff, not the `white`
+                          token: the light theme remaps white to near-black, so
+                          a wide product photo used to sit on a black band in
+                          the dashboard. Same plate the shop puts behind it. */}
+                      <span className="product-plate grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/10">
                         {item.image ? <img src={item.image} alt="" className="h-full w-full object-contain" /> : <ImageOff className="h-4 w-4 text-zinc-500" />}
                       </span>
                       <span className="min-w-0 flex-1">
