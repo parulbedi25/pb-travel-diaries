@@ -173,6 +173,7 @@ export default function RouteStopsEditor({
   onGeometryChange,
   onDistanceChange,
   onMapSourceChange,
+  onRouteChange,
 }: {
   stops: LiveStop[];
   routeGeometry: LatLng[];
@@ -184,6 +185,20 @@ export default function RouteStopsEditor({
   onGeometryChange: (geometry: LatLng[]) => void;
   onDistanceChange: (km: number) => void;
   onMapSourceChange: (source: MapLinkSource) => void;
+  /**
+   * Stops, road and distance in one write.
+   *
+   * The dashboard stores the section data as one object, so three separate
+   * writes from the same handler each rebuilt it from the render that was
+   * already on screen — the last one won and the stops it had not seen went
+   * back to their old values. That is why a replace could report seven stops
+   * and leave the old six in the list.
+   */
+  onRouteChange?: (patch: {
+    stops?: LiveStop[];
+    routeGeometry?: LatLng[];
+    routeDistanceKm?: number;
+  }) => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -593,6 +608,26 @@ export default function RouteStopsEditor({
     }
   };
 
+  /**
+   * Write the route back in one go.
+   *
+   * Falls back to the three single-field callbacks when the host has no
+   * combined writer, so the editor still works on its own.
+   */
+  const commitRoute = (patch: {
+    stops?: LiveStop[];
+    routeGeometry?: LatLng[];
+    routeDistanceKm?: number;
+  }) => {
+    if (onRouteChange) {
+      onRouteChange(patch);
+      return;
+    }
+    if (patch.stops !== undefined) onChange(patch.stops);
+    if (patch.routeGeometry !== undefined) onGeometryChange(patch.routeGeometry);
+    if (patch.routeDistanceKm !== undefined) onDistanceChange(patch.routeDistanceKm);
+  };
+
   const handleImport = async (mode: "add" | "replace") => {
     if (!parsedLink.ok || importing) return;
     setImporting(true);
@@ -663,18 +698,25 @@ export default function RouteStopsEditor({
         setUndo(null);
       }
 
-      onChange(filled.stops);
       // The road is stored with the route, so the tracker reports real road
       // distance on the first visit instead of joining the stops with rulers.
-      if (filled.road.ok) {
-        onGeometryChange(filled.road.geometry);
-        onDistanceChange(filled.road.distanceKm);
-      } else if (routeGeometry.length) {
-        // The stored road geometry belongs to the old stops; leaving it would
-        // draw a route through points that are no longer on it.
-        onGeometryChange([]);
-        onDistanceChange(0);
-      }
+      // Stops, road and distance go in as one write: written one at a time,
+      // each rebuilt the section from the same stale copy and the next one
+      // undid it.
+      commitRoute(
+        filled.road.ok
+          ? {
+              stops: filled.stops,
+              routeGeometry: filled.road.geometry,
+              routeDistanceKm: filled.road.distanceKm,
+            }
+          : {
+              stops: filled.stops,
+              // The stored road geometry belongs to the old stops; leaving it
+              // would draw a route through points that are no longer on it.
+              ...(routeGeometry.length ? { routeGeometry: [], routeDistanceKm: 0 } : {}),
+            },
+      );
 
       const removed = mode === "replace" && stops.length
         ? `Removed ${stops.length} stop${stops.length === 1 ? "" : "s"} (${stops
@@ -991,9 +1033,11 @@ export default function RouteStopsEditor({
             <button
               type="button"
               onClick={() => {
-                onChange(undo.stops);
-                onGeometryChange(undo.geometry);
-                onDistanceChange(undo.distanceKm);
+                commitRoute({
+                  stops: undo.stops,
+                  routeGeometry: undo.geometry,
+                  routeDistanceKm: undo.distanceKm,
+                });
                 setUndo(null);
                 setImportNote(`Put the previous ${undo.stops.length} stops back.`);
               }}

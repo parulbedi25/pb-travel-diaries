@@ -2512,10 +2512,42 @@ function SectionsPanel() {
     });
   };
 
-  const setSectionData = (id: string, path: string, v: unknown) => {
+  /**
+   * Several fields of one section, written as one revision.
+   *
+   * The patch is applied to the draft as it stands inside the updater, not to
+   * the copy this render was given: two handlers firing before a re-render used
+   * to rebuild the section from the same old snapshot, so the second write
+   * quietly undid the first.
+   */
+  const patchSectionData = (id: string, patch: Record<string, unknown>) => {
     const s = sections.find((x) => x.id === id);
     if (!s) return;
-    writeSectionData(id, setAt(s.data, path, v) as Record<string, unknown>);
+    const apply = (data: Record<string, unknown>) => {
+      let next = data;
+      for (const [path, value] of Object.entries(patch)) next = setAt(next, path, value) as Record<string, unknown>;
+      return next;
+    };
+    // The countdown has its own bookkeeping around a single write.
+    if (s.type === "countdown") {
+      writeSectionData(id, apply(s.data as Record<string, unknown>));
+      return;
+    }
+    logAction(`Edited content of: ${s.label}`);
+    updateDraft((c) => {
+      touchEnable(id);
+      const next = ensureOn(c, id);
+      return {
+        ...next,
+        sections: next.sections.map((entry) =>
+          entry.id === id ? { ...entry, data: apply(entry.data as Record<string, unknown>) } : entry,
+        ),
+      };
+    });
+  };
+
+  const setSectionData = (id: string, path: string, v: unknown) => {
+    patchSectionData(id, { [path]: v });
   };
 
   /**
@@ -2816,6 +2848,7 @@ function SectionsPanel() {
                       onGeometryChange={(value) => setSectionData(selected.id, "routeGeometry", value)}
                       onDistanceChange={(value) => setSectionData(selected.id, "routeDistanceKm", value)}
                       onMapSourceChange={(value) => setSectionData(selected.id, "mapSource", value)}
+                      onRouteChange={(patch) => patchSectionData(selected.id, patch)}
                     />
                   );
                 }
