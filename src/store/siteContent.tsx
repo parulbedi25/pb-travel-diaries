@@ -695,6 +695,14 @@ export interface LiveData {
    * Zero means "not measured", and the totals are then summed from the line.
    */
   routeDistanceKm?: number;
+  /**
+   * The stops that road was measured between, as `lat,lng;lat,lng`.
+   *
+   * Written with the road and its distance in one go. The tracker compares it
+   * with the stops it is drawing: when they differ the saved road belongs to an
+   * older route — a stop deleted, a pin dragged — and is not used.
+   */
+  routeSignature?: string;
   /** The two calls to action under the detail card. */
   buttons: { map: LiveButton; nearby: LiveButton };
   /** What the nearby-places page asks Wikipedia for, and what it says. */
@@ -1095,6 +1103,7 @@ const LIVE: LiveData = {
   ],
   routeGeometry: [],
   routeDistanceKm: 0,
+  routeSignature: "",
   mapSource: "google",
   buttons: {
     map: { label: "Open live map", href: "#/live-map", icon: "map-pin", visible: true },

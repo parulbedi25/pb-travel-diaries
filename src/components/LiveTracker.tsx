@@ -23,6 +23,7 @@ import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { useRouteGeometry } from "../hooks/useRoadGeometry";
+import { storedRoadFits } from "../utils/liveRoute";
 import { useRouteWeather } from "../hooks/useRouteWeather";
 import { WeatherBadge } from "./WeatherBadge";
 
@@ -106,10 +107,17 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // geometry saved from the dashboard, or the road fetched here when none was
   // saved. Only when neither is available does this fall back to straight
   // lines — which is what made a 778 km ride read as 396 km.
-  const { geometry, byRoad } = useRouteGeometry(stops, data.routeGeometry);
+  // A road stored for a longer list of stops — before some were deleted — is
+  // not this route's road, and neither is the distance measured along it. The
+  // signature written beside them says which stops they belong to; without a
+  // match they are ignored and the road is measured for the stops on screen.
+  const storedFits = storedRoadFits(stops, data.routeGeometry, data.routeSignature);
+  const { geometry, byRoad, fetchedKm } = useRouteGeometry(stops, storedFits ? data.routeGeometry : []);
   // The routing service's own length for that road, when it was measured: the
   // stored line is a simplified copy and sums a little short of it.
-  const officialKm = data.routeDistanceKm ?? 0;
+  // When the road was measured here instead, use the service's figure for it:
+  // summing a simplified line reads a little short of the drive.
+  const officialKm = storedFits ? (data.routeDistanceKm ?? 0) : fetchedKm;
   const totals = useMemo(
     () => cumulativeKm(stops, geometry, { totalKm: officialKm }),
     [stops, geometry, officialKm],
@@ -170,7 +178,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <div className="shrink-0 aspect-square absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
               <TrackerMap
                 stops={data.stops}
-                routeGeometry={data.routeGeometry}
+                routeGeometry={storedFits ? data.routeGeometry : []}
                 geometry={geometry}
                 routeDistanceKm={officialKm}
                 live={{ lat: location.lat, lng: location.lng }}

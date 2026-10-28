@@ -24,6 +24,7 @@ import {
 } from "../utils/mapLinks";
 import { siteApi } from "../api/siteApi";
 import { fetchRoadGeometry, type LatLng } from "../utils/routing";
+import { routeSignature } from "../utils/liveRoute";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
@@ -198,6 +199,7 @@ export default function RouteStopsEditor({
     stops?: LiveStop[];
     routeGeometry?: LatLng[];
     routeDistanceKm?: number;
+    routeSignature?: string;
   }) => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -208,6 +210,8 @@ export default function RouteStopsEditor({
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [stopBusy, setStopBusy] = useState(false);
+  /** What the last automatic road measurement said. */
+  const [roadNote, setRoadNote] = useState("");
   const [stopNote, setStopNote] = useState("");
   const [stopError, setStopError] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -309,9 +313,10 @@ export default function RouteStopsEditor({
         lat: round(lat),
         lng: round(lng),
       };
-      onChange([...stops, next]);
+      applyStops([...stops, next]);
     },
-    [onChange, stops],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyStops belongs to this render on purpose
+    [stops],
   );
 
   /**
@@ -337,9 +342,11 @@ export default function RouteStopsEditor({
       const reordered = [...stops];
       const [item] = reordered.splice(from, 1);
       reordered.splice(to, 0, item);
-      onChange(reordered);
+      // The order is the route: moving a stop moves the road with it.
+      applyStops(reordered);
     },
-    [onChange, stops],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyStops belongs to this render on purpose
+    [stops],
   );
 
   const handleGridClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -382,10 +389,7 @@ export default function RouteStopsEditor({
         setLookError(`Could not find “${name}”. Add it by clicking the grid or typing coordinates.`);
         return;
       }
-      onChange([
-        ...stops,
-        { name, note: "", status: "next", lat: found.lat, lng: found.lng },
-      ]);
+      applyStops([...stops, { name, note: "", status: "next", lat: found.lat, lng: found.lng }]);
       setQuery("");
     } catch {
       setLookError("The place lookup could not be reached. Click the grid or type coordinates.");
@@ -568,6 +572,9 @@ export default function RouteStopsEditor({
     setStopError("");
     try {
       let geometry = routeGeometry;
+      // The distance that belongs to that geometry: the stored one when the
+      // road came from the dashboard, the measurement when it was just fetched.
+      let roadKm = routeDistanceKm;
       if (geometry.length < 2) {
         const road = await fetchRoadGeometry(stops);
         if (!road.ok) {
@@ -575,8 +582,7 @@ export default function RouteStopsEditor({
           return;
         }
         geometry = road.geometry;
-        onGeometryChange(road.geometry);
-        onDistanceChange(road.distanceKm);
+        roadKm = road.distanceKm;
       }
       const { stops: found, source } = await findMajorStops(geometry, {
         avoid: stops.map((stop) => stop.name),
@@ -595,7 +601,14 @@ export default function RouteStopsEditor({
         lat: round(place.lat),
         lng: round(place.lng),
       }));
-      onChange(merged);
+      // The road already runs through these places, so it is stored with them,
+      // under the signature of the stops it now belongs to.
+      commitRoute({
+        stops: merged,
+        routeGeometry: geometry,
+        routeDistanceKm: roadKm,
+        routeSignature: routeSignature(merged),
+      });
       setStopNote(
         `Added ${found.length} major stop${found.length === 1 ? "" : "s"} along the road: ${found
           .map((place) => place.name)
@@ -618,6 +631,7 @@ export default function RouteStopsEditor({
     stops?: LiveStop[];
     routeGeometry?: LatLng[];
     routeDistanceKm?: number;
+    routeSignature?: string;
   }) => {
     if (onRouteChange) {
       onRouteChange(patch);
@@ -626,6 +640,71 @@ export default function RouteStopsEditor({
     if (patch.stops !== undefined) onChange(patch.stops);
     if (patch.routeGeometry !== undefined) onGeometryChange(patch.routeGeometry);
     if (patch.routeDistanceKm !== undefined) onDistanceChange(patch.routeDistanceKm);
+  };
+
+  /**
+   * A slow road answer must never land on top of a newer one: every edit takes
+   * a ticket, and only the newest ticket may write.
+   */
+  const roadToken = useRef(0);
+
+  /**
+   * Write a changed set of stops *and* measure the road for them again.
+   *
+   * The stored road and its distance belong to the stops that were there a
+   * moment ago. Left behind after a deletion they draw a line through a place
+   * the rider removed and keep quoting the old ride — a route cut from seven
+   * stops down to two went on saying 1,556 km. So the road is cleared in the
+   * same write as the stops, then measured again and stored with the signature
+   * of the stops it was measured between.
+   *
+   * Every edit that changes the ground changes the road: deleting a stop,
+   * adding one, reordering them, dragging a pin.
+   */
+  const applyStops = (next: LiveStop[]) => {
+    const token = (roadToken.current += 1);
+    setRoadNote("");
+    setFetchError("");
+
+    if (next.length < 2) {
+      commitRoute({
+        stops: next,
+        routeGeometry: [],
+        routeDistanceKm: 0,
+        routeSignature: "",
+      });
+      setFetching(false);
+      setRoadNote("One stop left — the road is measured again once there are two.");
+      return;
+    }
+
+    commitRoute({
+      stops: next,
+      routeGeometry: [],
+      routeDistanceKm: 0,
+      routeSignature: "",
+    });
+    setFetching(true);
+    void fetchRoadGeometry(next).then((result) => {
+      // A newer edit has already asked; this answer is about a route that no
+      // longer exists.
+      if (token !== roadToken.current) return;
+      setFetching(false);
+      if (result.ok) {
+        commitRoute({
+          routeGeometry: result.geometry,
+          routeDistanceKm: result.distanceKm,
+          routeSignature: routeSignature(next),
+        });
+        setRoadNote(
+          `Road measured again for ${next.length} stop${next.length === 1 ? "" : "s"} · ${formatKm(
+            result.distanceKm,
+          )}. Save to show it on the tracker.`,
+        );
+      } else {
+        setFetchError(result.message);
+      }
+    });
   };
 
   const handleImport = async (mode: "add" | "replace") => {
@@ -709,12 +788,15 @@ export default function RouteStopsEditor({
               stops: filled.stops,
               routeGeometry: filled.road.geometry,
               routeDistanceKm: filled.road.distanceKm,
+              routeSignature: routeSignature(filled.stops),
             }
           : {
               stops: filled.stops,
               // The stored road geometry belongs to the old stops; leaving it
               // would draw a route through points that are no longer on it.
-              ...(routeGeometry.length ? { routeGeometry: [], routeDistanceKm: 0 } : {}),
+              ...(routeGeometry.length
+                ? { routeGeometry: [], routeDistanceKm: 0, routeSignature: "" }
+                : { routeSignature: "" }),
             },
       );
 
@@ -746,13 +828,20 @@ export default function RouteStopsEditor({
 
   const handleFetchRoad = async () => {
     if (stops.length < 2) return;
+    const token = (roadToken.current += 1);
     setFetching(true);
     setFetchError("");
+    setRoadNote("");
     const result = await fetchRoadGeometry(stops);
+    if (token !== roadToken.current) return;
     setFetching(false);
     if (result.ok) {
-      onGeometryChange(result.geometry);
-      onDistanceChange(result.distanceKm);
+      commitRoute({
+        routeGeometry: result.geometry,
+        routeDistanceKm: result.distanceKm,
+        routeSignature: routeSignature(stops),
+      });
+      setRoadNote(`Road measured for ${stops.length} stops · ${formatKm(result.distanceKm)}. Save to show it on the tracker.`);
     } else {
       setFetchError(result.message);
     }
@@ -844,7 +933,11 @@ export default function RouteStopsEditor({
                   setDragIndex(index);
                 }}
                 onPointerMove={(event) => handlePinMove(index, event)}
-                onPointerUp={() => setDragIndex(null)}
+                onPointerUp={() => {
+                  setDragIndex(null);
+                  // The pin has moved, so the road under it has too.
+                  applyStops(stops);
+                }}
                 onPointerCancel={() => setDragIndex(null)}
                 onClick={(event) => event.stopPropagation()}
                 className="absolute -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none active:cursor-grabbing"
@@ -1037,6 +1130,8 @@ export default function RouteStopsEditor({
                   stops: undo.stops,
                   routeGeometry: undo.geometry,
                   routeDistanceKm: undo.distanceKm,
+                  // The road being put back was measured for these stops.
+                  routeSignature: undo.geometry.length ? routeSignature(undo.stops) : "",
                 });
                 setUndo(null);
                 setImportNote(`Put the previous ${undo.stops.length} stops back.`);
@@ -1098,6 +1193,7 @@ export default function RouteStopsEditor({
           the map for the road you have drawn. A linked route of just two stops gets them filled in
           for you when it is imported.
         </p>
+        {roadNote && <p className="mt-2 text-[11px] text-emerald-300">{roadNote}</p>}
         {fetchError && <p className="mt-2 text-[11px] text-amber-200">{fetchError}</p>}
         {stopError && <p className="mt-2 text-[11px] text-amber-200">{stopError}</p>}
         {stopNote && <p className="mt-2 text-[11px] text-emerald-300">{stopNote}</p>}
@@ -1141,7 +1237,7 @@ export default function RouteStopsEditor({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onChange(stops.filter((_, i) => i !== index))}
+                  onClick={() => applyStops(stops.filter((_, i) => i !== index))}
                   aria-label={`Remove ${stop.name}`}
                   className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition-colors hover:border-red-400/40 hover:text-red-300"
                 >

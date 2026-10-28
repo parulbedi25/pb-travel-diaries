@@ -1,4 +1,6 @@
 import type { LiveStop } from "../store/siteContent";
+import { haversineKm } from "./routeProgress";
+import type { LatLng } from "./routing";
 
 /**
  * Where the ride is, according to the dashboard.
@@ -63,4 +65,45 @@ export function distanceKm(a: MapPoint, b: MapPoint): number {
  */
 export function googleMapsPlaceUrl(point: MapPoint): string {
   return `https://www.google.com/maps/search/?api=1&query=${point.lat},${point.lng}`;
+}
+
+/**
+ * The identity of a route: the stops it was measured between.
+ *
+ * Stored beside the road and the distance, it answers the one question the
+ * tracker cannot answer by looking at the line alone — is this road still the
+ * road for the stops on screen? Deleting a stop, reordering them or dragging a
+ * pin all change it.
+ */
+export function routeSignature(stops: readonly { lat: number; lng: number }[]): string {
+  return stops.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`).join(";");
+}
+
+/**
+ * Does the stored road still belong to the stops on screen?
+ *
+ * A road saved for a longer list of stops keeps its old shape and its old
+ * distance. Left to the tracker it would draw a line through places the rider
+ * has deleted and keep quoting a number measured for a ride that no longer
+ * exists — which is exactly what a route shortened from seven stops to two
+ * showed. When the signature matches, the stored road is this route's road.
+ *
+ * Saves made before the signature existed fall back to the two ends: a road
+ * that starts and ends on the first and last stop is the best that older data
+ * can offer.
+ */
+export function storedRoadFits(
+  stops: readonly LiveStop[],
+  stored: readonly LatLng[],
+  signature?: string,
+  toleranceKm = 15,
+): boolean {
+  if (stops.length < 2 || stored.length < 2) return false;
+  if (signature) return signature === routeSignature(stops);
+  const start = stops[0];
+  const end = stops[stops.length - 1];
+  return (
+    haversineKm([start.lat, start.lng], stored[0]) <= toleranceKm &&
+    haversineKm([end.lat, end.lng], stored[stored.length - 1]) <= toleranceKm
+  );
 }

@@ -19,10 +19,17 @@ const cacheKey = (stops: readonly LiveStop[]): string => ROAD_CACHE_PREFIX + sto
  * the routing service two identical requests, and a visitor would see the
  * straight-line numbers for as long as the slower one takes.
  */
-const memory = new Map<string, LatLng[]>();
-const inFlight = new Map<string, Promise<LatLng[] | null>>();
+/** The road, and the routing service's own length for it. */
+export interface RoadResult {
+  geometry: LatLng[];
+  /** Kilometres as the service measured them; 0 when it did not say. */
+  km: number;
+}
 
-function readCache(key: string): LatLng[] | null {
+const memory = new Map<string, RoadResult>();
+const inFlight = new Map<string, Promise<RoadResult | null>>();
+
+function readCache(key: string): RoadResult | null {
   const visited = memory.get(key);
   if (visited) return visited;
   // This is the one thing still kept in the browser, deliberately: a
@@ -32,11 +39,15 @@ function readCache(key: string): LatLng[] | null {
   try {
     const cached = window.localStorage.getItem(key);
     if (!cached) return null;
-    const parsed = JSON.parse(cached) as { t?: number; geometry?: LatLng[] };
+    const parsed = JSON.parse(cached) as { t?: number; geometry?: LatLng[]; km?: number };
     const fresh = parsed?.t && Date.now() - parsed.t < ROAD_CACHE_MAX_AGE_MS;
     if (fresh && Array.isArray(parsed.geometry) && parsed.geometry.length >= 2) {
-      memory.set(key, parsed.geometry);
-      return parsed.geometry;
+      const found: RoadResult = {
+        geometry: parsed.geometry,
+        km: typeof parsed.km === "number" ? parsed.km : 0,
+      };
+      memory.set(key, found);
+      return found;
     }
   } catch {
     // A missing or unreadable cache just means we ask again.
@@ -44,16 +55,19 @@ function readCache(key: string): LatLng[] | null {
   return null;
 }
 
-function writeCache(key: string, geometry: LatLng[]): void {
-  memory.set(key, geometry);
+function writeCache(key: string, road: RoadResult): void {
+  memory.set(key, road);
   try {
-    window.localStorage.setItem(key, JSON.stringify({ t: Date.now(), geometry }));
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ t: Date.now(), geometry: road.geometry, km: road.km }),
+    );
   } catch {
     // Storage may be full or blocked; the road still draws this visit.
   }
 }
 
-async function askForRoad(stops: readonly LiveStop[]): Promise<LatLng[] | null> {
+async function askForRoad(stops: readonly LiveStop[]): Promise<RoadResult | null> {
   const key = cacheKey(stops);
   const cached = readCache(key);
   if (cached) return cached;
@@ -64,8 +78,11 @@ async function askForRoad(stops: readonly LiveStop[]): Promise<LatLng[] | null> 
     try {
       const result = await fetchRoadGeometry(stops);
       if (!result.ok || result.geometry.length < 2) return null;
-      writeCache(key, result.geometry);
-      return result.geometry;
+      // The service's own figure is kept beside the line: summing a simplified
+      // geometry reads short, and this is the number a route planner shows.
+      const road: RoadResult = { geometry: result.geometry, km: result.distanceKm };
+      writeCache(key, road);
+      return road;
     } catch {
       return null;
     } finally {
@@ -91,8 +108,8 @@ async function askForRoad(stops: readonly LiveStop[]): Promise<LatLng[] | null> 
  * measured point-to-point, so a 778 km ride could be labelled 396 km — the
  * straight line through the Himalaya. Both must measure the same road.
  */
-export function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
-  const [road, setRoad] = useState<LatLng[] | null>(() =>
+export function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): RoadResult | null {
+  const [road, setRoad] = useState<RoadResult | null>(() =>
     stored.length >= 2 || stops.length < 2 ? null : readCache(cacheKey(stops)),
   );
 
@@ -118,8 +135,8 @@ export function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] |
     }
 
     let cancelled = false;
-    void askForRoad(stopsRef.current).then((geometry) => {
-      if (!cancelled && geometry) setRoad(geometry);
+    void askForRoad(stopsRef.current).then((found) => {
+      if (!cancelled && found) setRoad(found);
     });
     return () => {
       cancelled = true;
@@ -137,9 +154,11 @@ export function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] |
 export function useRouteGeometry(
   stops: LiveStop[],
   stored: LatLng[],
-): { geometry: LatLng[]; byRoad: boolean } {
+): { geometry: LatLng[]; byRoad: boolean; fetchedKm: number } {
   const road = useRoadGeometry(stops, stored);
-  if (stored.length >= 2) return { geometry: stored, byRoad: true };
-  if (road && road.length >= 2) return { geometry: road, byRoad: true };
-  return { geometry: stops.map((s) => [s.lat, s.lng] as LatLng), byRoad: false };
+  if (stored.length >= 2) return { geometry: stored, byRoad: true, fetchedKm: 0 };
+  if (road && road.geometry.length >= 2) {
+    return { geometry: road.geometry, byRoad: true, fetchedKm: road.km };
+  }
+  return { geometry: stops.map((s) => [s.lat, s.lng] as LatLng), byRoad: false, fetchedKm: 0 };
 }
