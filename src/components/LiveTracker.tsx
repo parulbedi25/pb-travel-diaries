@@ -22,6 +22,9 @@ import { currentStopIndex } from "../utils/liveRoute";
 import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
+import { useRouteGeometry } from "../hooks/useRoadGeometry";
+import { useRouteWeather } from "../hooks/useRouteWeather";
+import { WeatherBadge } from "./WeatherBadge";
 
 /**
  * The two distances on the card, in whole numbers once they are long enough
@@ -99,10 +102,14 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // Everything the card says about the route is read from the stops, so it
   // stays true when the route is edited in the dashboard.
   const stops = data.stops;
-  const totals = useMemo(
-    () => cumulativeKm(stops, data.routeGeometry),
-    [stops, data.routeGeometry],
-  );
+  // The numbers below are measured along the road that is actually drawn:
+  // geometry saved from the dashboard, or the road fetched here when none was
+  // saved. Only when neither is available does this fall back to straight
+  // lines — which is what made a 778 km ride read as 396 km.
+  const { geometry, byRoad } = useRouteGeometry(stops, data.routeGeometry);
+  const totals = useMemo(() => cumulativeKm(stops, geometry), [stops, geometry]);
+  // Weather at every checkpoint, one request for the whole route.
+  const conditions = useRouteWeather(stops);
   const totalKm = totals[totals.length - 1] ?? 0;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
@@ -115,8 +122,8 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // the same measure the totals use — road geometry when the dashboard has
   // fetched it, straight lines between stops when it has not.
   const toNextKm = nextStop ? Math.max(0, (totals[progressIndex + 1] ?? 0) - coveredKm) : 0;
-  const byRoad = (data.routeGeometry?.length ?? 0) >= 2;
   const upcoming = stops.slice(progressIndex + 1, progressIndex + 4);
+  const hereWeather = conditions?.[progressIndex] ?? null;
   // Shown on the tracker's stop strip rather than floating over the map.
   const pingLabel =
     status === "live"
@@ -158,6 +165,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <TrackerMap
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}
+                geometry={geometry}
                 live={{ lat: location.lat, lng: location.lng }}
                 liveName={location.name}
                 liveState={location.state}
@@ -306,7 +314,11 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
                     { icon: Mountain, v: location.altitude, l: "Altitude" },
-                    { icon: Thermometer, v: "-3°C", l: "Feels like" },
+                    {
+                      icon: Thermometer,
+                      v: hereWeather ? (hereWeather.tempC === null ? "—" : `${hereWeather.tempC}°C`) : "—",
+                      l: hereWeather ? hereWeather.label : "Weather",
+                    },
                     { icon: Fuel, v: "68%", l: "Fuel · 210 km range" },
                     {
                       icon: Flag,
@@ -349,6 +361,29 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   <p className="mt-2 text-[11px] text-zinc-500">{note}</p>
                 </div>
 
+                {/* Weather at each checkpoint, start to finish. The map marks
+                    them too; this is the version you can read without
+                    squinting at a dot. */}
+                {conditions && (
+                  <div className="mt-4 rounded-2xl bg-white/[0.03] p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                      Weather along the route
+                    </p>
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {stops.map((stop, index) => (
+                        <li key={`${stop.name}-${index}`}>
+                          <span className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] py-1 pl-2.5 pr-3">
+                            <span className="max-w-[9rem] truncate text-[11px] font-medium text-zinc-300">
+                              {stop.name}
+                            </span>
+                            <WeatherBadge conditions={conditions[index]} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                   <TrackerButton
                     primary
@@ -377,7 +412,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                       <span className="mt-1 h-[15px] w-[15px] shrink-0 rounded-full border-2 border-saffron-400/70 bg-ink-950" aria-hidden />
                       <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-white">{stop.name}</p>
+                          <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                            {stop.name}
+                            <WeatherBadge conditions={conditions?.[progressIndex + 1 + i]} compact />
+                          </p>
                           <p className="text-xs text-zinc-500">
                             {stop.note || `${formatKm(totals[progressIndex + 1 + i] ?? 0)} from the start`}
                           </p>

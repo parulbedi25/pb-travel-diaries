@@ -25,6 +25,7 @@ import { fetchRoadGeometry, type LatLng } from "../utils/routing";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
+import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from "../utils/majorStops";
 import { cascadeHereNow } from "../utils/liveRoute";
 import { cn } from "../utils/cn";
 import { inputCls } from "./fieldStyles";
@@ -136,6 +137,9 @@ export default function RouteStopsEditor({
   const [lookError, setLookError] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopNote, setStopNote] = useState("");
+  const [stopError, setStopError] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoomStep, setZoomStep] = useState(0);
   const [link, setLink] = useState("");
@@ -418,6 +422,57 @@ export default function RouteStopsEditor({
     return stop;
   };
 
+  /**
+   * Add the major stops of the route already on screen, without disturbing the
+   * ones the rider put there: each suggestion is dropped in at its own place
+   * along the road.
+   */
+  const handleAddMajorStops = async () => {
+    if (stops.length < 2 || stopBusy) return;
+    setStopBusy(true);
+    setStopNote("");
+    setStopError("");
+    try {
+      let geometry = routeGeometry;
+      if (geometry.length < 2) {
+        const road = await fetchRoadGeometry(stops);
+        if (!road.ok) {
+          setStopError(road.message);
+          return;
+        }
+        geometry = road.geometry;
+        onGeometryChange(road.geometry);
+      }
+      const { stops: found, source } = await findMajorStops(geometry, {
+        avoid: stops.map((stop) => stop.name),
+        max: 12,
+        gapKm: 30,
+        radiusKm: 14,
+      });
+      if (!found.length) {
+        setStopNote("No towns found on this stretch — the stops below are already it.");
+        return;
+      }
+      const merged = mergeStopsByDistance(stops, geometry, found, (place: MajorStop) => ({
+        name: place.name,
+        note: "",
+        status: "next",
+        lat: round(place.lat),
+        lng: round(place.lng),
+      }));
+      onChange(merged);
+      setStopNote(
+        `Added ${found.length} major stop${found.length === 1 ? "" : "s"} along the road: ${found
+          .map((place) => place.name)
+          .join(", ")}.${source === "offline" ? " (Offline list — the map service was busy.)" : ""}`,
+      );
+    } catch {
+      setStopError("Could not look up the towns on this route.");
+    } finally {
+      setStopBusy(false);
+    }
+  };
+
   const handleImport = async (mode: "add" | "replace") => {
     if (!parsedLink.ok || importing) return;
     setImporting(true);
@@ -468,16 +523,31 @@ export default function RouteStopsEditor({
       return;
     }
 
-    onChange([...existing, ...fresh]);
+    // A pasted link gives the ends of a journey, not the road between them, so
+    // a route of exactly two stops is filled in with the towns it passes
+    // through — and the road itself is measured and stored, so the tracker
+    // reports the real distance from the first visit rather than a straight
+    // line through the mountains.
+    const imported = [...existing, ...fresh];
+    setImporting(true);
+    const filled = await fillRoute(imported);
+    setImporting(false);
+    onChange(filled.stops);
+    // The road is stored with the route, so the tracker reports real road
+    // distance on the first visit instead of joining the stops with rulers.
+    if (filled.road.ok) onGeometryChange(filled.road.geometry);
     // The stored road geometry belongs to the old stops; leaving it would draw
     // a route through points that are no longer on it.
-    if (routeGeometry.length) onGeometryChange([]);
+    else if (routeGeometry.length) onGeometryChange([]);
+
     setImportNote(
       `${mode === "replace" ? "Route replaced with" : "Added"} ${fresh.length} ${
         fresh.length === 1 ? "stop" : "stops"
       } from ${SOURCE_LABELS[parsedLink.source]}${
         skipped ? ` — ${skipped} already on the tracker` : ""
-      }.${routeGeometry.length ? " Fetch the road route again below." : ""}`,
+      }.${filled.added.length ? ` Filled in ${filled.added.length} major stops on the way: ${filled.added.join(", ")}.` : ""}${
+        filled.road.ok ? "" : " Could not measure the road just now — fetch it below."
+      }`,
     );
     setLink("");
     setReplaceArmed(false);
@@ -781,11 +851,27 @@ export default function RouteStopsEditor({
             {fetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RouteIcon className="h-3.5 w-3.5" />}
             {routeGeometry.length ? "Refetch road route" : "Fetch road route"}
           </button>
+          <button
+            type="button"
+            onClick={() => void handleAddMajorStops()}
+            disabled={stopBusy || stops.length < 2}
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
+          >
+            {stopBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPinned className="h-3.5 w-3.5" />}
+            Add major stops on the way
+          </button>
           {stops.length < 2 && (
             <span className="text-[11px] text-zinc-500">Needs at least two stops.</span>
           )}
         </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+          The towns between the first and last stop — Mandi, Kullu, Manali, Keylong, Leh — chosen from
+          the map for the road you have drawn. A linked route of just two stops gets them filled in
+          for you when it is imported.
+        </p>
         {fetchError && <p className="mt-2 text-[11px] text-amber-200">{fetchError}</p>}
+        {stopError && <p className="mt-2 text-[11px] text-amber-200">{stopError}</p>}
+        {stopNote && <p className="mt-2 text-[11px] text-emerald-300">{stopNote}</p>}
       </div>
 
       {/* ── Each stop ── */}

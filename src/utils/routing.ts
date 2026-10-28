@@ -19,6 +19,13 @@ export interface RouteFetchResult {
   ok: boolean;
   /** [lat, lng] pairs following the road. Empty when the fetch failed. */
   geometry: LatLng[];
+  /**
+   * The length of that road in kilometres, as the routing service measured it.
+   * Our own sum along the returned vertices is close but a little short — the
+   * service simplifies the line it hands back — so the official number is kept
+   * here for anything that has to be exact.
+   */
+  distanceKm: number;
   message: string;
 }
 
@@ -45,7 +52,7 @@ export async function fetchRoadGeometry(
 ): Promise<RouteFetchResult> {
   const stops = usable(points);
   if (stops.length < 2) {
-    return { ok: false, geometry: [], message: "Add at least two stops with coordinates." };
+    return { ok: false, geometry: [], distanceKm: 0, message: "Add at least two stops with coordinates." };
   }
 
   const controller = new AbortController();
@@ -57,27 +64,44 @@ export async function fetchRoadGeometry(
       { signal: controller.signal },
     );
     if (!response.ok) {
-      return { ok: false, geometry: [], message: `Routing service returned ${response.status}.` };
+      return {
+        ok: false,
+        geometry: [],
+        distanceKm: 0,
+        message: `Routing service returned ${response.status}.`,
+      };
     }
     const data = (await response.json()) as {
       code?: string;
-      routes?: { geometry?: { coordinates?: [number, number][] } }[];
+      routes?: { distance?: number; geometry?: { coordinates?: [number, number][] } }[];
     };
     if (data.code !== "Ok" || !data.routes?.length) {
-      return { ok: false, geometry: [], message: "No road route between these stops." };
+      return { ok: false, geometry: [], distanceKm: 0, message: "No road route between these stops." };
     }
+    const metres = data.routes[0].distance ?? 0;
     const geometry = (data.routes[0].geometry?.coordinates ?? []).map(
       ([lon, lat]) => [lat, lon] as LatLng,
     );
     if (geometry.length < 2) {
-      return { ok: false, geometry: [], message: "The routing service returned an empty path." };
+      return {
+        ok: false,
+        geometry: [],
+        distanceKm: 0,
+        message: "The routing service returned an empty path.",
+      };
     }
-    return { ok: true, geometry, message: `Road route loaded — ${geometry.length} points.` };
+    return {
+      ok: true,
+      geometry,
+      distanceKm: metres > 0 ? metres / 1000 : 0,
+      message: `Road route loaded — ${geometry.length} points.`,
+    };
   } catch (error) {
     const aborted = error instanceof DOMException && error.name === "AbortError";
     return {
       ok: false,
       geometry: [],
+      distanceKm: 0,
       message: aborted ? "The routing service did not respond in time." : "Could not reach the routing service.",
     };
   } finally {
