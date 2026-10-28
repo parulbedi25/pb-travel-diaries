@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -5779,7 +5780,7 @@ function BackupsPanel() {
  * page sections, which made the list long without making anything easier to
  * find. Settings holds them in a short sub-list instead.
  */
-type Tab = "sections" | "shop" | "menu" | "footer" | "media" | "settings";
+type Tab = "sections" | "shop" | "menu" | "footer" | "media" | "settings" | "myarea";
 
 const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "sections", label: "Sections", icon: List },
@@ -5788,7 +5789,59 @@ const TABS: { id: Tab; label: string; icon: typeof List }[] = [
   { id: "footer", label: "Footer", icon: LayoutList },
   { id: "media", label: "Media folder", icon: Images },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "myarea", label: "My area", icon: User },
 ];
+
+/**
+ * My area — the member's side of the site, from the owner's dashboard.
+ *
+ * The owner rides the same route everyone else does, so the garage, the ride
+ * builder and the alerts behind the bell are the same page members get. This is
+ * only the door: one option in the dashboard that opens it, without leaving the
+ * dashboard for a menu it does not otherwise need.
+ */
+function MyAreaPanel() {
+  const { account } = useSite();
+  return (
+    <div className="space-y-5">
+      <section className="rounded-3xl glass p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-saffron-400 text-on-gold">
+            <User className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold text-white">My area</h2>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+              Your own garage and ride builder — exactly the page members get when they sign in. Add your
+              bikes with their mileage, build a ride by pasting a map link or clicking pins, and read the
+              petrol for every bike in one place. Nothing here is published, and nothing here changes the
+              site you edit from this dashboard.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              The bell in its header is the road ahead: the weather the site sweeps for the live route
+              every half hour, and any closure you post there yourself — a landslide, a washed-out bridge,
+              a pass shut for the night. Every account sees those notices.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = "#/ride";
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-saffron-400 px-5 py-3 text-sm font-semibold text-on-gold transition-all hover:brightness-110 active:scale-95"
+              >
+                Open my area <ArrowUpRight className="h-4 w-4" />
+              </button>
+              <span className="text-[11px] text-zinc-500">
+                Signed in as {account?.username ?? "the owner"} · private to you
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const { content, draft, updateDraft, logAction, theme, setTheme, hasChanges, saveDraft, saveBranding, saveError, discardDraft, editedActions } = useSite();
@@ -6028,6 +6081,7 @@ export default function AdminPage() {
           {tab === "footer" && <FooterPanel />}
           {tab === "media" && <MediaPanel />}
           {tab === "settings" && <SettingsPanel />}
+          {tab === "myarea" && <MyAreaPanel />}
         </main>
       </div>
 

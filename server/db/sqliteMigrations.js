@@ -64,6 +64,18 @@ export const SQLITE_MIGRATIONS = [{
   statements: [
     `ALTER TABLE media ADD COLUMN tags TEXT NOT NULL DEFAULT ''`,
   ],
+}, {
+  version: 6,
+  name: "route alerts",
+  // The same two tables as the MySQL side (version 8), in SQLite's spelling:
+  // one shared list of alerts and one row per member who has opened each.
+  statements: [
+    `CREATE TABLE IF NOT EXISTS route_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL DEFAULT 'weather', severity TEXT NOT NULL DEFAULT 'info', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', place TEXT NOT NULL DEFAULT '', lat REAL, lng REAL, source TEXT NOT NULL DEFAULT 'weather', dedupe_key TEXT NOT NULL DEFAULT '', route_signature TEXT NOT NULL DEFAULT '', created_at ${timestamp}, expires_at TEXT)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS route_alerts_dedupe ON route_alerts(dedupe_key)`,
+    `CREATE INDEX IF NOT EXISTS route_alerts_created ON route_alerts(created_at)`,
+    `CREATE TABLE IF NOT EXISTS alert_reads (alert_id INTEGER NOT NULL, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, read_at ${timestamp}, PRIMARY KEY (alert_id, user_id))`,
+    `CREATE INDEX IF NOT EXISTS alert_reads_user ON alert_reads(user_id)`,
+  ],
 }];
 export const SQLITE_VERSION = SQLITE_MIGRATIONS.at(-1).version;
 

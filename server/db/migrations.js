@@ -178,6 +178,47 @@ export const MIGRATIONS = [
     // backup carries it without needing a second table restored in order.
     up: sql("ALTER TABLE media ADD COLUMN tags VARCHAR(400) NOT NULL DEFAULT ''"),
   },
+  {
+    version: 8,
+    name: "route alerts",
+    // What members are told about the road ahead.
+    //
+    // `route_alerts` is shared by everybody: a thunderstorm over a pass is the
+    // same storm whoever is reading, so it is written once. `dedupe_key` is
+    // what keeps a half-hourly sweep from turning one storm into forty rows —
+    // the sweep proposes, this index decides. `alert_reads` is per member, so
+    // one person opening the list does not mark it read for the next.
+    //
+    // Both tables are additive and independent of the site's content: a
+    // failure here can never stop a page rendering.
+    up: sql(
+      `CREATE TABLE IF NOT EXISTS route_alerts (
+        id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        kind            VARCHAR(24) NOT NULL DEFAULT 'weather',
+        severity        VARCHAR(16) NOT NULL DEFAULT 'info',
+        title           VARCHAR(200) NOT NULL,
+        body            VARCHAR(1000) NOT NULL DEFAULT '',
+        place           VARCHAR(160) NOT NULL DEFAULT '',
+        lat             DECIMAL(9,6) NULL,
+        lng             DECIMAL(9,6) NULL,
+        source          VARCHAR(24) NOT NULL DEFAULT 'weather',
+        dedupe_key      VARCHAR(200) NOT NULL DEFAULT '',
+        route_signature VARCHAR(4000) NOT NULL DEFAULT '',
+        created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at      DATETIME NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY route_alerts_dedupe (dedupe_key),
+        KEY route_alerts_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      `CREATE TABLE IF NOT EXISTS alert_reads (
+        alert_id  BIGINT UNSIGNED NOT NULL,
+        user_id   BIGINT UNSIGNED NOT NULL,
+        read_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (alert_id, user_id),
+        KEY alert_reads_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    ),
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

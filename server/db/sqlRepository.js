@@ -33,6 +33,21 @@ const rowAsJourney = (row) => ({
   createdAt: row.createdAt ?? null,
   updatedAt: row.updatedAt ?? null,
 });
+
+const rowAsAlert = (row) => ({
+  id: Number(row.id),
+  kind: row.kind ?? "weather",
+  severity: row.severity ?? "info",
+  title: row.title ?? "",
+  body: row.body ?? "",
+  place: row.place ?? "",
+  lat: row.lat == null ? null : Number(row.lat),
+  lng: row.lng == null ? null : Number(row.lng),
+  source: row.source ?? "weather",
+  routeSignature: row.routeSignature ?? "",
+  createdAt: row.createdAt ?? null,
+  expiresAt: row.expiresAt ?? null,
+});
 export function createSqlRepository({ pool, transaction, kind, migrate, schemaStatus }) {
   return {
     kind,
@@ -519,6 +534,113 @@ export function createSqlRepository({ pool, transaction, kind, migrate, schemaSt
         [id, userId],
       );
       return Number(result.affectedRows ?? 0) > 0;
+    },
+
+    /* ── route alerts ─────────────────────────────────────────────────── */
+
+    /**
+     * What everybody following the route is told, and what this member has read.
+     *
+     * The alerts are shared — one thunderstorm, one row — while `alert_reads`
+     * keeps "seen" per person, so the same storm is new to one member and old
+     * news to another.
+     */
+    async listAlerts({ now = new Date().toISOString(), limit = 60 } = {}) {
+      const capped = Math.max(1, Math.min(200, Number(limit) || 60));
+      const [rows] = await pool.execute(
+        `SELECT id, kind, severity, title, body, place, lat, lng, source,
+                route_signature AS routeSignature,
+                created_at AS createdAt, expires_at AS expiresAt
+           FROM route_alerts
+          WHERE expires_at IS NULL OR expires_at > ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ${capped}`,
+        [now],
+      );
+      return rows.map(rowAsAlert);
+    },
+
+    /**
+     * Store the alerts a sweep proposed, skipping the ones already there.
+     *
+     * `dedupe_key` is the identity of a hazard — that storm, at that stop, on
+     * that day — so a sweep every half hour adds a row the first time and
+     * nothing afterwards. A duplicate that arrives between the check and the
+     * insert is caught and counted as "already there", not as an error.
+     */
+    async insertAlerts(rows) {
+      let inserted = 0;
+      for (const alert of rows) {
+        if (!alert?.dedupeKey) continue;
+        const [existing] = await pool.execute(
+          "SELECT id FROM route_alerts WHERE dedupe_key = ? LIMIT 1",
+          [alert.dedupeKey],
+        );
+        if (existing.length) continue;
+        try {
+          await pool.execute(
+            `INSERT INTO route_alerts
+               (kind, severity, title, body, place, lat, lng, source, dedupe_key, route_signature, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              alert.kind ?? "weather",
+              alert.severity ?? "info",
+              String(alert.title ?? "").slice(0, 200),
+              String(alert.body ?? "").slice(0, 1000),
+              String(alert.place ?? "").slice(0, 160),
+              alert.lat == null || alert.lat === "" ? null : Number(alert.lat),
+              alert.lng == null || alert.lng === "" ? null : Number(alert.lng),
+              alert.source ?? "weather",
+              alert.dedupeKey,
+              String(alert.routeSignature ?? "").slice(0, 4000),
+              alert.expiresAt ?? null,
+            ],
+          );
+          inserted += 1;
+        } catch (error) {
+          if (error?.code !== "ER_DUP_ENTRY") throw error;
+        }
+      }
+      return inserted;
+    },
+
+    async markAlertsRead(userId, ids, at = new Date().toISOString()) {
+      let marked = 0;
+      for (const id of ids) {
+        try {
+          await pool.execute(
+            "INSERT INTO alert_reads (alert_id, user_id, read_at) VALUES (?, ?, ?)",
+            [id, userId, at],
+          );
+          marked += 1;
+        } catch (error) {
+          if (error?.code !== "ER_DUP_ENTRY") throw error;
+        }
+      }
+      return marked;
+    },
+
+    async readAlertIds(userId) {
+      const [rows] = await pool.execute(
+        "SELECT alert_id AS id FROM alert_reads WHERE user_id = ?",
+        [userId],
+      );
+      return rows.map((row) => Number(row.id));
+    },
+
+    async deleteAlert(id) {
+      const [result] = await pool.execute("DELETE FROM route_alerts WHERE id = ?", [id]);
+      await pool.execute("DELETE FROM alert_reads WHERE alert_id = ?", [id]);
+      return Number(result.affectedRows ?? 0) > 0;
+    },
+
+    /** Expired alerts are history nobody can act on; the sweep clears them. */
+    async pruneAlerts(before = new Date().toISOString()) {
+      const [result] = await pool.execute(
+        "DELETE FROM route_alerts WHERE expires_at IS NOT NULL AND expires_at < ?",
+        [before],
+      );
+      return Number(result.affectedRows ?? 0);
     },
 
     /* ── settings ─────────────────────────────────────────────────────── */
