@@ -108,21 +108,30 @@ export function WeatherBubble({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* The bubble itself reads at a glance, the same way the checkpoint
+          badges do: an icon and the temperature in degrees, so the whole ride's
+          weather can be taken in without opening anything. The card behind it
+          is the detail. */}
       <button
         type="button"
         onClick={() => setPinned((value) => !value)}
         aria-expanded={open}
         aria-label={`Weather ${mark.km} km along the route: ${detail.now.label}, ${
           detail.now.tempC ?? "—"
-        } degrees`}
+        } degrees Celsius`}
         className={cn(
-          "absolute -translate-x-1/2 -translate-y-1/2 rounded-full border p-[3px] transition-transform duration-200",
+          "absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-0.5 rounded-full border px-1.5 py-0.5 transition-transform duration-200",
           "border-white/25 bg-ink-950/85 shadow-lg shadow-black/40 backdrop-blur-md hover:scale-110",
           open ? "scale-110 border-white/60" : "",
         )}
-        title={`${mark.km} km · ${detail.now.label}`}
+        title={`${mark.km} km · ${detail.now.label}${
+          detail.now.tempC === null ? "" : ` · ${detail.now.tempC}°C`
+        }`}
       >
-        <WeatherIcon kind={detail.now.kind} className="h-3.5 w-3.5" />
+        <WeatherIcon kind={detail.now.kind} className="h-3 w-3" />
+        <span className="font-mono text-[9px] font-bold leading-none text-zinc-100">
+          {detail.now.tempC === null ? "—" : `${detail.now.tempC}°`}
+        </span>
       </button>
 
       {open && (

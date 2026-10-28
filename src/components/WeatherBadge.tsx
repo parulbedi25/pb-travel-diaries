@@ -61,14 +61,11 @@ export function WeatherIcon({
 export function WeatherBadge({
   conditions,
   compact = false,
-  showTemp = true,
   className,
 }: {
   conditions?: StopWeather | null;
   /** Icon and degrees only — for a checkpoint dot on the map. */
   compact?: boolean;
-  /** Off on a crowded route, where the degrees would run into each other. */
-  showTemp?: boolean;
   className?: string;
 }) {
   if (!conditions) return null;
@@ -87,7 +84,7 @@ export function WeatherBadge({
         aria-label={degrees ? `${conditions.label}, ${degrees} Celsius` : conditions.label}
       >
         <Icon className={cn("h-3 w-3", tone)} aria-hidden="true" />
-        {degrees && showTemp && (
+        {degrees && (
           <span className="font-mono text-[9px] font-bold leading-none text-zinc-200">{degrees}</span>
         )}
       </span>
