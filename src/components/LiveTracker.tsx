@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   MapPin,
   MapPinned,
@@ -26,6 +26,8 @@ import { useRouteGeometry } from "../hooks/useRoadGeometry";
 import { storedRoadFits } from "../utils/liveRoute";
 import { useRouteWeather } from "../hooks/useRouteWeather";
 import { WeatherBadge } from "./WeatherBadge";
+import { WeatherCard } from "./WeatherBubble";
+import { useWeatherDetails } from "../hooks/useWeatherDetails";
 
 /**
  * The two distances on the card, in whole numbers once they are long enough
@@ -124,6 +126,37 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   );
   // Weather at every checkpoint, one request for the whole route.
   const conditions = useRouteWeather(stops);
+  // The same points again, with the rest of the forecast: the next three hours
+  // and the coming week behind every temperature on this card. One request for
+  // the route, cached, so opening one is a local action.
+  const details = useWeatherDetails(stops);
+  /** Which temperature in the list is open — one at a time, by stop index. */
+  const [routePeek, setRoutePeek] = useState<number | null>(null);
+  const [nextPeek, setNextPeek] = useState<number | null>(null);
+
+  /** The card behind a tapping temperature: the place it belongs to, and its week. */
+  const forecastFor = (index: number) => {
+    const stop = stops[index];
+    const detail = details?.[index];
+    if (!stop || !detail) return null;
+    const role = index === 0 ? "Start" : index === stops.length - 1 ? "Destination" : "On the way";
+    return (
+      <div className="mt-3 w-full">
+        <WeatherCard
+          eyebrow={`${role} · ${formatKm(totals[index] ?? 0)}`}
+          title={stop.name}
+          subtitle={detail.now.label}
+          detail={detail}
+          width="100%"
+          style={{ position: "relative" }}
+          onClose={() => {
+            setRoutePeek(null);
+            setNextPeek(null);
+          }}
+        />
+      </div>
+    );
+  };
   const totalKm = totals[totals.length - 1] ?? 0;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
@@ -391,11 +424,27 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                             <span className="max-w-[9rem] truncate text-[11px] font-medium text-zinc-300">
                               {stop.name}
                             </span>
-                            <WeatherBadge conditions={conditions[index]} />
+                            {/* Every temperature opens its own forecast: what it
+                                is doing there, the next three hours and the
+                                week, with the place's name on the card. */}
+                            <button
+                              type="button"
+                              data-weather-temp=""
+                              onClick={() => setRoutePeek((current) => (current === index ? null : index))}
+                              aria-expanded={routePeek === index}
+                              aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
+                              className={cn(
+                                "-my-1 -mr-1.5 rounded-full p-1 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
+                                routePeek === index ? "scale-110" : "",
+                              )}
+                            >
+                              <WeatherBadge conditions={conditions[index]} />
+                            </button>
                           </span>
                         </li>
                       ))}
                     </ul>
+                    {routePeek !== null && forecastFor(routePeek)}
                   </div>
                 )}
 
@@ -429,11 +478,28 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                         <div>
                           <p className="flex items-center gap-2 text-sm font-semibold text-white">
                             {stop.name}
-                            <WeatherBadge conditions={conditions?.[progressIndex + 1 + i]} compact />
+                            <button
+                              type="button"
+                              data-weather-temp=""
+                              onClick={() =>
+                                setNextPeek((current) =>
+                                  current === progressIndex + 1 + i ? null : progressIndex + 1 + i,
+                                )
+                              }
+                              aria-expanded={nextPeek === progressIndex + 1 + i}
+                              aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
+                              className={cn(
+                                "rounded-full p-0.5 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
+                                nextPeek === progressIndex + 1 + i ? "scale-110" : "",
+                              )}
+                            >
+                              <WeatherBadge conditions={conditions?.[progressIndex + 1 + i]} compact />
+                            </button>
                           </p>
                           <p className="text-xs text-zinc-500">
                             {stop.note || `${formatKm(totals[progressIndex + 1 + i] ?? 0)} from the start`}
                           </p>
+                          {nextPeek === progressIndex + 1 + i && forecastFor(progressIndex + 1 + i)}
                         </div>
                         <span className="rounded-full bg-saffron-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
                           {formatKm((totals[progressIndex + 1 + i] ?? 0) - coveredKm)}

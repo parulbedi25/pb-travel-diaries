@@ -30,7 +30,7 @@ import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from "../utils/majorStops";
 import { lookupQueries, placeRegion, shortPlaceName } from "../utils/placeNames";
-import { cascadeHereNow } from "../utils/liveRoute";
+import { cascadeHereNow, cascadeRidden } from "../utils/liveRoute";
 import { cn } from "../utils/cn";
 import { inputCls } from "./fieldStyles";
 
@@ -320,15 +320,23 @@ export default function RouteStopsEditor({
   );
 
   /**
-   * Statuses are not independent. "Here now" is a statement about the whole
-   * route — everything behind it has been ridden, everything ahead is still to
-   * come — so choosing it rewrites the other stops rather than leaving the
-   * route claiming two current positions.
+   * Statuses are not independent.
+   *
+   * "Here now" is a statement about the whole route — everything behind it has
+   * been ridden, everything ahead is still to come — so choosing it rewrites
+   * the other stops rather than leaving the route claiming two current
+   * positions. "Ridden" is the same claim, one stop earlier: a stop cannot be
+   * behind the bike while the stops above it are still ahead, so choosing it
+   * marks everything above it ridden too (see cascadeRidden).
    */
   const setStatus = useCallback(
     (index: number, status: LiveStop["status"]) => {
       if (status === "live") {
         onChange(cascadeHereNow(stops, index));
+        return;
+      }
+      if (status === "done") {
+        onChange(cascadeRidden(stops, index));
         return;
       }
       patch(index, { status });
