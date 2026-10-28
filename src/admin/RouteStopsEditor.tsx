@@ -221,6 +221,13 @@ export default function RouteStopsEditor({
   const [importError, setImportError] = useState("");
   const [importNote, setImportNote] = useState("");
   const [replaceArmed, setReplaceArmed] = useState(false);
+  /**
+   * What has changed about the route since it was last looked at: the stops a
+   * paste threw away (red, struck through) and the ones it brought in (green).
+   * Kept as a list rather than a sentence so a ride that grew by eight towns is
+   * still readable at a glance.
+   */
+  const [changes, setChanges] = useState<{ name: string; kind: "added" | "removed" }[]>([]);
   /** What the last replace discarded, so it can be put back. */
   const [undo, setUndo] = useState<{ stops: LiveStop[]; geometry: LatLng[]; distanceKm: number } | null>(
     null,
@@ -297,6 +304,22 @@ export default function RouteStopsEditor({
     return () => document.removeEventListener("pointerdown", disarm);
   }, [replaceArmed]);
 
+  /** Add to the list of changes, flipping a name that comes back. */
+  const recordChanges = useCallback((entries: { name: string; kind: "added" | "removed" }[]) => {
+    setChanges((current) => {
+      const next = [...current];
+      for (const entry of entries) {
+        const name = entry.name.trim();
+        if (!name) continue;
+        const seen = next.findIndex((item) => item.name.toLowerCase() === name.toLowerCase());
+        if (seen >= 0) next.splice(seen, 1);
+        next.push({ name, kind: entry.kind });
+      }
+      // Long enough for a filled-in route, short enough to stay a glance.
+      return next.slice(-16);
+    });
+  }, []);
+
   const patch = useCallback(
     (index: number, part: Partial<LiveStop>) => {
       onChange(stops.map((stop, i) => (i === index ? { ...stop, ...part } : stop)));
@@ -314,6 +337,7 @@ export default function RouteStopsEditor({
         lng: round(lng),
       };
       applyStops([...stops, next]);
+      recordChanges([{ name: next.name, kind: "added" }]);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyStops belongs to this render on purpose
     [stops],
@@ -398,6 +422,7 @@ export default function RouteStopsEditor({
         return;
       }
       applyStops([...stops, { name, note: "", status: "next", lat: found.lat, lng: found.lng }]);
+      recordChanges([{ name, kind: "added" }]);
       setQuery("");
     } catch {
       setLookError("The place lookup could not be reached. Click the grid or type coordinates.");
@@ -617,6 +642,7 @@ export default function RouteStopsEditor({
         routeDistanceKm: roadKm,
         routeSignature: routeSignature(merged),
       });
+      recordChanges(found.map((place) => ({ name: place.name, kind: "added" as const })));
       setStopNote(
         `Added ${found.length} major stop${found.length === 1 ? "" : "s"} along the road: ${found
           .map((place) => place.name)
@@ -778,6 +804,20 @@ export default function RouteStopsEditor({
       const imported = [...existing, ...fresh];
       const filled = await fillRoute(imported);
 
+      // What this paste changed, named: the stops it threw away (red) and the
+      // ones it brought in (green) — the link's own points and the towns filled
+      // in between them alike, because both are new to this route.
+      const namesNow = new Set(filled.stops.map((stop) => stop.name.trim().toLowerCase()));
+      const namesBefore = new Set(stops.map((stop) => stop.name.trim().toLowerCase()));
+      setChanges([
+        ...stops
+          .filter((stop) => !namesNow.has(stop.name.trim().toLowerCase()))
+          .map((stop) => ({ name: stop.name, kind: "removed" as const })),
+        ...filled.stops
+          .filter((stop) => !namesBefore.has(stop.name.trim().toLowerCase()))
+          .map((stop) => ({ name: stop.name, kind: "added" as const })),
+      ]);
+
       // What a replace threw away, kept so it can be put back in one click.
       if (mode === "replace" && stops.length) {
         setUndo({ stops, geometry: routeGeometry, distanceKm: routeDistanceKm });
@@ -808,13 +848,8 @@ export default function RouteStopsEditor({
             },
       );
 
-      const removed = mode === "replace" && stops.length
-        ? `Removed ${stops.length} stop${stops.length === 1 ? "" : "s"} (${stops
-            .map((stop) => stop.name)
-            .join(", ")}) · `
-        : "";
       setImportNote(
-        `${removed}${unread.length ? `${unread.join(", ")} could not be placed and was left out. ` : ""}${
+        `${unread.length ? `${unread.join(", ")} could not be placed and was left out. ` : ""}${
           mode === "replace" ? "Added" : "Added"
         } ${fresh.length} ${fresh.length === 1 ? "stop" : "stops"} from ${SOURCE_LABELS[parsedLink.source]}: ${
           fresh.map((stop) => stop.name).join(", ")
@@ -1158,6 +1193,32 @@ export default function RouteStopsEditor({
         )}
         {importError && <p className="mt-2 text-[11px] text-amber-200">{importError}</p>}
         {importNote && <p className="mt-2 text-[11px] text-emerald-300">{importNote}</p>}
+
+        {/* Named, not counted: a red line through every stop this paste threw
+            away, and the ones it brought in — the link's points and the towns
+            filled in on the way — in green. */}
+        {changes.length > 0 && (
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Route changes
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {changes.map((change) => (
+                <li
+                  key={`${change.kind}-${change.name}`}
+                  className={
+                    change.kind === "removed"
+                      ? "rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-300 line-through"
+                      : "rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+                  }
+                >
+                  {change.kind === "removed" ? "− " : "+ "}
+                  {change.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* ── Road ── */}
@@ -1245,7 +1306,10 @@ export default function RouteStopsEditor({
                 </button>
                 <button
                   type="button"
-                  onClick={() => applyStops(stops.filter((_, i) => i !== index))}
+                  onClick={() => {
+                    applyStops(stops.filter((_, i) => i !== index));
+                    recordChanges([{ name: stop.name, kind: "removed" }]);
+                  }}
                   aria-label={`Remove ${stop.name}`}
                   className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-zinc-400 transition-colors hover:border-red-400/40 hover:text-red-300"
                 >

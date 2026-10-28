@@ -1,4 +1,10 @@
-import { fetchRoadGeometry, nearestVertexIndex, type LatLng, type RouteFetchResult } from "./routing";
+import {
+  fetchRoadGeometry,
+  nearestVertexIndex,
+  nearestVertexIndexFrom,
+  type LatLng,
+  type RouteFetchResult,
+} from "./routing";
 import { haversineKm } from "./routeProgress";
 import type { LiveStop } from "../store/siteContent";
 
@@ -364,40 +370,56 @@ export interface FilledRoute {
 }
 
 /**
- * A journey of two stops — which is all a pasted map link gives — filled in
- * with the towns it rides through.
+ * A journey filled in with the towns it rides through.
  *
- * Anything already built keeps its places exactly as they are: only a two-stop
- * route is expanded, so a carefully edited route is never rearranged behind
- * the person who edited it. The measured road comes back with the stops
- * because the dashboard stores it, and because the suggestion is only as good
- * as the geometry it was chosen along.
+ * A pasted map link gives points, not the road between them: two stops or
+ * seven, what the link names is where the rider turns around, and the towns on
+ * the way are missing from all of them. So every leg is filled — the towns
+ * between the first stop and the second, the second and the third, and so on
+ * to the end — chosen from the whole road's geometry and then kept only where
+ * they fall strictly between two stops, with a little room either side so a
+ * town does not land on top of a stop the rider typed.
+ *
+ * The rider's own stops keep their places, their notes and their order. The
+ * measured road comes back with the stops because the dashboard stores it, and
+ * because the suggestion is only as good as the geometry it was chosen along.
  */
 export async function fillRoute(
   list: readonly LiveStop[],
   options: MajorStopOptions = {},
 ): Promise<FilledRoute> {
   const road = await fetchRoadGeometry(list);
-  if (list.length !== 2) return { stops: [...list], added: [], road };
+  if (list.length < 2) return { stops: [...list], added: [], road };
 
-  const [start, end] = list;
   const geometry: LatLng[] = road.ok
     ? road.geometry
-    : [
-        [start.lat, start.lng],
-        [end.lat, end.lng],
-      ];
+    : list.map((stop) => [stop.lat, stop.lng] as LatLng);
+
+  const stopKm = cumulativeKmOf(list, geometry);
+  const legs = list.length - 1;
+  // Room around each stop: a town ten kilometres short of a stop the rider
+  // already has is not a stop of its own.
+  const edge = options.trimKm ?? 12;
 
   const { stops: found } = await findMajorStops(geometry, {
-    max: 12,
+    max: Math.max(12, legs * 6),
     gapKm: 30,
     radiusKm: 14,
     ...options,
     avoid: [...(options.avoid ?? []), ...list.map((stop) => stop.name)],
   });
-  if (!found.length) return { stops: [...list], added: [], road };
 
-  const middle: LiveStop[] = found.map((place) => ({
+  // Keep the ones that are on a leg rather than merely near the road: with two
+  // stops that is the whole ride, with seven it is every stretch between them.
+  const between = found.filter((place) =>
+    stopKm.some(
+      (km, index) =>
+        index < legs && place.km > km + edge && place.km < stopKm[index + 1] - edge,
+    ),
+  );
+  if (!between.length) return { stops: [...list], added: [], road };
+
+  const merged = mergeStopsByDistance(list, geometry, between, (place: MajorStop) => ({
     name: place.name,
     // No note: the tracker shows the distance from the start for a stop
     // without one, which is exactly what a stop on the way wants to say.
@@ -408,8 +430,8 @@ export async function fillRoute(
   }));
 
   return {
-    stops: [start, ...middle, end],
-    added: found.map((place) => place.name),
+    stops: merged,
+    added: between.map((place) => place.name),
     road,
   };
 }
@@ -452,7 +474,14 @@ export function mergeStopsByDistance(
   return sorted;
 }
 
-/** The stops' own distances, measured the same way the tracker measures them. */
+/**
+ * How far along the road each stop is, measured **in order**.
+ *
+ * Each stop is matched to the nearest vertex from the one before it, never the
+ * nearest anywhere. A round trip that ends where it started would otherwise
+ * measure its own destination as zero kilometres in — and every stop sorted
+ * against that figure would land in front of the ride it belongs to.
+ */
 function cumulativeKmOf(
   stops: readonly LiveStop[],
   geometry: readonly LatLng[],
@@ -460,8 +489,12 @@ function cumulativeKmOf(
   const totals: number[] = stops.map(() => 0);
   if (geometry.length < 2 || stops.length < 2) return totals;
   const cumulative = cumulativePath(geometry);
+  let cursor = 0;
   stops.forEach((stop, index) => {
-    totals[index] = index === 0 ? 0 : kmAlongRoute(stop, geometry, cumulative);
+    if (index === 0) return;
+    const vertex = nearestVertexIndexFrom(geometry, stop, cursor);
+    if (vertex >= 0) cursor = vertex;
+    totals[index] = cursor >= 0 ? cumulative[cursor] : 0;
   });
   return totals;
 }
