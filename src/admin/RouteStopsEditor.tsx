@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Link2,
+  Undo2,
   Loader2,
   MapPinned,
   Plus,
@@ -140,7 +141,14 @@ async function reverseLookup(
   lng: number,
 ): Promise<{ name: string; state?: string } | null> {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat=${lat}&lon=${lng}`;
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: { Accept: "application/json" } });
+  } catch {
+    // A blocked or offline lookup is not a reason to fail an import: the
+    // coordinates are already known, only the name is missing.
+    return null;
+  }
   if (!response.ok) return null;
   const json = (await response.json()) as {
     name?: string;
@@ -194,6 +202,10 @@ export default function RouteStopsEditor({
   const [importError, setImportError] = useState("");
   const [importNote, setImportNote] = useState("");
   const [replaceArmed, setReplaceArmed] = useState(false);
+  /** What the last replace discarded, so it can be put back. */
+  const [undo, setUndo] = useState<{ stops: LiveStop[]; geometry: LatLng[]; distanceKm: number } | null>(
+    null,
+  );
   const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
   /** The replace button, so arming it is not undone by its own click. */
   const replaceRef = useRef<HTMLButtonElement | null>(null);
@@ -383,6 +395,18 @@ export default function RouteStopsEditor({
   // added, so the operator can see what the link says without committing to it.
   const parsedLink = useMemo(() => parseRouteLink(effectiveLink), [effectiveLink]);
 
+  /** Can the link be imported at all, and if not — in words. */
+  const canImport = parsedLink.ok && !importing && !resolving;
+  const importBlockedReason = !trimmedLink
+    ? "Paste a link above and this button reads it."
+    : resolving
+      ? "Waiting for the short link to expand — a second, usually."
+      : expandError
+        ? "The short link could not be read. Open it in a browser and paste the full address from its address bar."
+        : parsedLink.ok
+          ? ""
+          : parsedLink.message;
+
   const linkStatus = !trimmedLink
     ? "Selected automatically from whichever link you paste."
     : resolving
@@ -397,8 +421,15 @@ export default function RouteStopsEditor({
       setExpandError("");
       return;
     }
-    if (expanded?.link === cleanLink) return;
+    // Already expanded: clearing the spinner here matters, because the cleanup
+    // of the previous run runs when this effect re-enters and would otherwise
+    // strand `resolving` at true, greying out the replace button forever.
+    if (expanded?.link === cleanLink) {
+      setResolving(false);
+      return;
+    }
     if (!parseRouteLink(cleanLink).shortLink) {
+      setResolving(false);
       setExpanded(null);
       setExpandError("");
       return;
@@ -409,16 +440,30 @@ export default function RouteStopsEditor({
     const timer = window.setTimeout(() => {
       setResolving(true);
       setExpandError("");
+      // Two tries, a moment apart: expanding is a redirect followed by the
+      // server, and Google is not always quick to answer the first time. One
+      // failure used to leave the buttons greyed out with no way forward.
       void siteApi
         .resolveMapLink(cleanLink)
+        .catch(() => new Promise<string>((resolve) => window.setTimeout(resolve, 1200)).then(() => siteApi.resolveMapLink(cleanLink)))
         .then((url) => {
-          if (!cancelled) setExpanded({ link: cleanLink, url });
+          if (cancelled) return;
+          // An answer without an address is not an expansion; treating it as
+          // one leaves the panel parsing "undefined" and the buttons dead.
+          if (!url || !/^https?:\/\//i.test(url)) {
+            setResolving(false);
+            setExpandError("That short link came back empty. Open it in a browser and paste the full address instead.");
+            return;
+          }
+          setResolving(false);
+          setExpanded({ link: cleanLink, url });
         })
         .catch((error: unknown) => {
           if (cancelled) return;
+          setResolving(false);
           setExpandError(
             error instanceof Error
-              ? `${error.message} Open the short link and paste the address bar instead.`
+              ? `${error.message} Open the short link in a browser and paste the full address instead.`
               : "That short link could not be expanded. Open it and copy the address bar instead.",
           );
         })
@@ -557,86 +602,104 @@ export default function RouteStopsEditor({
     const built: LiveStop[] = [];
     const unread: string[] = [];
 
-    for (const [index, point] of parsedLink.points.entries()) {
-      const resolved = await resolvePoint(point, index, parsedLink.points.length, parsedLink.source);
-      if (resolved) built.push(resolved);
-      else unread.push(point.label ?? `${point.lat}, ${point.lng}`);
-    }
-
-    setImporting(false);
-    // A single stop that cannot be placed must not sink the whole route: the
-    // one unplaceable point is reported and left out, everything else is
-    // imported. Refusing the lot is what made "Use as the route" look broken —
-    // one stale URL fragment in the link, and nothing happened at all.
-    if (built.length < 2) {
-      setImportError(
-        `Could not place ${unread.join(", ") || "any stop in that link"}. Add the stops by hand below.`,
-      );
-      return;
-    }
-
-    const existing = mode === "replace" ? [] : stops;
-    // Only one stop can be "here now". Adding a route behind an existing one
-    // must not claim PB is in two places, so the imported stops join as still
-    // to come; a fresh route starts at its own start.
-    if (existing.length) {
-      for (const stop of built) stop.status = "next";
-    }
-    // Bookkeeping, not paranoia: a route imported twice should not double every
-    // stop, and the same coordinate twice is the same place.
-    const seen = new Set(existing.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`));
-    let skipped = 0;
-    const fresh = built.filter((stop, index) => {
-      const key = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`;
-      // The first and last points define the journey — a round trip that comes
-      // back to a stop already on the tracker still needs its ride home.
-      const end = index === 0 || index === built.length - 1;
-      if (!end && seen.has(key)) {
-        skipped += 1;
-        return false;
+    try {
+      for (const [index, point] of parsedLink.points.entries()) {
+        const resolved = await resolvePoint(point, index, parsedLink.points.length, parsedLink.source);
+        if (resolved) built.push(resolved);
+        else unread.push(point.label ?? `${point.lat}, ${point.lng}`);
       }
-      seen.add(key);
-      return true;
-    });
 
-    if (!fresh.length) {
-      setImportNote("Every point in that link is already a stop.");
-      return;
+      // A single stop that cannot be placed must not sink the whole route: the
+      // one unplaceable point is reported and left out, everything else is
+      // imported. Refusing the lot is what made "Use as the route" look broken.
+      if (built.length < 2) {
+        setImportError(
+          `Could not place ${unread.join(", ") || "any stop in that link"}. Add the stops by hand below.`,
+        );
+        return;
+      }
+
+      const existing = mode === "replace" ? [] : stops;
+      // Only one stop can be "here now". Adding a route behind an existing one
+      // must not claim PB is in two places, so the imported stops join as still
+      // to come; a fresh route starts at its own start.
+      if (existing.length) {
+        for (const stop of built) stop.status = "next";
+      }
+      // Bookkeeping, not paranoia: a route imported twice should not double
+      // every stop, and the same coordinate twice is the same place.
+      const seen = new Set(existing.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`));
+      let skipped = 0;
+      const fresh = built.filter((stop, index) => {
+        const key = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`;
+        // The first and last points define the journey — a round trip that
+        // comes back to a stop already on the tracker still needs its ride home.
+        const end = index === 0 || index === built.length - 1;
+        if (!end && seen.has(key)) {
+          skipped += 1;
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+      if (!fresh.length) {
+        setImportNote("Every point in that link is already a stop.");
+        return;
+      }
+
+      // A pasted link gives the ends of a journey, not the road between them,
+      // so a route of exactly two stops is filled in with the towns it passes
+      // through — and the road itself is measured and stored, so the tracker
+      // reports the real distance from the first visit rather than a straight
+      // line through the mountains.
+      const imported = [...existing, ...fresh];
+      const filled = await fillRoute(imported);
+
+      // What a replace threw away, kept so it can be put back in one click.
+      if (mode === "replace" && stops.length) {
+        setUndo({ stops, geometry: routeGeometry, distanceKm: routeDistanceKm });
+      } else if (mode === "add") {
+        setUndo(null);
+      }
+
+      onChange(filled.stops);
+      // The road is stored with the route, so the tracker reports real road
+      // distance on the first visit instead of joining the stops with rulers.
+      if (filled.road.ok) {
+        onGeometryChange(filled.road.geometry);
+        onDistanceChange(filled.road.distanceKm);
+      } else if (routeGeometry.length) {
+        // The stored road geometry belongs to the old stops; leaving it would
+        // draw a route through points that are no longer on it.
+        onGeometryChange([]);
+        onDistanceChange(0);
+      }
+
+      const removed = mode === "replace" && stops.length
+        ? `Removed ${stops.length} stop${stops.length === 1 ? "" : "s"} (${stops
+            .map((stop) => stop.name)
+            .join(", ")}) · `
+        : "";
+      setImportNote(
+        `${removed}${unread.length ? `${unread.join(", ")} could not be placed and was left out. ` : ""}${
+          mode === "replace" ? "Added" : "Added"
+        } ${fresh.length} ${fresh.length === 1 ? "stop" : "stops"} from ${SOURCE_LABELS[parsedLink.source]}: ${
+          fresh.map((stop) => stop.name).join(", ")
+        }.${skipped ? ` ${skipped} already on the tracker.` : ""}${
+          filled.added.length ? ` Filled in ${filled.added.length} major stops on the way.` : ""
+        }${filled.road.ok ? ` Road measured at ${formatKm(filled.road.distanceKm)}.` : " Could not measure the road just now — fetch it below."}`,
+      );
+      setLink("");
+      setReplaceArmed(false);
+    } catch {
+      // Whatever went wrong, say so — and leave the buttons working. An import
+      // that died halfway used to leave the panel permanently "busy", which
+      // looks exactly like a button that does nothing.
+      setImportError("That import could not finish. Try again, or add the stops by hand below.");
+    } finally {
+      setImporting(false);
     }
-
-    // A pasted link gives the ends of a journey, not the road between them, so
-    // a route of exactly two stops is filled in with the towns it passes
-    // through — and the road itself is measured and stored, so the tracker
-    // reports the real distance from the first visit rather than a straight
-    // line through the mountains.
-    const imported = [...existing, ...fresh];
-    setImporting(true);
-    const filled = await fillRoute(imported);
-    setImporting(false);
-    onChange(filled.stops);
-    // The road is stored with the route, so the tracker reports real road
-    // distance on the first visit instead of joining the stops with rulers.
-    if (filled.road.ok) {
-      onGeometryChange(filled.road.geometry);
-      onDistanceChange(filled.road.distanceKm);
-    } else if (routeGeometry.length) {
-      // The stored road geometry belongs to the old stops; leaving it would
-      // draw a route through points that are no longer on it.
-      onGeometryChange([]);
-      onDistanceChange(0);
-    }
-
-    setImportNote(
-      `${unread.length ? `${unread.join(", ")} could not be placed and was left out. ` : ""}${
-        mode === "replace" ? "Route replaced with" : "Added"
-      } ${fresh.length} ${fresh.length === 1 ? "stop" : "stops"} from ${SOURCE_LABELS[parsedLink.source]}${
-        skipped ? ` — ${skipped} already on the tracker` : ""
-      }.${filled.added.length ? ` Filled in ${filled.added.length} major stops on the way: ${filled.added.join(", ")}.` : ""}${
-        filled.road.ok ? "" : " Could not measure the road just now — fetch it below."
-      }`,
-    );
-    setLink("");
-    setReplaceArmed(false);
   };
 
   const handleFetchRoad = async () => {
@@ -882,45 +945,69 @@ export default function RouteStopsEditor({
           </ol>
         )}
 
+        {/* The two actions are one click each now.
+            Replacing used to arm first and disarm itself after four seconds,
+            so reading the label before clicking it meant the second click only
+            armed it again: the route looked impossible to replace. The undo
+            below is what makes one click safe. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             ref={replaceRef}
             type="button"
-            onClick={() => {
-              if (!replaceArmed) {
-                setReplaceArmed(true);
-                setImportNote("");
-                setImportError("");
-                return;
-              }
-              void handleImport("replace");
-            }}
-            disabled={!parsedLink.ok || importing}
+            onClick={() => void handleImport("replace")}
+            disabled={!canImport}
+            title={canImport ? undefined : importBlockedReason}
             className={cn(
-              "flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all duration-300 disabled:opacity-40",
-              replaceArmed
-                ? "border-saffron-400/60 bg-saffron-400/15 text-saffron-300"
-                : "border-white/10 bg-white/[0.05] text-white hover:border-white/25",
+              "flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-60",
+              canImport
+                ? "border-saffron-400/50 bg-saffron-400/15 text-saffron-200 hover:border-saffron-400/80 hover:bg-saffron-400/25"
+                : "border-white/10 bg-white/[0.03] text-zinc-500",
             )}
           >
-            {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RouteIcon className="h-3.5 w-3.5" />}
-            {replaceArmed ? `Replace all ${stops.length} stops?` : "Use as the route"}
+            {importing || resolving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RouteIcon className="h-3.5 w-3.5" />
+            )}
+            {importing
+              ? "Replacing…"
+              : resolving
+                ? "Expanding the short link…"
+                : stops.length
+                  ? `Replace all ${stops.length} stops`
+                  : "Use as the route"}
           </button>
           <button
             type="button"
             onClick={() => void handleImport("add")}
-            disabled={!parsedLink.ok || importing}
-            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
+            disabled={!canImport}
+            title={canImport ? undefined : importBlockedReason}
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             Add to the end
           </button>
+          {undo && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(undo.stops);
+                onGeometryChange(undo.geometry);
+                onDistanceChange(undo.distanceKm);
+                setUndo(null);
+                setImportNote(`Put the previous ${undo.stops.length} stops back.`);
+              }}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2.5 text-xs font-medium text-zinc-300 transition-colors hover:border-white/25 hover:text-white"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+              Undo replace
+            </button>
+          )}
         </div>
-        {replaceArmed && (
-          <p className="mt-2 text-[11px] text-saffron-300">
-            Click the highlighted button to delete all {stops.length} saved stops and use the{" "}
-            {parsedLink.points.length} in this link instead.
-          </p>
+        {/* When a button cannot be pressed, say why next to it — a pale button
+            that swallows the click is not an explanation. */}
+        {!canImport && importBlockedReason && importBlockedReason !== linkStatus && (
+          <p className="mt-2 text-[11px] text-amber-200">{importBlockedReason}</p>
         )}
         {importError && <p className="mt-2 text-[11px] text-amber-200">{importError}</p>}
         {importNote && <p className="mt-2 text-[11px] text-emerald-300">{importNote}</p>}
