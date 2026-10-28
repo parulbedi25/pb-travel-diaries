@@ -42,6 +42,22 @@ const TONE: Partial<Record<WeatherKind, string>> = {
   fog: "text-zinc-300",
 };
 
+/** The icon for one kind of weather, and the colour it is drawn in. */
+export function weatherTone(kind: WeatherKind): string {
+  return TONE[kind] ?? "text-saffron-300";
+}
+
+export function WeatherIcon({
+  kind,
+  className,
+}: {
+  kind: WeatherKind;
+  className?: string;
+}) {
+  const Icon = ICONS[kind] ?? Cloud;
+  return <Icon className={cn(weatherTone(kind), className)} aria-hidden="true" />;
+}
+
 export function WeatherBadge({
   conditions,
   compact = false,

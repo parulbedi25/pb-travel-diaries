@@ -116,11 +116,31 @@ function distanceSquared(a: LatLng, b: LatLng): number {
   return dLat * dLat + dLng * dLng;
 }
 
-/** Index of the vertex in `geometry` closest to `point`, or -1 when empty. */
-export function nearestVertexIndex(geometry: readonly LatLng[], point: RoutePoint): number {
+/**
+ * Index of the vertex in `geometry` closest to `point`, or -1 when empty.
+ *
+ * `from` and `until` bound the search, and that is what makes a loop read
+ * correctly. A round trip — Nangal → Srinagar → Leh → Manali → Nangal — passes
+ * the start twice, so the *nearest* vertex to the first stop is often the last
+ * vertex, and the nearest vertex to the last stop is often the first: matched
+ * that way every stop lands on the same point, every leg falls back to a
+ * straight line, and the ride comes out a hundred kilometres short. Searching
+ * only forwards from the previous stop's vertex — and leaving enough of the
+ * road for the stops still to come — keeps every leg going the way the rider
+ * went.
+ */
+export function nearestVertexIndexFrom(
+  geometry: readonly LatLng[],
+  point: RoutePoint,
+  from = 0,
+  /** One past the last vertex worth looking at. */
+  until = geometry.length,
+): number {
   let best = -1;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < geometry.length; i += 1) {
+  const start = Math.max(0, Math.min(from, Math.max(geometry.length - 1, 0)));
+  const end = Math.max(start, Math.min(until, geometry.length));
+  for (let i = start; i < end; i += 1) {
     const distance = distanceSquared(geometry[i], [point.lat, point.lng]);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -128,6 +148,11 @@ export function nearestVertexIndex(geometry: readonly LatLng[], point: RoutePoin
     }
   }
   return best;
+}
+
+/** The nearest vertex from the beginning of the route. */
+export function nearestVertexIndex(geometry: readonly LatLng[], point: RoutePoint): number {
+  return nearestVertexIndexFrom(geometry, point, 0);
 }
 
 export interface SplitRoute {

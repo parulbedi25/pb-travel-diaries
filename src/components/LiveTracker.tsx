@@ -107,7 +107,13 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // saved. Only when neither is available does this fall back to straight
   // lines — which is what made a 778 km ride read as 396 km.
   const { geometry, byRoad } = useRouteGeometry(stops, data.routeGeometry);
-  const totals = useMemo(() => cumulativeKm(stops, geometry), [stops, geometry]);
+  // The routing service's own length for that road, when it was measured: the
+  // stored line is a simplified copy and sums a little short of it.
+  const officialKm = data.routeDistanceKm ?? 0;
+  const totals = useMemo(
+    () => cumulativeKm(stops, geometry, { totalKm: officialKm }),
+    [stops, geometry, officialKm],
+  );
   // Weather at every checkpoint, one request for the whole route.
   const conditions = useRouteWeather(stops);
   const totalKm = totals[totals.length - 1] ?? 0;
@@ -166,6 +172,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 stops={data.stops}
                 routeGeometry={data.routeGeometry}
                 geometry={geometry}
+                routeDistanceKm={officialKm}
                 live={{ lat: location.lat, lng: location.lng }}
                 liveName={location.name}
                 liveState={location.state}

@@ -9,7 +9,10 @@ import { splitRouteAtProgress, type LatLng } from "../utils/routing";
 import { useRoadGeometry } from "../hooks/useRoadGeometry";
 import { fitRouteToBand, routeFramePoints } from "../utils/routeFrame";
 import { useRouteWeather } from "../hooks/useRouteWeather";
+import { useWeatherDetails } from "../hooks/useWeatherDetails";
 import { WeatherBadge } from "./WeatherBadge";
+import { WeatherBubble } from "./WeatherBubble";
+import { kmMarksAlong } from "../utils/routeBubbles";
 
 /** The smallest band the drawn route is allowed to have, in pixels. */
 const MIN_BAND = 140;
@@ -60,6 +63,12 @@ export interface TrackerMapProps {
   geometry?: LatLng[];
   /** Draw the current weather at each checkpoint. On unless told otherwise. */
   weather?: boolean;
+  /**
+   * The routing service's own length for the road, when the dashboard measured
+   * it. The drawn line is simplified, so summing it reads a little short; this
+   * is the number the legs are scaled to.
+   */
+  routeDistanceKm?: number;
 }
 
 /** Space the drawn route has to keep clear of. */
@@ -147,6 +156,7 @@ export default function TrackerMap({
   labels = true,
   geometry: givenGeometry,
   weather = true,
+  routeDistanceKm = 0,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -233,7 +243,19 @@ export default function TrackerMap({
 
   // Measured along the same line that is drawn, so the strip and the map
   // cannot disagree about how long the ride is.
-  const totals = useMemo(() => cumulativeKm(stops, geometry), [stops, geometry]);
+  const totals = useMemo(
+    () => cumulativeKm(stops, geometry, { totalKm: routeDistanceKm }),
+    [stops, geometry, routeDistanceKm],
+  );
+  const routeKm = totals[totals.length - 1] ?? 0;
+
+  // A weather bubble every hundred kilometres of road, each with the forecast
+  // for the place it stands on — one request for the lot.
+  const marks = useMemo(
+    () => (weather && stops.length > 0 ? kmMarksAlong(geometry, routeKm) : []),
+    [weather, stops.length, geometry, routeKm],
+  );
+  const markWeather = useWeatherDetails(marks);
 
   const toPx = useCallback(
     (point: LatLng) => {
@@ -359,6 +381,23 @@ export default function TrackerMap({
           <path d={coveredPath} fill="none" stroke="#f5b301" strokeWidth={3.5} strokeLinecap="round" />
         )}
       </svg>
+
+      {/* A weather bubble every hundred kilometres, each one opening into the
+          forecast for its own stretch of road. */}
+      {marks.map((mark, index) => {
+        const point = toPx([mark.lat, mark.lng]);
+        return (
+          <WeatherBubble
+            key={`km-${mark.km}`}
+            mark={mark}
+            detail={markWeather?.[index] ?? null}
+            x={point.x}
+            y={point.y}
+            width={width}
+            height={height}
+          />
+        );
+      })}
 
       {/* Radar rings on wherever PB actually is. */}
       {liveIndex >= 0 && (

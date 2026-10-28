@@ -685,6 +685,16 @@ export interface LiveData {
    * tracker falls back to straight segments between the stops.
    */
   routeGeometry: [number, number][];
+  /**
+   * The length of that road in kilometres, as the routing service measured it.
+   *
+   * The stored line is a simplified copy of the road — it is drawn, not
+   * surveyed — so summing its vertices comes out a percent or two short. This
+   * is the service's own figure for the same road, and when it is here the
+   * legs are scaled to add up to it: the ride reads what a route planner reads.
+   * Zero means "not measured", and the totals are then summed from the line.
+   */
+  routeDistanceKm?: number;
   /** The two calls to action under the detail card. */
   buttons: { map: LiveButton; nearby: LiveButton };
   /** What the nearby-places page asks Wikipedia for, and what it says. */
@@ -1084,6 +1094,7 @@ const LIVE: LiveData = {
     { name: "Chandigarh", note: "Destination · Sector 17", status: "next", lat: 30.7333, lng: 76.7794, state: "Chandigarh, India", altitude: "1,053 ft" },
   ],
   routeGeometry: [],
+  routeDistanceKm: 0,
   mapSource: "google",
   buttons: {
     map: { label: "Open live map", href: "#/live-map", icon: "map-pin", visible: true },
