@@ -158,7 +158,7 @@ export default function LiveTracker({ data }: { data: LiveData }) {
         <div className="mt-14 grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
           {/* ---------- stylised live map ---------- */}
           <Reveal className="h-full">
-            <div className="relative flex h-full min-h-[340px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:min-h-[440px]">
+            <div className="relative flex h-full min-h-[400px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:min-h-[440px]">
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
               <div className="shrink-0 aspect-square absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
               <div className="shrink-0 aspect-square absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />

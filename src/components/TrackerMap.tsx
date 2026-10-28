@@ -4,12 +4,15 @@ import type { LiveStop } from "../store/siteContent";
 import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
 import VectorBasemap from "./VectorBasemap";
-import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { splitRouteAtProgress, type LatLng } from "../utils/routing";
 import { useRoadGeometry } from "../hooks/useRoadGeometry";
+import { fitRouteToBand, routeFramePoints } from "../utils/routeFrame";
 import { useRouteWeather } from "../hooks/useRouteWeather";
 import { WeatherBadge } from "./WeatherBadge";
+
+/** The smallest band the drawn route is allowed to have, in pixels. */
+const MIN_BAND = 140;
 
 /**
  * The live tracker's map.
@@ -187,32 +190,29 @@ export default function TrackerMap({
   // Weather at every checkpoint, in one request for the whole route.
   const conditions = useRouteWeather(weather ? stops : []);
 
-  // What has to stay in view: every checkpoint, plus wherever PB is. The road
-  // is deliberately left out of the fit — it can run past the first and last
-  // stop, and fitting to it would push the checkpoints towards the edges.
+  // What has to stay in view: every checkpoint, the road between them, and
+  // wherever PB is — but only when that fix belongs to this ride. Leaving the
+  // road out of the fit is what let a looping route (Srinagar → Leh → Manali)
+  // run off the edge of the panel while its stops sat comfortably inside.
   const frame = useMemo(
-    () => [...stops.map((s) => ({ lat: s.lat, lng: s.lng })), { lat: live.lat, lng: live.lng }],
+    () => routeFramePoints(stops, geometry, live),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stops, live.lat, live.lng],
+    [stops, geometry, live.lat, live.lng],
   );
 
-  // Fit into the band only, then slide the drawing down into it. The map still
-  // fills the whole panel behind the badge and the strip.
-  const bandHeight = Math.max(height - insets.top - insets.bottom, 140);
+  // Fit into the band only, then slide the drawing down into it — inside the
+  // same helper, so the zoom that fits and the projection that draws can never
+  // disagree about where the band is. The map still fills the whole panel
+  // behind the badge and the strip; only the drawing on top of it moves.
+  //
   // The exact zoom, not a whole level: these tiles are ours, so the route can
   // be made to fill the band edge to edge rather than landing on whatever
-  // fraction of it a rounded-down zoom happens to give. The pad is just enough
-  // for the pin and the name plate hanging under it.
-  const view = useMemo(
-    () => fitViewExact(frame, width, bandHeight, { padX: 24, padY: 28 }),
-    [frame, width, bandHeight],
+  // fraction of it a rounded-down zoom happens to give. The pad leaves room for
+  // the pin, its weather badge and the name plate hanging under it.
+  const { view, projector } = useMemo(
+    () => fitRouteToBand(frame, width, height, insets, { padX: 34, padY: 34, minBand: MIN_BAND }),
+    [frame, width, height, insets.top, insets.bottom],
   );
-  const offsetY = (insets.top - insets.bottom) / 2;
-  const projector = useMemo(
-    () => makeMercatorProjector(view, width, height, offsetY),
-    [view, width, height, offsetY],
-  );
-
   // The map is centred on whatever our overlay puts at the middle of the
   // panel, which is not the middle of the band.
   const mapCentre = projector.toLatLng(50, 50);
@@ -262,6 +262,27 @@ export default function TrackerMap({
       : "";
   const coveredPath = toPath(covered);
   const remainingPath = toPath(remaining);
+
+  // Names hanging under checkpoints that sit almost on top of each other — the
+  // three Srinagar stops on a 2,000 km route — would be drawn in the same place
+  // and read as a smear. Each name that lands within a label's width of one
+  // already placed drops a line lower. The pins stay where they belong; only
+  // the plate under them moves.
+  const labelRows = useMemo(() => {
+    const placed = stops.map((stop) => projector.toXY(stop));
+    const rows: number[] = [];
+    for (let i = 0; i < placed.length; i += 1) {
+      let row = 0;
+      for (let j = 0; j < i; j += 1) {
+        if (rows[j] !== row) continue;
+        const dx = ((placed[i].x - placed[j].x) / 100) * width;
+        const dy = ((placed[i].y - placed[j].y) / 100) * height;
+        if (Math.hypot(dx, dy) < 34) row += 1;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }, [stops, projector, width, height]);
 
   const count = stops.length;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
@@ -409,7 +430,14 @@ export default function TrackerMap({
                 {isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
               </span>
               {weather && (
-                <span className="pointer-events-none absolute -right-6 -top-1.5">
+                <span
+                  className={cn(
+                    "pointer-events-none absolute -top-1.5",
+                    // A checkpoint against the right edge wears its badge on
+                    // the inside, or the panel would clip it.
+                    point.x > 86 ? "-left-6" : "-right-6",
+                  )}
+                >
                   <WeatherBadge
                     conditions={conditions?.[index]}
                     compact
@@ -419,8 +447,9 @@ export default function TrackerMap({
               )}
               {labels && (
                 <span
+                  style={{ top: `${24 + (labelRows[index] ?? 0) * 13}px` }}
                   className={cn(
-                    "map-label absolute top-6 max-w-[9rem] truncate whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
+                    "map-label absolute max-w-[9rem] truncate whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
                     isStart
                       ? "text-start-label"
                       : isEnd

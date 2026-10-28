@@ -47,6 +47,15 @@
  *    in the same order as the names in the path, so they are paired up instead
  *    of leaving every stop to a name lookup — which is how a misspelt stop
  *    ("Leh laddakh") used to fail the whole import.
+ *  - **There are two spellings of a pin.** A stop Google knows by place id is
+ *    written `!1s0x391acc…!2m2!1d76.3765753!2d31.3832213` — longitude first,
+ *    latitude second — while a stop it only knows by name uses
+ *    `!3d<lat>!4d<lng>`. Reading only the second spelling meant a seven-stop
+ *    directions link arrived with no coordinates at all, and every stop then
+ *    depended on a geocoder that does not know "Leh laddakh".
+ *  - **The link arrives wrapped.** Copied out of a chat or a notes app it can
+ *    come as `[text](https://…)`, with `&amp;` for `&`, or inside `<>`. None of
+ *    that is part of the address, so it is peeled off before anything else.
  */
 
 /** Which service the link came from — and what the dashboard selects. */
@@ -221,18 +230,37 @@ function tidy(points: RoutePoint[]): RoutePoint[] {
 /**
  * The exact pin of each stop, out of Google's `data=` blob.
  *
- * The blob is a protobuf written as `!`-separated tags, and `!3d` / `!4d` are
- * a latitude and the longitude that follows it — one pair per stop, in route
- * order. Anything else in there (`!1s`, `!4m`, `!3e`) is skipped.
+ * The blob is a protobuf written as `!`-separated tags, and Google spells the
+ * same pin two ways:
+ *
+ *  - `!3d<lat>!4d<lng>` — the name-only form (`!8m2!3d31.3832213!4d76.3765753`).
+ *  - `!1d<lng>!2d<lat>` — the place-id form, longitude first
+ *    (`!1s0x391acc…!2m2!1d76.3765753!2d31.3832213`).
+ *
+ * Both are read, one pair per stop, in route order. Anything else in there
+ * (`!1s`, `!4m`, `!3e`, `!4b1`) is skipped, and a latitude/longitude that is
+ * not on Earth is dropped rather than handed to the map.
  */
 export function coordsFromDataBlob(text: string): { lat: number; lng: number }[] {
   const pairs: { lat: number; lng: number }[] = [];
-  const pattern = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g;
+  // Tag and number, in the order Google writes them.
+  const pattern = /!([1-4])d(-?\d+(?:\.\d+)?)/g;
+  const tokens: { kind: string; value: number }[] = [];
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text))) {
-    const lat = Number(match[1]);
-    const lng = Number(match[2]);
-    if (inRange(lat, lng)) pairs.push({ lat, lng });
+  while ((match = pattern.exec(text))) tokens.push({ kind: match[1], value: Number(match[2]) });
+
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    const first = tokens[i];
+    const second = tokens[i + 1];
+    if (first.kind === "3" && second.kind === "4") {
+      // `!3d<lat>!4d<lng>`
+      if (inRange(first.value, second.value)) pairs.push({ lat: first.value, lng: second.value });
+      i += 1;
+    } else if (first.kind === "1" && second.kind === "2") {
+      // `!1d<lng>!2d<lat>` — longitude comes first.
+      if (inRange(second.value, first.value)) pairs.push({ lat: second.value, lng: first.value });
+      i += 1;
+    }
   }
   return pairs;
 }
@@ -454,12 +482,46 @@ function parseOther(url: URL, raw: string): ParsedRouteLink {
 }
 
 /**
+ * The address, out of whatever the clipboard held.
+ *
+ * A link pasted from a chat, a notes app or a web page is often not a bare
+ * address: markdown wraps it in `[label](…)`, HTML escapes the ampersands as
+ * `&amp;`, mail clients add angle brackets, and a sentence can end up around
+ * it. None of that belongs to the URL, so it is removed here instead of making
+ * every parser below defend itself.
+ */
+export function normalisePasted(raw: string): string {
+  let text = (raw ?? "").trim();
+  if (!text) return "";
+
+  // [label](url) and ![alt](url) — take the address, drop the label.
+  const markdown = text.match(/!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?\s*\)/);
+  if (markdown) text = markdown[1];
+  else {
+    // A bare address inside prose, in <> or on its own.
+    const bare = text.match(/<?((?:https?:\/\/|geo:)[^\s<>"']+)>?/i);
+    if (bare) text = bare[1];
+  }
+
+  // `&amp;` is an escaped ampersand, `&#38;` the numeric spelling of the same.
+  text = text.replace(/&amp;/gi, "&").replace(/&#0*38;/g, "&").replace(/&lt;|&gt;/gi, "");
+
+  // Punctuation that ended the sentence rather than the URL, and a trailing
+  // bracket left over from the markdown wrapper.
+  text = text.replace(/[.,;:!?]+$/, "");
+  while (text.endsWith(")") && (text.match(/\(/g) ?? []).length < (text.match(/\)/g) ?? []).length) {
+    text = text.slice(0, -1);
+  }
+  return text.trim();
+}
+
+/**
  * Read a pasted link. Never throws: a link it cannot make sense of comes back
  * with `ok: false` and a sentence saying why, so the dashboard can say it out
  * loud instead of silently doing nothing.
  */
 export function parseRouteLink(raw: string): ParsedRouteLink {
-  const text = raw.trim();
+  const text = normalisePasted(raw);
   if (!text) return none("other", "");
 
   if (/^geo:/i.test(text)) return parseGeoUri(text);
