@@ -16,6 +16,7 @@ import { liftAll, normalizeLoaded, withChildrenOn } from "../utils/cascadeRules"
 import { setAt } from "../utils/objectPath";
 import { cascadeChild, cascadeSection } from "../admin/cascade";
 import { hasCountdownExpired } from "../utils/countdownTiming";
+import { MAP_LOOKS, type MapLookId } from "../utils/mapLooks";
 
 /* ═══════════════════════ Types ═══════════════════════ */
 
@@ -233,57 +234,87 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
 }
 
 /**
- * Which map the site draws on.
+ * How the maps are drawn.
  *
- * Three maps, chosen from the dashboard:
+ * A *look* is one drawing of the world: a style URL from a tile host, or Esri's
+ * satellite imagery. There is one for the light theme and one for the dark,
+ * chosen separately — a site can be Bright by day and Dark Matter by night, and
+ * the two do not have to come from the same maker. The catalogue of looks lives
+ * in utils/mapLooks, because the dashboard and the map components must agree on
+ * exactly what each id means.
  *
- *  - `carto` — CARTO's vector basemaps, keyed, drawn from OpenStreetMap data.
- *    They are the ones that can have their labels switched off properly, and
- *    the key is a *basemap* key: it only unlocks tiles, so it is safe to ship
- *    in the bundle the way a map provider's public token always is.
- *  - `openstreetmap` — the look the site had before CARTO: OpenFreeMap's free
- *    vector styles, falling through to raster tiles. Keyless, so it keeps
- *    working if the CARTO key is ever revoked or its quota is reached.
- *  - `satellite` — Esri's World Imagery: a photograph of the ground, keyless
- *    and CORS-open, with no name printed anywhere on it because it is not a
- *    drawing. The one to pick for the Himalaya, where the landscape is the
- *    point.
+ * `cartoKey` unlocks CARTO's drawings only (Positron, Voyager, Dark Matter).
+ * The keyless looks — OpenFreeMap's and VersaTiles' — need nothing, so the map
+ * keeps working if the key is ever refused or its quota is reached. The key is a
+ * *basemap* key: it only unlocks tiles, so it is safe in the bundle.
  *
- * Whichever is chosen, the others stay behind it as fallbacks: a map that
- * cannot load is worse than a map in another style.
+ * Satellite is a look like any other, available for either theme, and is drawn
+ * by the raster path because a photograph has no style layers to switch off.
  */
-export type MapProvider = "carto" | "openstreetmap" | "satellite";
-
-/** CARTO's vector drawings. "auto" follows the site's dark/light theme. */
-export type CartoStyle = "auto" | "voyager" | "positron" | "dark-matter";
-
 export interface MapSettings {
-  provider: MapProvider;
-  cartoStyle: CartoStyle;
-  /** CARTO basemap key. Blank falls back to the keyless OpenStreetMap look. */
+  /** The drawing used while the site is in light mode. */
+  lightLook: MapLookId;
+  /** The drawing used while the site is in dark mode. */
+  darkLook: MapLookId;
+  /** CARTO basemap key. Blank leaves the keyless drawings to draw. */
   cartoKey: string;
 }
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
-  provider: "carto",
-  cartoStyle: "auto",
+  lightLook: "bright",
+  darkLook: "osm-dark",
   cartoKey: "cb1_4u3q_1_dc135904c1fc4472cf673c4d",
 };
 
-/** Fills in anything a site saved before the map setting existed. */
-export function resolveMapSettings(map?: Partial<MapSettings> | null): MapSettings {
-  const provider: MapProvider =
-    map?.provider === "openstreetmap"
-      ? "openstreetmap"
-      : map?.provider === "satellite"
-        ? "satellite"
-        : "carto";
-  const cartoStyle: CartoStyle =
-    map?.cartoStyle === "voyager" || map?.cartoStyle === "positron" || map?.cartoStyle === "dark-matter"
-      ? map.cartoStyle
-      : "auto";
+/** The old shape, which had one look for both themes. */
+interface LegacyMapSettings {
+  provider?: unknown;
+  cartoStyle?: unknown;
+  cartoKey?: unknown;
+}
+
+/**
+ * Fills in anything a site saved before a setting existed, and moves an older
+ * choice — one provider, one CARTO drawing for both themes — onto the pair of
+ * looks that means the same thing.
+ */
+export function resolveMapSettings(map?: Partial<MapSettings> | LegacyMapSettings | null): MapSettings {
   const key = typeof map?.cartoKey === "string" ? map.cartoKey.trim() : DEFAULT_MAP_SETTINGS.cartoKey;
-  return { provider, cartoStyle, cartoKey: key };
+  const legacy = (map ?? {}) as LegacyMapSettings;
+
+  const known = (value: unknown): value is MapLookId =>
+    typeof value === "string" && MAP_LOOKS.some((look) => look.id === value);
+
+  // A saved pair of looks is taken as it stands.
+  const lightLook = known((map as Partial<MapSettings> | undefined)?.lightLook)
+    ? ((map as Partial<MapSettings>).lightLook as MapLookId)
+    : undefined;
+  const darkLook = known((map as Partial<MapSettings> | undefined)?.darkLook)
+    ? ((map as Partial<MapSettings>).darkLook as MapLookId)
+    : undefined;
+  if (lightLook && darkLook) return { lightLook, darkLook, cartoKey: key };
+
+  // Otherwise translate the old single choice: satellite as a provider, or one
+  // of CARTO's drawings, or the keyless look that stood in for both themes.
+  const fromLegacy = (): { lightLook: MapLookId; darkLook: MapLookId } => {
+    if (legacy.provider === "satellite") return { lightLook: "satellite", darkLook: "satellite" };
+    const style = legacy.cartoStyle;
+    if (legacy.provider === "carto" && (style === "voyager" || style === "positron" || style === "dark-matter")) {
+      // A drawing that was pinned for both themes stays pinned for both.
+      const id = style === "dark-matter" ? "dark-matter" : style;
+      return { lightLook: id, darkLook: id };
+    }
+    return {
+      lightLook: DEFAULT_MAP_SETTINGS.lightLook,
+      darkLook: DEFAULT_MAP_SETTINGS.darkLook,
+    };
+  };
+  const migrated = fromLegacy();
+  return {
+    lightLook: lightLook ?? migrated.lightLook,
+    darkLook: darkLook ?? migrated.darkLook,
+    cartoKey: key,
+  };
 }
 
 export type RestoreScope = "header" | "footer" | "theme" | "map";

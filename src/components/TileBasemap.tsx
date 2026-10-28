@@ -26,6 +26,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
+import { lookById, type Theme } from "../utils/mapLooks";
 import { rasterTileUrl, tilesForView, type RasterSource, type TileView } from "../utils/tiles";
 
 export type { TileView };
@@ -40,6 +41,7 @@ export default function TileBasemap({
   className,
   attributionClassName,
   settings,
+  themeOverride,
 }: {
   view: TileView;
   width: number;
@@ -53,22 +55,28 @@ export default function TileBasemap({
    * yet — and still be the same component the site itself draws with.
    */
   settings?: MapSettings;
+  /** Draw as if the site were in this theme. The dashboard previews both. */
+  themeOverride?: Theme;
 }) {
-  const { theme, content } = useSite();
+  const { theme: siteTheme, content } = useSite();
+  const theme: Theme = themeOverride ?? (siteTheme === "light" ? "light" : "dark");
   // The dashboard's map look decides which raster is tried first. Whatever is
   // chosen, the others queue behind it — a host having a bad day should cost a
   // different drawing, not the map.
   const mapSettings = settings ?? resolveMapSettings(content.map);
   const cartoKey = mapSettings.cartoKey.trim();
+  // The raster path is reached either because satellite was chosen (the tiles
+  // *are* that look) or because the vector style would not draw, in which case
+  // the labelled map is the last resort and says so in its credit.
+  const imagery = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme).imagery;
   const chain = useMemo<RasterSource[]>(() => {
     // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
     // are not asked for at all — the labelled map is the better of the two
     // failures, and at least it says what it is.
     const carto: RasterSource[] = cartoKey ? ["carto"] : [];
-    if (mapSettings.provider === "satellite") return ["satellite", ...carto, "osm"];
-    if (mapSettings.provider === "openstreetmap") return ["osm"];
+    if (imagery) return ["satellite", ...carto, "osm"];
     return [...carto, "osm"];
-  }, [mapSettings.provider, cartoKey]);
+  }, [imagery, cartoKey]);
 
   const [step, setStep] = useState(0);
   const source = chain[Math.min(step, chain.length - 1)];
