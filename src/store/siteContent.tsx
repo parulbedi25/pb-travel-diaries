@@ -206,17 +206,27 @@ export const DEFAULT_FOOTER: FooterSettings = {
     { id: "s-facebook", label: "Facebook", href: "#top", enabled: true },
   ],
   copyright: "PB from PB. All roads reserved.",
-  credit: "Made with ♥ somewhere on NH-44 · Imagery via Pexels",
+  credit: "Made with ♥ somewhere on NH-503",
   showBackToTop: true,
 };
+
+/** The credit line as it was worded before, kept so an untouched one moves on. */
+const PREVIOUS_CREDIT = "Made with ♥ somewhere on NH-44 · Imagery via Pexels";
 
 /** Fills in any missing footer fields so older saved content keeps working. */
 export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings {
   const base = structuredClone(DEFAULT_FOOTER);
   if (!footer) return base;
+  const credit =
+    // A site that never edited its credit follows the new wording; one that
+    // wrote its own keeps it.
+    typeof footer.credit === "string" && footer.credit.trim() === PREVIOUS_CREDIT
+      ? base.credit
+      : footer.credit;
   return {
     ...base,
     ...footer,
+    ...(credit === undefined ? {} : { credit }),
     columns: Array.isArray(footer.columns) ? footer.columns : base.columns,
     socials: Array.isArray(footer.socials) ? footer.socials : base.socials,
   };
