@@ -6,7 +6,10 @@ import { cn } from "../utils/cn";
 import VectorBasemap from "./VectorBasemap";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-import { fetchRoadGeometry, splitRouteAtProgress, type LatLng } from "../utils/routing";
+import { splitRouteAtProgress, type LatLng } from "../utils/routing";
+import { useRoadGeometry } from "../hooks/useRoadGeometry";
+import { useRouteWeather } from "../hooks/useRouteWeather";
+import { WeatherBadge } from "./WeatherBadge";
 
 /**
  * The live tracker's map.
@@ -46,6 +49,14 @@ export interface TrackerMapProps {
    * the map carries the rider's own checkpoints, and nothing else.
    */
   labels?: boolean;
+  /**
+   * The road already resolved by the panel around this map. Passing it in
+   * keeps the drawing and the distance figures on the same geometry instead of
+   * each asking the routing service for its own copy.
+   */
+  geometry?: LatLng[];
+  /** Draw the current weather at each checkpoint. On unless told otherwise. */
+  weather?: boolean;
 }
 
 /** Space the drawn route has to keep clear of. */
@@ -122,87 +133,6 @@ function MapCompass() {
   );
 }
 
-const ROAD_CACHE_PREFIX = "pb_road_v1:";
-const ROAD_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-const roadKey = (stops: LiveStop[]): string =>
-  ROAD_CACHE_PREFIX + stops.map((s) => `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`).join(";");
-
-/**
- * The road the ride follows, if we can get hold of it.
- *
- * Geometry stored from the dashboard wins — that is the one with no third
- * party in the loop when a visitor loads the page. Failing that, ask the
- * routing service here so the line still hugs the road, and remember the
- * answer for a week so it is one request, not one per visit. When the service
- * cannot be reached the caller draws straight segments, which is why the
- * return value is allowed to be null.
- */
-function useRoadGeometry(stops: LiveStop[], stored: LatLng[]): LatLng[] | null {
-  const [road, setRoad] = useState<LatLng[] | null>(null);
-
-  // Depend on what actually matters, not on array identity: the tracker
-  // re-renders on every live ping, and a fresh `stops` array each time used to
-  // re-run this effect — re-parsing localStorage and re-requesting the road
-  // every second. The key changes only when a stop really moves.
-  const stopsKey = roadKey(stops);
-  const storedCount = stored.length;
-  const stopsRef = useRef(stops);
-  stopsRef.current = stops;
-
-  useEffect(() => {
-    if (storedCount >= 2 || stopsRef.current.length < 2) {
-      setRoad(null);
-      return;
-    }
-
-    // This is the one thing still kept in the browser, deliberately: a
-    // disposable cache of a third-party road route, worth a network request
-    // but not worth a database round-trip. It never holds site content,
-    // accounts or history — those live in MariaDB.
-    const key = stopsKey;
-    try {
-      const cached = window.localStorage.getItem(key);
-      if (cached) {
-        const parsed = JSON.parse(cached) as { t?: number; geometry?: LatLng[] };
-        const fresh = parsed?.t && Date.now() - parsed.t < ROAD_CACHE_MAX_AGE_MS;
-        if (fresh && Array.isArray(parsed.geometry) && parsed.geometry.length >= 2) {
-          setRoad(parsed.geometry);
-          return;
-        }
-      }
-    } catch {
-      // A missing or unreadable cache just means we ask again.
-    }
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const result = await fetchRoadGeometry(stopsRef.current);
-        if (cancelled || !result.ok || result.geometry.length < 2) return;
-        setRoad(result.geometry);
-        try {
-          window.localStorage.setItem(
-            key,
-            JSON.stringify({ t: Date.now(), geometry: result.geometry }),
-          );
-        } catch {
-          // Storage may be full or blocked; the road still draws this visit.
-        }
-      } catch {
-        // No road available — straight segments are an honest fallback.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by coordinates on purpose
-  }, [stopsKey, storedCount]);
-
-  return road;
-}
-
 export default function TrackerMap({
   stops,
   routeGeometry,
@@ -212,6 +142,8 @@ export default function TrackerMap({
   status,
   pingLabel,
   labels = true,
+  geometry: givenGeometry,
+  weather = true,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -243,13 +175,17 @@ export default function TrackerMap({
   const road = useRoadGeometry(stops, routeGeometry);
   const geometry = useMemo(
     () =>
-      routeGeometry.length >= 2
-        ? routeGeometry
-        : road && road.length >= 2
-          ? road
-          : stops.map((s) => [s.lat, s.lng] as LatLng),
-    [routeGeometry, road, stops],
+      givenGeometry && givenGeometry.length >= 2
+        ? givenGeometry
+        : routeGeometry.length >= 2
+          ? routeGeometry
+          : road && road.length >= 2
+            ? road
+            : stops.map((s) => [s.lat, s.lng] as LatLng),
+    [givenGeometry, routeGeometry, road, stops],
   );
+  // Weather at every checkpoint, in one request for the whole route.
+  const conditions = useRouteWeather(weather ? stops : []);
 
   // What has to stay in view: every checkpoint, plus wherever PB is. The road
   // is deliberately left out of the fit — it can run past the first and last
@@ -295,7 +231,9 @@ export default function TrackerMap({
     return () => window.clearTimeout(timer);
   }, [mapCentre.lat, mapCentre.lng, view.zoom]);
 
-  const totals = useMemo(() => cumulativeKm(stops, routeGeometry), [stops, routeGeometry]);
+  // Measured along the same line that is drawn, so the strip and the map
+  // cannot disagree about how long the ride is.
+  const totals = useMemo(() => cumulativeKm(stops, geometry), [stops, geometry]);
 
   const toPx = useCallback(
     (point: LatLng) => {
@@ -470,6 +408,15 @@ export default function TrackerMap({
                 )}
                 {isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
               </span>
+              {weather && (
+                <span className="pointer-events-none absolute -right-6 -top-1.5">
+                  <WeatherBadge
+                    conditions={conditions?.[index]}
+                    compact
+                    showTemp={stops.length <= 8}
+                  />
+                </span>
+              )}
               {labels && (
                 <span
                   className={cn(
