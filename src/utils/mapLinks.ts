@@ -37,6 +37,11 @@
  *  - **The last stop is not a duplicate.** Google writes a loop as
  *    `…/dir/Nangal/…/Nangal/…`, so de-duplicating by name throws away the ride
  *    home. Only *adjacent* repeats are collapsed here.
+ *  - **The camera is not a stop.** A shared directions link ends with the map
+ *    viewpoint — `…/Nubra+Valley/@34.62,76.75,9.08z` — which is where the map
+ *    was looking, not somewhere the rider stops. Read as a stop it became a
+ *    destination named "@34.6293181,76.7557312,9.08z", which no geocoder can
+ *    place, so the import half-failed on a route that was otherwise perfect.
  *  - **The coordinates are in the link.** A shared directions URL carries the
  *    exact pin of every stop in its `data=…` blob (`!8m2!3d31.3832213!4d76.3765753`),
  *    in the same order as the names in the path, so they are paired up instead
@@ -104,6 +109,9 @@ const inRange = (lat: number, lng: number): boolean =>
 export function readCoords(text: string): { lat: number; lng: number } | null {
   const match = text
     .trim()
+    // Google's camera reads `@31.6,76.7,12z`: the `@` is part of the URL, and
+    // the third number is the zoom, so neither should stop a pair being read.
+    .replace(/^@/, "")
     .match(/^(-?\d{1,3}(?:\.\d+)?)\s*[,~_]\s*(-?\d{1,3}(?:\.\d+)?)(?:\s*[,~_]\s*-?\d+(?:\.\d+)?[a-z]?)?$/i);
   if (!match) return null;
   const lat = Number(match[1]);
@@ -111,10 +119,19 @@ export function readCoords(text: string): { lat: number; lng: number } | null {
   return inRange(lat, lng) ? { lat, lng } : null;
 }
 
-/** A name, unless it is really a coordinate pair. */
+/**
+ * A name, unless it is really a coordinate pair — or the camera.
+ *
+ * A shared directions link carries the map's viewpoint after the stops, as
+ * `/dir/from/to/@34.62,76.75,9.08z`. That `@` segment is where the map was
+ * looking, not somewhere the rider stops, and it used to be taken as the
+ * destination: the import then tried to look up a place called
+ * "@34.6293181,76.7557312,9.08z", failed, and left the route half-added.
+ */
 function pointFromSegment(segment: string): RoutePoint | null {
   const text = decode(segment);
   if (!text) return null;
+  if (text.startsWith("@")) return null;
   const coords = readCoords(text);
   if (coords) return coords;
   // Google writes URL state into the path (`data=!4m2!4m1!3e0`), which is not
@@ -260,6 +277,8 @@ function parseGoogle(url: URL): ParsedRouteLink {
   const segments = path.split("/").filter(Boolean).map(decode);
   const dirAt = segments.findIndex((segment) => segment === "dir" || segment === "dir/");
   if (dirAt >= 0) {
+    // `pointFromSegment` drops the `/@lat,lng,zoom` camera segment, so what is
+    // left is the stops themselves, in route order.
     const points = segments
       .slice(dirAt + 1)
       .map(pointFromSegment)
