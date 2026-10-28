@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { addMediaFile } from "./mediaLibrary";
 import { LibraryModal } from "./ImageField";
+import { cn } from "../utils/cn";
 
 /**
  * A gallery of extra product photos.
@@ -23,10 +24,13 @@ export default function ImagesField({
   value,
   onChange,
   hint,
+  plate = false,
 }: {
   value?: string[];
   onChange: (next: string[]) => void;
   hint?: string;
+  /** Product photos: fit them on a white plate instead of cropping on dark. */
+  plate?: boolean;
 }) {
   const shots = Array.isArray(value) ? value : [];
   const fileRef = useRef<HTMLInputElement>(null);
@@ -152,12 +156,15 @@ export default function ImagesField({
           {shots.map((src, index) => (
             <li
               key={`${index}-${src.slice(0, 24)}`}
-              className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]"
+              className={cn(
+                "group relative overflow-hidden rounded-xl border border-white/10",
+                plate ? "product-plate" : "bg-white/[0.04]"
+              )}
             >
               <img
                 src={src}
                 alt={`Extra photo ${index + 1}`}
-                className="aspect-square h-full w-full object-cover"
+                className={cn("h-full w-full", plate ? "aspect-square object-contain" : "aspect-square object-cover")}
                 loading="lazy"
               />
               <span className="absolute left-1.5 top-1.5 rounded-full bg-ink-950/75 px-1.5 py-0.5 font-mono text-[9px] text-white">

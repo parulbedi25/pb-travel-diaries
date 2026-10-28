@@ -21,3 +21,19 @@ export function gearItemMaker(item: GearItem): string {
 export function gearItemCategory(item: GearItem, fallback: string): string {
   return (item.category ?? "").trim() || fallback;
 }
+
+/**
+ * A photo this site serves itself, rather than one fetched from another host.
+ *
+ * A product shot is cut out on white or on nothing at all, so it is shown on a
+ * white plate and fitted inside it. A remote URL might be a lifestyle
+ * photograph, which belongs edge to edge instead. The shop, The Gear and the
+ * dashboard's gear editor all ask this one question, so a product looks the
+ * same wherever it appears — an uploaded photo used to be treated as remote and
+ * landed on a near-black plate, which showed through as a black block around
+ * anything transparent.
+ */
+export function isProductPhoto(src?: string): boolean {
+  const value = src?.trim() ?? "";
+  return value.startsWith("/") || value.startsWith("data:");
+}
