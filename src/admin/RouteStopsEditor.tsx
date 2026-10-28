@@ -16,6 +16,7 @@ import type { LiveStop } from "../store/siteContent";
 import {
   SOURCE_LABELS,
   describePoint,
+  normalisePasted,
   parseRouteLink,
   type MapLinkSource,
   type RoutePoint,
@@ -306,8 +307,14 @@ export default function RouteStopsEditor({
   // A short share link hides the route behind a redirect the browser cannot
   // read, so it is expanded once through the server and the result is what gets
   // parsed. The short link stays in the box — that is the thing they pasted.
+  //
+  // What gets sent for expansion is the *address*, not the paste: a link that
+  // arrived as `[text](https://maps.app.goo.gl/…)` or with `&amp;` in it is
+  // cleaned up first, because the server checks the host before following it
+  // and markdown around an address is not a host it can follow.
   const trimmedLink = link.trim();
-  const effectiveLink = expanded && expanded.link === trimmedLink ? expanded.url : trimmedLink;
+  const cleanLink = normalisePasted(link);
+  const effectiveLink = expanded && expanded.link === cleanLink ? expanded.url : cleanLink;
 
   // Read while typing: the service and the points are known before anything is
   // added, so the operator can see what the link says without committing to it.
@@ -327,8 +334,8 @@ export default function RouteStopsEditor({
       setExpandError("");
       return;
     }
-    if (expanded?.link === trimmedLink) return;
-    if (!parseRouteLink(trimmedLink).shortLink) {
+    if (expanded?.link === cleanLink) return;
+    if (!parseRouteLink(cleanLink).shortLink) {
       setExpanded(null);
       setExpandError("");
       return;
@@ -340,9 +347,9 @@ export default function RouteStopsEditor({
       setResolving(true);
       setExpandError("");
       void siteApi
-        .resolveMapLink(trimmedLink)
+        .resolveMapLink(cleanLink)
         .then((url) => {
-          if (!cancelled) setExpanded({ link: trimmedLink, url });
+          if (!cancelled) setExpanded({ link: cleanLink, url });
         })
         .catch((error: unknown) => {
           if (cancelled) return;
@@ -360,7 +367,7 @@ export default function RouteStopsEditor({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [trimmedLink, expanded?.link]);
+  }, [cleanLink, expanded?.link]);
 
   /** Picked out of the link, not asked for by hand. */
   const rememberSource = (source: MapLinkSource) => {
