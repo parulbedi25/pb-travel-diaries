@@ -337,7 +337,18 @@ export default function MachineExperience({ data }: { data: MachineData }) {
     ? { x: clampPct(focusedSpot.x), y: clampPct(focusedSpot.y) }
     : null;
   const zoomed = Boolean(zoomPoint);
-  const isExpanded = (idx: number) => (focusIdx === null ? listOpen === idx : idx === focusIdx);
+  /**
+   * Expansion is a click, and only a click.
+   *
+   * Hovering a row used to expand it too, which pushed every row below it down
+   * under the cursor — the list moved while it was being read, and the pointer
+   * on the bike was forgotten in the shuffle. Hover now only *focuses* the part:
+   * the bike zooms to that pointer and the row lights up to say which one it
+   * is. The row opens when it is clicked, and closes when it is clicked again.
+   */
+  const isExpanded = (idx: number) => listOpen === idx;
+  /** The part being shown on the bike, whether that came from hover or a click. */
+  const isFocused = (idx: number) => focusIdx === idx;
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   // Only the start/end of a resize renders React; each pointer move paints
@@ -812,7 +823,12 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                           "machine-parts-row flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all duration-300",
                           isOn
                             ? "border-saffron-400/45 bg-saffron-400/10"
-                            : "border-transparent hover:border-white/10 hover:bg-white/[0.05]"
+                            : isFocused(idx)
+                              // Focused but closed: the bike is showing this
+                              // part, and the row says which one without
+                              // opening and shifting the list.
+                              ? "border-saffron-400/25 bg-white/[0.06]"
+                              : "border-transparent hover:border-white/10 hover:bg-white/[0.05]"
                         )}
                       >
                         <span className="aspect-square grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-300">
@@ -822,7 +838,11 @@ export default function MachineExperience({ data }: { data: MachineData }) {
                           <span
                             className={cn(
                               "block truncate font-semibold transition-all duration-300",
-                              isOn ? "text-sm text-white" : "text-xs text-zinc-300"
+                              isOn
+                                ? "text-sm text-white"
+                                : isFocused(idx)
+                                  ? "text-xs text-white"
+                                  : "text-xs text-zinc-300"
                             )}
                           >
                             {h.title}
