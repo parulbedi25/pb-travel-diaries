@@ -6,15 +6,14 @@ import {
   resolveThemeColors,
   sectionData,
   useSite,
-  type CartoStyle,
   type HeaderButton,
   type LiveData,
-  type MapProvider,
   type MapSettings,
   type RestoreScope,
   type ThemeTokens,
 } from "../store/siteContent";
 import VectorBasemap from "../components/VectorBasemap";
+import { MAP_LOOKS, looksFor, type MapLook, type MapLookId, type Theme as MapTheme } from "../utils/mapLooks";
 import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
 import Switch from "./Switch";
@@ -332,48 +331,25 @@ export function ThemePanel() {
 
 /* ═══════════════ Map look ═══════════════ */
 
-const PROVIDERS: { id: MapProvider; label: string; hint: string }[] = [
-  {
-    id: "carto",
-    label: "CARTO",
-    hint: "Vector basemaps with your key. Positron in light mode, Dark Matter in dark — or pick one drawing for both.",
-  },
-  {
-    id: "openstreetmap",
-    label: "OpenStreetMap",
-    hint: "The keyless look this site had before CARTO. Free, and it needs nothing from you.",
-  },
-  {
-    id: "satellite",
-    label: "Satellite",
-    hint: "Esri's aerial imagery — a photograph of the ground, with no name printed on it. Good for the Himalaya.",
-  },
-];
-
-const CARTO_DRAWINGS: { id: CartoStyle; label: string; hint: string }[] = [
-  { id: "auto", label: "Follow the theme", hint: "Positron by day, Dark Matter by night" },
-  { id: "voyager", label: "Voyager", hint: "Warm, colourful, suits both themes" },
-  { id: "positron", label: "Positron", hint: "Pale and quiet, made for light mode" },
-  { id: "dark-matter", label: "Dark Matter", hint: "Near-black, made for dark mode" },
-];
-
 /**
  * The map itself, in the dashboard, drawn from the draft.
  *
- * The panel used to describe the choice in a paragraph and leave you to save,
- * reload and go look at the tracker to find out what you had picked. This is
- * the same component the site draws with — VectorBasemap, so CARTO's vector
- * styles and the keyless ones appear exactly as they will on the page, and
- * satellite through the raster path it always takes — handed the *draft*
- * settings rather than the published ones. Click a look and the map under your
- * cursor changes; nothing is published until Save Changes.
- *
- * It is centred on wherever PB is now, because that is the ground the look
- * will actually be judged on, and it carries the credit the real map carries,
- * since a preview is still tiles on a screen.
+ * Handed the *draft* settings rather than the published ones, so a look changes
+ * here before anything is published, and the theme is forced rather than taken
+ * from the site: the point of this panel is to see the light look and the dark
+ * look, and the dashboard's own theme toggle is about the dashboard, not the
+ * map. It is centred on wherever PB is now, because that is the ground the look
+ * will actually be judged on.
  */
-function MapPreview({ settings }: { settings: MapSettings }) {
-  const { draft } = useSite();
+function MapPreview({
+  settings,
+  theme,
+  place,
+}: {
+  settings: MapSettings;
+  theme: MapTheme;
+  place: { lat: number; lng: number; name: string };
+}) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -393,24 +369,16 @@ function MapPreview({ settings }: { settings: MapSettings }) {
     return () => observer.disconnect();
   }, []);
 
-  // Where PB is now — the checkpoint marked "here now", else the first stop.
-  // The same place the tracker centres on, so this is the ground the look will
-  // actually be judged on rather than some arbitrary patch of map.
-  const { stops } = sectionData<LiveData>(draft, "live");
-  const here = stops.find((s) => s.status === "live") ?? stops[0];
-  const lat = here?.lat ?? 31.369;
-  const lng = here?.lng ?? 76.3729;
-  const place = here?.name ?? "Nangal";
-
   return (
     <div
       ref={host}
       className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-ink-900"
-      data-map-preview={settings.provider}
+      data-map-preview-theme={theme}
     >
       <VectorBasemap
         settings={settings}
-        view={{ lat, lng, zoom: 12 }}
+        themeOverride={theme}
+        view={{ lat: place.lat, lng: place.lng, zoom: 12 }}
         width={size.width}
         height={size.height}
         className="absolute inset-0"
@@ -422,10 +390,52 @@ function MapPreview({ settings }: { settings: MapSettings }) {
       <div className="pointer-events-none absolute inset-0">
         <span className="shrink-0 aspect-square absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron-400 shadow-[0_0_0_4px_rgba(245,179,1,0.25),0_0_16px_rgba(245,179,1,0.6)]" />
         <span className="absolute left-1/2 top-1/2 mt-3 -translate-x-1/2 rounded-full bg-ink-950/80 px-2 py-0.5 text-[10px] font-semibold text-white">
-          {place}
+          {place.name}
         </span>
       </div>
     </div>
+  );
+}
+
+/** One look, offered as a card. */
+function LookCard({
+  look,
+  on,
+  onPick,
+}: {
+  look: MapLook;
+  on: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onPick}
+      className={cn(
+        "rounded-2xl border p-3 text-left transition-colors",
+        on
+          ? "border-saffron-400/60 bg-saffron-400/[0.08]"
+          : "border-white/[0.08] bg-white/[0.02] hover:border-white/20"
+      )}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="truncate text-[13px] font-semibold text-white">{look.label}</span>
+        <span
+          className={cn(
+            "shrink-0 aspect-square grid h-4 w-4 place-items-center rounded-full border",
+            on ? "border-saffron-400 bg-saffron-400" : "border-white/25"
+          )}
+          aria-hidden="true"
+        >
+          {on && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-ink-950" />}
+        </span>
+      </span>
+      <span className="mt-1 block text-[10px] leading-relaxed text-zinc-500">{look.hint}</span>
+      <span className="mt-1.5 block font-mono text-[9px] uppercase tracking-[0.14em] text-zinc-600">
+        {look.maker}
+      </span>
+    </button>
   );
 }
 
@@ -433,86 +443,75 @@ export function MapPanel() {
   const { draft, content, updateDraft, logAction, hasChanges } = useSite();
   const map = resolveMapSettings(draft.map);
   const saved = resolveMapSettings(content.map);
-  const savedLabel = PROVIDERS.find((p) => p.id === saved.provider)?.label ?? "CARTO";
 
-  const set = (action: string, patch: Partial<typeof map>) => {
+  const set = (action: string, patch: Partial<MapSettings>) => {
     logAction(action);
     updateDraft((c) => ({ ...c, map: { ...resolveMapSettings(c.map), ...patch } }));
   };
+
+  // Where PB is now — the checkpoint marked "here now", else the first stop.
+  // The same place the tracker centres on, so this is the ground the look will
+  // actually be judged on rather than some arbitrary patch of map.
+  const { stops } = sectionData<LiveData>(draft, "live");
+  const here = stops.find((s) => s.status === "live") ?? stops[0];
+  const place = {
+    lat: here?.lat ?? 31.369,
+    lng: here?.lng ?? 76.3729,
+    name: here?.name ?? "Nangal",
+  };
+
+  const lookOf = (id: MapLookId) => MAP_LOOKS.find((l) => l.id === id);
+  const label = (id: MapLookId) => lookOf(id)?.label ?? id;
+
+  const themes: { theme: MapTheme; title: string; note: string }[] = [
+    { theme: "light", title: "Light theme", note: "What visitors see with the day palette" },
+    { theme: "dark", title: "Dark theme", note: "What visitors see with the night palette" },
+  ];
+  const usesCarto = [map.lightLook, map.darkLook].some((id) => Boolean(lookOf(id)?.carto));
 
   return (
     <div>
       <RestoreBar scope="map" label="map look" />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
-        <div className="rounded-3xl glass p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Basemap</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {PROVIDERS.map((p) => {
-              const on = map.provider === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => set(`Map look: ${p.label}`, { provider: p.id })}
-                  className={cn(
-                    "rounded-2xl border p-4 text-left transition-colors",
-                    on
-                      ? "border-saffron-400/60 bg-saffron-400/[0.08]"
-                      : "border-white/[0.08] bg-white/[0.02] hover:border-white/20"
-                  )}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-white">{p.label}</span>
-                    <span
-                      className={cn(
-                        "shrink-0 aspect-square grid h-4 w-4 place-items-center rounded-full border",
-                        on ? "border-saffron-400 bg-saffron-400" : "border-white/25"
-                      )}
-                      aria-hidden="true"
-                    >
-                      {on && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-ink-950" />}
-                    </span>
-                  </span>
-                  <span className="mt-1.5 block text-[11px] leading-relaxed text-zinc-500">{p.hint}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="grid gap-5">
+          {themes.map(({ theme: t, title, note }) => (
+            <div key={t} className="rounded-3xl glass p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  {title}
+                </p>
+                <p className="text-[11px] text-zinc-600">{note}</p>
+              </div>
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                {looksFor(t).map((look) => (
+                  <LookCard
+                    key={look.id}
+                    look={look}
+                    on={(t === "light" ? map.lightLook : map.darkLook) === look.id}
+                    onPick={() =>
+                      set(
+                        `${t === "light" ? "Light" : "Dark"} theme map look: ${look.label}`,
+                        t === "light" ? { lightLook: look.id } : { darkLook: look.id }
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
 
           <div
             className={cn(
-              "mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-opacity",
-              map.provider === "carto" ? "opacity-100" : "pointer-events-none opacity-40"
+              "rounded-3xl glass p-5 transition-opacity",
+              usesCarto ? "opacity-100" : "opacity-70"
             )}
-            aria-hidden={map.provider !== "carto"}
           >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">CARTO drawing</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {CARTO_DRAWINGS.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  aria-pressed={map.cartoStyle === d.id}
-                  onClick={() => set(`Map drawing: ${d.label}`, { cartoStyle: d.id })}
-                  title={d.hint}
-                  className={cn(
-                    "rounded-full px-3.5 py-2 text-xs font-semibold transition-colors",
-                    map.cartoStyle === d.id
-                      ? "bg-saffron-400 text-on-gold"
-                      : "bg-white/[0.06] text-zinc-400 hover:text-white"
-                  )}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-
-            <label className="mt-4 block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500" htmlFor="carto-key">
               CARTO key
             </label>
             <input
+              id="carto-key"
               value={map.cartoKey}
               onChange={(e) => set("Changed the CARTO key", { cartoKey: e.target.value })}
               placeholder="cb1_…"
@@ -521,20 +520,32 @@ export function MapPanel() {
               className={cn(inputCls, "mt-2 font-mono text-[12px]")}
             />
             <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-              A basemap key only unlocks tiles, so it is safe in the page — but it is public: anyone can read
-              it in the build. Leave it blank and the site draws the keyless OpenStreetMap look instead.
+              {usesCarto
+                ? "Positron, Voyager and Dark Matter are CARTO's, and need this key. The rest need nothing."
+                : "Nothing you have picked needs this key — Bright, Dark, Liberty and the VersaTiles drawings are keyless. Keep it here so the CARTO looks work if you switch to one."}
+              {" "}A basemap key only unlocks tiles, so it is safe in the page — but it is public: anyone can read it in the build.
             </p>
           </div>
         </div>
 
         <div className="min-w-0 xl:sticky xl:top-28 xl:self-start">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Preview
+            Preview — both themes
           </p>
-          <div className="rounded-3xl border border-white/10 bg-ink-900 p-3">
-            <MapPreview settings={map} />
+          <div className="grid gap-3 rounded-3xl border border-white/10 bg-ink-900 p-3">
+            {themes.map(({ theme: t, title }) => (
+              <div key={t}>
+                <p className="mb-1.5 flex items-center justify-between gap-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                  <span>{title}</span>
+                  <span className="font-mono text-[9px] normal-case tracking-normal text-zinc-600">
+                    {label(t === "light" ? map.lightLook : map.darkLook)}
+                  </span>
+                </p>
+                <MapPreview settings={map} theme={t} place={place} />
+              </div>
+            ))}
 
-            <div className="mt-3 flex items-start gap-2 px-1.5 pb-1.5">
+            <div className="mt-1 flex items-start gap-2 px-1.5 pb-1.5">
               <span
                 className={cn(
                   "aspect-square mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
@@ -545,9 +556,12 @@ export function MapPanel() {
               <p className="text-[11px] leading-relaxed text-zinc-500">
                 {hasChanges ? (
                   <>
-                    This is the draft, drawn live — <span className="text-zinc-300">{savedLabel}</span> is
-                    still what the site shows. <span className="font-semibold text-saffron-400">Save
-                    Changes</span> publishes it.
+                    These are the draft, drawn live —{" "}
+                    <span className="text-zinc-300">
+                      {label(saved.lightLook)} / {label(saved.darkLook)}
+                    </span>{" "}
+                    is still what the site shows.{" "}
+                    <span className="font-semibold text-saffron-400">Save Changes</span> publishes it.
                   </>
                 ) : (
                   <>This is what the site is showing. Pick another look and it changes here first.</>
@@ -557,38 +571,19 @@ export function MapPanel() {
           </div>
 
           <div className="mt-3 rounded-3xl border border-white/10 bg-ink-900 p-5">
-            {map.provider === "carto" ? (
-              <p className="text-sm leading-relaxed text-zinc-300">
-                The tracker map and the nearby page draw on{" "}
-                <span className="font-semibold text-white">
-                  CARTO {map.cartoStyle === "auto" ? "(by theme)" : map.cartoStyle}
-                </span>
-                , with every place name switched off.
-              </p>
-            ) : map.provider === "satellite" ? (
-              <p className="text-sm leading-relaxed text-zinc-300">
-                The maps draw on{" "}
-                <span className="font-semibold text-white">Esri's satellite imagery</span> — the real
-                ground, photographed. No labels, because there are none in the picture.
-              </p>
-            ) : (
-              <p className="text-sm leading-relaxed text-zinc-300">
-                The maps draw on the{" "}
-                <span className="font-semibold text-white">keyless OpenStreetMap</span> styles — OpenFreeMap
-                first, raster tiles behind it.
-              </p>
-            )}
+            <p className="text-sm leading-relaxed text-zinc-300">
+              The tracker map and the nearby page draw on{" "}
+              <span className="font-semibold text-white">{label(map.lightLook)}</span> in light mode and{" "}
+              <span className="font-semibold text-white">{label(map.darkLook)}</span> in dark mode, with
+              every place name switched off.
+            </p>
             <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-              Either way, if the chosen one cannot load, the other is tried before anything is given up — a map
-              in the wrong style beats no map at all. The preview above is the same basemap the tracker draws,
-              centred on PB's current checkpoint.
+              If the chosen drawing cannot load, a keyless one is tried before anything is given up — a map
+              in another drawing beats no map at all. Both previews above are the same basemap the tracker
+              draws, centred on PB's current checkpoint.
             </p>
             <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
-              {map.provider === "carto"
-                ? "basemaps.cartocdn.com/gl/…-gl-style/style.json"
-                : map.provider === "satellite"
-                  ? "arcgisonline.com/…/World_Imagery/MapServer/tile/…"
-                  : "tiles.openfreemap.org/styles/…"}
+              {lookOf(map.lightLook)?.url ?? (lookOf(map.lightLook)?.carto ? "basemaps.cartocdn.com/gl/…/style.json" : "arcgisonline.com/…/World_Imagery/…")}
             </p>
           </div>
         </div>

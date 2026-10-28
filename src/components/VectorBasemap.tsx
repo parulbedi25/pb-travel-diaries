@@ -58,6 +58,7 @@ import { resolveMapSettings, useSite, type MapSettings } from "../store/siteCont
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
 import { providerLabel, styleChain } from "../utils/basemapStyles";
+import { lookById, type Theme } from "../utils/mapLooks";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
 const STYLE_TIMEOUT_MS = 15000;
@@ -88,6 +89,7 @@ export default function VectorBasemap({
   className,
   attributionClassName,
   settings,
+  themeOverride,
 }: {
   view: TileView;
   width: number;
@@ -100,8 +102,14 @@ export default function VectorBasemap({
    * shows an unsaved choice. The site itself never passes it.
    */
   settings?: MapSettings;
+  /**
+   * Draw as if the site were in this theme, whatever it is actually in — the
+   * dashboard previews the light and dark looks side by side.
+   */
+  themeOverride?: Theme;
 }) {
-  const { theme, content } = useSite();
+  const { theme: siteTheme, content } = useSite();
+  const theme: Theme = themeOverride ?? (siteTheme === "light" ? "light" : "dark");
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
@@ -114,7 +122,8 @@ export default function VectorBasemap({
   const sized = width > 1 && height > 1;
 
   const mapSettings = settings ?? resolveMapSettings(content.map);
-  const chain = styleChain(mapSettings, theme === "light" ? "light" : "dark");
+  const look = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme);
+  const chain = styleChain(mapSettings, theme);
   const gaveUp = candidate >= chain.length;
   const styleUrl = chain[Math.min(candidate, chain.length - 1)];
 
@@ -122,15 +131,15 @@ export default function VectorBasemap({
   // with the last one says nothing about the next.
   useEffect(() => setCandidate(0), [
     theme,
-    mapSettings.provider,
-    mapSettings.cartoStyle,
+    mapSettings.lightLook,
+    mapSettings.darkLook,
     mapSettings.cartoKey,
   ]);
 
   useEffect(() => {
     // Nothing to load for satellite: the tiles are the map, and asking a style
     // server anyway would be a request whose answer is never drawn.
-    if (mapSettings.provider === "satellite") return;
+    if (look.imagery) return;
     if (!host.current || !sized || gaveUp) return;
 
     let created: MapLibreMap;
@@ -277,7 +286,7 @@ export default function VectorBasemap({
 
   // Satellite is a photograph of the ground, not a style with layers to draw,
   // so there is nothing for MapLibre to do: the tiles are the whole map.
-  if (mapSettings.provider === "satellite") {
+  if (look.imagery) {
     return (
       <TileBasemap
         view={view}
@@ -286,6 +295,7 @@ export default function VectorBasemap({
         className={className}
         attributionClassName={attributionClassName}
         settings={settings}
+        themeOverride={themeOverride}
       />
     );
   }
