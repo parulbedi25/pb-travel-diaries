@@ -13,10 +13,15 @@
  * The style comes from the dashboard's "Map look" setting — one Geoapify
  * drawing per theme (see MapSettings in store/siteContent and utils/mapLooks).
  * One style document per look, fetched with the site's key; the style carries
- * its own tiles, fonts and sprites, so there is nothing else to configure and
- * no second host to fall back to. If the style never lands — no WebGL, no key,
- * a host having a bad day — the panel says the map is missing, because there is
- * no second drawing to fall back to that would keep this promise.
+ * its own tiles, fonts and sprites, so there is nothing else to configure.
+ *
+ * Drawing needs MapLibre's worker, and a bundled page has to be told where that
+ * worker is — see installMapWorker, without which nothing is drawn at all.
+ *
+ * If the drawing still never lands — no WebGL, a revoked key, a host having a
+ * bad day — the panel ends up showing satellite imagery rather than nothing.
+ * It is the one map that is already keyless and label-free, so it keeps both
+ * promises the drawings keep: somewhere to look, and no place names on it.
  *
  * Every drawing is of OpenStreetMap's data rendered by OpenMapTiles, so both
  * credits are owed whichever one answers (see MapAttribution in TileBasemap).
@@ -52,12 +57,20 @@ import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
 import { BASEMAP_MAKER, styleChain } from "../utils/basemapStyles";
 import { lookById, type Theme } from "../utils/mapLooks";
+import { installMapWorker } from "../utils/mapWorker";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
 const STYLE_TIMEOUT_MS = 15000;
 const PAINT_TIMEOUT_MS = 15000;
 /** Once tiles are arriving, how long they may stop arriving for. */
 const STALL_TIMEOUT_MS = 15000;
+/**
+ * How many failed requests a drawing that has already loaded may take before it
+ * is abandoned. Styles routinely ask for a sprite or a font stack they do not
+ * ship, and each of those is a failed request — a handful of them is normal and
+ * must not be allowed to take a perfectly good map off the screen.
+ */
+const ERROR_LIMIT = 12;
 /**
  * Turn every label off.
  *
@@ -125,6 +138,10 @@ export default function VectorBasemap({
     // server anyway would be a request whose answer is never drawn.
     if (look.imagery) return;
     if (!host.current || !sized || gaveUp) return;
+
+    // Without this the map asks for a worker file the build does not have and
+    // draws nothing at all.
+    installMapWorker();
 
     let created: MapLibreMap;
     try {
@@ -218,9 +235,10 @@ export default function VectorBasemap({
     const onError = () => {
       if (paintedNow) return;
       errors += 1;
-      // Before the style lands an error is the style itself; after it, a
-      // handful of failing tiles means the host is not really answering.
-      if (!styleIn || errors >= 4) next();
+      // Before the style lands, the error is the style itself — someone has to
+      // answer for it. After it, errors are scattered (a sprite, a glyph range,
+      // the odd tile) and only a flood of them means the host is not answering.
+      if (!styleIn || errors >= ERROR_LIMIT) next();
     };
 
     created.on("style.load", onStyleIn);
@@ -292,22 +310,21 @@ export default function VectorBasemap({
     );
   }
 
-  // The style would not draw — no WebGL, a revoked key, a host having a bad
-  // day. There is no labelled map behind this one any more: a place name on
-  // the map is exactly what the site promises not to show, so the panel says
-  // the map is missing instead of drawing a different one.
+  // The drawing would not arrive — no WebGL, a revoked key, a host having a bad
+  // day. An empty panel reads as a broken page, and the raster drawings that
+  // used to stand in here carry place names printed into the picture, which is
+  // the one thing the map must not show. Satellite is neither: keyless, drawn
+  // from Esri's imagery, and with no names on it at all, so it is what the
+  // panel falls back to.
   if (gaveUp) {
     return (
-      <div
+      <TileBasemap
+        view={view}
+        width={width}
+        height={height}
         className={className}
-        role="img"
-        aria-label="The map could not be drawn"
-        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
-      >
-        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
-          The map could not be drawn just now. It will try again on the next visit.
-        </p>
-      </div>
+        attributionClassName={attributionClassName}
+      />
     );
   }
 
