@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { parseScutilProxy, proxyFor, request } from "../lib/egress.js";
+import { parseScutilProxy, proxyFor, request, routesFor } from "../lib/egress.js";
 
 /** An origin that answers 302 then 200, with a chunked body. */
 async function origin() {
@@ -152,4 +152,42 @@ test("a reply carries the address family that answered", async (t) => {
   const result = await request(`${base}/short`);
   // 0 means "the stack chose"; 4 means the IPv4 second chance was needed.
   assert.ok([0, 4, 6].includes(result.family), `unexpected family ${result.family}`);
+});
+
+/* ── a proxy that is configured but does not answer ───────────────────── */
+
+test("a stale proxy is stepped over, and the direct connection answers", async (t) => {
+  // The macOS story in one test: a proxy left enabled by a corporate profile or
+  // a VPN app that is not running. Trusting it turns a working machine into a
+  // timeout; trying it and then going direct does not.
+  const { server, base } = await origin();
+  t.after(() => {
+    server.close();
+    delete process.env.HTTP_PROXY;
+  });
+  process.env.HTTP_PROXY = "http://127.0.0.1:1";
+  assert.deepEqual(
+    routesFor(`${base}/short`).map((route) => route.kind),
+    ["proxy", "direct"],
+    "the configured proxy is tried first, the direct line behind it",
+  );
+  const result = await request(`${base}/short`, { timeoutMs: 2000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 302);
+  assert.equal(result.route, "direct", "the answer came from the direct connection");
+  assert.deepEqual(
+    result.attempts.map((one) => one.route),
+    ["proxy", "direct"],
+    "both routes are reported, in the order they were tried",
+  );
+  assert.ok(result.attempts[0].error, "the dead proxy is named as the reason it was skipped");
+});
+
+test("with no proxy configured there is nothing to step over", async (t) => {
+  const { server, base } = await origin();
+  t.after(() => server.close());
+  assert.deepEqual(
+    routesFor(`${base}/short`).map((route) => route.kind),
+    ["direct"],
+  );
 });

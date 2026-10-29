@@ -26,7 +26,14 @@ export interface BrowserExpansion {
   via: string;
 }
 
-const TIMEOUT_MS = 6000;
+/**
+ * The whole second chance, not each attempt inside it.
+ *
+ * The services are asked at the same time, so this is the cost of the slowest
+ * one that is still thinking when a fast one has already answered — and a
+ * stalled service cannot hold the panel open past it.
+ */
+const TOTAL_MS = 8000;
 
 /** Where a redirect is allowed to end up — the server's list, on purpose. */
 const MAP_HOSTS = [
@@ -79,6 +86,19 @@ const viaAllOrigins: Reader = async (link, signal) => {
 };
 
 /**
+ * unshorten.me: a service whose whole job is this question, answered in JSON as
+ * `resolved_url`.
+ */
+const viaUnshorten: Reader = async (link, signal) => {
+  const endpoint = `https://unshorten.me/api/v2/unshorten?url=${encodeURIComponent(link)}`;
+  const response = await fetch(endpoint, { signal, credentials: "omit" });
+  if (!response.ok) return null;
+  const payload = (await response.json()) as { resolved_url?: string };
+  const url = payload?.resolved_url ?? "";
+  return url ? { url, via: "unshorten.me" } : null;
+};
+
+/**
  * corsproxy.io: answers with the page itself, and the browser knows the address
  * it was fetched from — which is the same answer by another road.
  */
@@ -91,7 +111,7 @@ const viaCorsProxy: Reader = async (link, signal) => {
   return url ? { url, via: "corsproxy" } : null;
 };
 
-const READERS: Reader[] = [viaAllOrigins, viaCorsProxy];
+const READERS: Reader[] = [viaAllOrigins, viaUnshorten, viaCorsProxy];
 
 /**
  * Ask the browser, through a read-through proxy, where a short link goes.
@@ -102,17 +122,40 @@ const READERS: Reader[] = [viaAllOrigins, viaCorsProxy];
  */
 export async function expandShortLinkInBrowser(link: string): Promise<BrowserExpansion | null> {
   if (!/^https?:\/\//i.test(link) || typeof fetch !== "function") return null;
-  for (const read of READERS) {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const found = await read(link, controller.signal);
-      if (found && looksLikeMapAddress(found.url)) return found;
-    } catch {
-      // A service being down, slow or blocked is not news; the next one gets a go.
-    } finally {
-      window.clearTimeout(timer);
-    }
+  // Asked in parallel rather than in turn: they are independent services, one
+  // being slow is not a reason to wait for it, and the answer is the first one
+  // that is believable. Three services, one round trip's worth of waiting.
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), TOTAL_MS);
+  try {
+    return await new Promise<BrowserExpansion | null>((resolve) => {
+      let settled = false;
+      let outstanding = READERS.length;
+      const done = (value: BrowserExpansion | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      for (const read of READERS) {
+        read(link, controller.signal)
+          .then((found) => {
+            // Only a believable *map* address counts: a proxy that answers with
+            // its own error page, or with somebody else's idea of where this
+            // goes, must not be mistaken for the link's destination.
+            if (found && looksLikeMapAddress(found.url)) done(found);
+          })
+          .catch(() => {
+            // A service being down, slow or blocked is not news; the others are
+            // already working on the same question.
+          })
+          .finally(() => {
+            outstanding -= 1;
+            if (outstanding === 0) done(null);
+          });
+      }
+    });
+  } finally {
+    window.clearTimeout(timer);
+    controller.abort();
   }
-  return null;
 }

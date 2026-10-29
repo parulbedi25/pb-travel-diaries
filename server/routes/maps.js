@@ -202,6 +202,11 @@ const egressFetch = async (url, init = {}) => {
     // Carried on `code` as well as `cause`, because both spellings are common.
     error.code = result.error;
     error.cause = { code: result.error };
+    // Which ways out were tried, and how each one ended. Without this the
+    // dashboard can only say "it failed", and the difference between a dead
+    // proxy and a dead network is exactly what the operator needs.
+    error.attempts = result.attempts ?? [];
+    error.route = result.route ?? "";
     throw error;
   }
   return {
@@ -366,6 +371,8 @@ export async function expandMapLink(raw, fetchImpl = egressFetch) {
   let failed = false;
   /** The last network error's code, so a failure can be diagnosed, not guessed. */
   let failureCode = "";
+  /** Which routes were tried before giving up — the proxy, a direct line, both. */
+  let failureAttempts = [];
 
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
     const here = current.toString();
@@ -429,6 +436,7 @@ export async function expandMapLink(raw, fetchImpl = egressFetch) {
     } else {
       lastTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
       failureCode = error?.cause?.code || error?.code || error?.name || "network error";
+      failureAttempts = error?.attempts ?? failureAttempts;
       failed = true;
     }
 
@@ -484,6 +492,7 @@ export async function expandMapLink(raw, fetchImpl = egressFetch) {
         lastTimeout = chased.error?.name === "TimeoutError" || chased.error?.name === "AbortError";
         failureCode =
           chased.error?.cause?.code || chased.error?.code || chased.error?.name || failureCode;
+        failureAttempts = chased.attempts ?? error?.attempts ?? failureAttempts;
       }
       if (chased.status >= 400 && chased.status !== 403) lastTimeout = false;
     }
@@ -508,9 +517,20 @@ export async function expandMapLink(raw, fetchImpl = egressFetch) {
       : cookie
         ? "Google answered with a consent wall"
         : "Google answered without a redirect";
-    const proxyNote = proxy
-      ? ` It was tried through the proxy ${proxy.host}, so check that the proxy allows maps.app.goo.gl.`
-      : "";
+    // Both ways out, when both were tried: a dead proxy is a different problem
+    // from a dead network, and only saying which one was tried tells them apart.
+    const tried = Array.isArray(failureAttempts) ? failureAttempts : [];
+    const routesNote =
+      tried.length > 1
+        ? ` Both the proxy ${proxy?.host ?? ""} and a direct connection were tried (${
+            tried.map((one) => `${one.route}: ${one.error || "answered"}`).join(", ")
+          }).`
+        : "";
+    const proxyNote = routesNote
+      ? routesNote
+      : proxy
+        ? ` It was tried through the proxy ${proxy.host}, so check that the proxy allows maps.app.goo.gl.`
+        : "";
     // In the hosting log as well, because the operator reads that too.
     console.warn(`[maps] could not expand ${origin}: ${why}${proxyNote}`);
     throw new MapLinkError(
@@ -581,6 +601,14 @@ mapsRouter.get("/maps/health", requireEditor, async (_req, res) => {
         )
       ? "environment"
       : "system";
+  // Every way out this machine offered, and how each one ended. A dead proxy
+  // with a working direct connection and two dead routes look identical from a
+  // single error code, and they need opposite fixes.
+  const routes = (result.attempts ?? []).map((one) => ({
+    route: one.route,
+    error: one.error || "",
+  }));
+  const proxyFailed = routes.some((one) => one.route === "proxy" && one.error);
   const detail = {
     ms,
     proxy: proxy?.host ?? "",
@@ -589,18 +617,25 @@ mapsRouter.get("/maps/health", requireEditor, async (_req, res) => {
     platform: process.platform,
     node: process.version,
     family: result.family ?? 0,
+    route: result.route ?? "",
+    routes,
   };
 
   if (result.error) {
+    // Both routes named when both were tried: "nothing works" and "the proxy
+    // does not work but the network does" are the same code and different fixes.
+    const both = routes.length > 1;
     return res.json({
       reachable: false,
       code: result.error,
       ...detail,
-      hint: proxy
-        ? `The server tried the proxy ${proxy.host} (${proxySource}). Check that it allows maps.app.goo.gl.`
-        : HOPELESS.has(result.error)
-          ? "This server has no route to Google. Ask the host to allow outbound HTTPS, or set HTTPS_PROXY."
-          : "The connection timed out. A proxy, a VPN or a firewall is the usual cause.",
+      hint: both
+        ? `Both the proxy ${proxy?.host ?? ""} and a direct connection failed. A VPN, a firewall, or a host with no outbound HTTPS is the cause — but the browser beside this server can still read the link.`
+        : proxy
+          ? `The server tried the proxy ${proxy.host} (${proxySource}) and nothing else. Check that it allows maps.app.goo.gl.`
+          : HOPELESS.has(result.error)
+            ? "This server has no route to Google. Ask the host to allow outbound HTTPS, or set HTTPS_PROXY."
+            : "The connection timed out. A proxy, a VPN or a firewall is the usual cause.",
     });
   }
   res.json({
@@ -609,9 +644,11 @@ mapsRouter.get("/maps/health", requireEditor, async (_req, res) => {
     ...detail,
     // IPv4 is worth saying out loud: it is what a Mac on a half-broken IPv6
     // network falls back to, and it explains why one machine works and another
-    // does not.
-    hint:
-      result.family === 4
+    // does not. A dead proxy that was stepped over is worth more: it is a stale
+    // setting, and the maps work anyway.
+    hint: proxyFailed
+      ? `The proxy ${proxy?.host ?? ""} did not answer, so the direct connection was used — the proxy setting on this machine is stale and can be switched off.`
+      : result.family === 4
         ? "Reached Google over IPv4 after the default address family failed — this network's IPv6 is not carrying traffic."
         : "",
   });

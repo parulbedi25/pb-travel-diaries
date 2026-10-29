@@ -209,13 +209,17 @@ function parseHead(raw) {
 }
 
 /**
- * One request: the status, the headers, and (when asked) some of the body.
+ * One request down one route: the status, the headers, and (when asked) some of
+ * the body.
  *
  * `follow` is not a fetch option here — it is a loop in `request` below — so a
  * caller always knows which address answered. That matters: this module is used
  * to prove *where* a short link goes.
+ *
+ * The route is passed in rather than decided here, because a machine can offer
+ * more than one and only trying them in order settles which one works.
  */
-function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
+function attempt(url, route, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
   return new Promise((resolve) => {
     let target;
     try {
@@ -229,7 +233,7 @@ function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
       resolve({ status: 0, headers: new Map(), text: "", error: "EBADPROTOCOL" });
       return;
     }
-    const proxy = proxyFor(url);
+    const proxy = route.proxy;
     const port = target.port || (secure ? "443" : "80");
     const path = `${target.pathname}${target.search}`;
     const requestHeaders = {
@@ -246,7 +250,7 @@ function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
     const finish = (value) => {
       if (settled) return;
       settled = true;
-      resolve({ family: lastFamily, ...value });
+      resolve({ family: lastFamily, route: route.kind, ...value });
     };
     const fail = (error) => finish({ status: 0, headers: new Map(), text: "", error });
 
@@ -450,6 +454,74 @@ function dial(host, port, secure, timeoutMs) {
     };
     attempt(0);
   });
+}
+
+/**
+ * The ways out this machine actually has, best first.
+ *
+ * A configured proxy is tried first — somebody set it for a reason — with a
+ * direct connection behind it. That second chance is the whole point: a Mac
+ * keeps its proxy in System Settings, and a stale entry left by a corporate
+ * profile or a VPN app that is not running is still there, still enabled, and
+ * still pointed at nothing. Reading it and trusting it turns a working machine
+ * into `ETIMEDOUT`; reading it, trying it, and *not believing it* when it does
+ * not answer does not.
+ */
+export function routesFor(url) {
+  const direct = { kind: "direct", proxy: null };
+  const proxy = proxyFor(url);
+  return proxy ? [{ kind: "proxy", proxy }, direct] : [direct];
+}
+
+/**
+ * Failures worth another route.
+ *
+ * Anything that means "this route could not deliver the request" belongs here.
+ * A status code does not: an answer is an answer, even a 404, and asking a
+ * second way would only produce a second, confusing answer.
+ */
+const RETRY_ROUTE = new Set([
+  "ETIMEDOUT",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETWORK",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPROXY",
+  "EPROXYAUTH",
+  "ETLS",
+]);
+
+/**
+ * One request, trying each route in turn until one answers.
+ *
+ * The first route gets the larger share of the budget and the rest split what
+ * remains, so a dead proxy costs about half of one attempt rather than the whole
+ * of it. The attempts are reported back with the answer: "the proxy timed out,
+ * the direct connection answered in 180 ms" is a diagnosis, and a caller that
+ * only knows "it failed" has to guess again.
+ */
+async function once(url, options = {}) {
+  const { timeoutMs = 4000 } = options;
+  const routes = routesFor(url);
+  const tried = [];
+  let latest = null;
+  for (let index = 0; index < routes.length; index += 1) {
+    const route = routes[index];
+    // The first of two gets 40% and the rest gets the remainder, because a dead
+    // proxy costs the whole of whatever it is given: a redirect through a proxy
+    // that is actually working answers in well under a second, while a proxy
+    // that is not there will use every millisecond offered and return nothing.
+    const share =
+      index === 0 && routes.length > 1 ? Math.max(1200, Math.round(timeoutMs * 0.4)) : timeoutMs;
+    latest = await attempt(url, route, { ...options, timeoutMs: share });
+    tried.push({ route: route.kind, error: latest.error || "", family: latest.family ?? 0 });
+    if (!latest.error) break;
+    if (!RETRY_ROUTE.has(latest.error)) break;
+  }
+  return { ...latest, attempts: tried };
 }
 
 /**
