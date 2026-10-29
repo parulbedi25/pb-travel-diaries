@@ -135,11 +135,41 @@ test("a page that redirects by script is read too", async () => {
   assert.equal(await expandMapLink(SHORT, fetchImpl), LONG);
 });
 
-test("a page with nothing to follow is handed back as itself", async () => {
-  // It used to be returned as though it were the answer, which parsed to no
-  // stops; now it is still the answer, but only because nothing better exists.
+test("a share token that never redirects is an error, not an answer", async () => {
+  // This is the shape that made a failed expansion look like a success: the
+  // token itself was handed back, the dashboard parsed no stops out of it, and
+  // the operator was told the link could not be read.
   const { fetchImpl } = fakeFetch({}, { pages: { [SHORT]: "<html>hello</html>" } });
-  assert.equal(await expandMapLink(SHORT, fetchImpl), SHORT);
+  await assert.rejects(
+    () => expandMapLink(SHORT, fetchImpl),
+    (error) =>
+      error instanceof MapLinkError &&
+      error.status === 502 &&
+      /copy the address/i.test(error.message),
+  );
+});
+
+test("a shortener that refuses the server is chased with followed redirects", async () => {
+  // A bot filter answering 403, or a chain this walk cannot read: the second
+  // strategy lets the network follow it and reports where it landed.
+  const fetchImpl = async (url, init) => {
+    if (init?.redirect === "follow") {
+      return { status: 200, url: LONG, headers: new Headers(), body: null };
+    }
+    return { status: 403, url, headers: new Headers(), body: null };
+  };
+  assert.equal(await expandMapLink(SHORT, fetchImpl), LONG);
+});
+
+test("a chased page that lands on consent is not believed", async () => {
+  const consent = "https://consent.google.com/ml?continue=https://maps.app.goo.gl/x";
+  const fetchImpl = async (url, init) => {
+    if (init?.redirect === "follow") {
+      return { status: 200, url: consent, headers: new Headers(), body: null };
+    }
+    return { status: 200, url, headers: new Headers(), body: null };
+  };
+  await assert.rejects(() => expandMapLink(SHORT, fetchImpl), (error) => error instanceof MapLinkError);
 });
 
 test("the consent wall is asked again with the cookie that declines it", async () => {

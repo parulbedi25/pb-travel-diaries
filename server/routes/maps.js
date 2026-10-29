@@ -80,7 +80,8 @@ const hostOf = (url) => {
 /** A host is allowed if it *is* one of these or sits under it. */
 const allowed = (host, list) => list.some((base) => host === base || host.endsWith(`.${base}`));
 
-const shortAllowed = (host) => SHORT_HOSTS.has(host) || allowed(host, [...MAP_HOSTS]);
+const isShortHost = (host) => SHORT_HOSTS.has(host);
+const shortAllowed = (host) => isShortHost(host) || allowed(host, [...MAP_HOSTS]);
 const mapAllowed = (host) => allowed(host, MAP_HOSTS);
 const consentHost = (host) => CONSENT_HOSTS.includes(host);
 
@@ -191,6 +192,83 @@ async function look(url, fetchImpl, deadline, cookie) {
 }
 
 /**
+ * The last resort: let the network follow the chain and say where it ended.
+ *
+ * The walk below reads 302s one at a time and checks every hop against the map
+ * hosts, which is what keeps this from being an open proxy. Some answers defeat
+ * that: a 403 from a bot filter, a share page whose redirect is spelled in a
+ * way this code cannot read, a chain longer than the hop budget. `redirect:
+ * "follow"` handles all of those in one request, and undici hands back the
+ * address it finally landed on as `response.url`.
+ *
+ * It is only ever used for a known shortener, and its answer is checked against
+ * the map hosts before it is believed, so the guard still holds: nothing here
+ * can be steered at an internal address by a redirect.
+ */
+async function chase(url, fetchImpl, deadline, cookie) {
+  const left = deadline - Date.now();
+  if (left < 800) return null;
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+        accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+        "accept-language": "en-IN,en;q=0.9",
+        ...(cookie ? { cookie } : {}),
+      },
+      signal: AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, left)),
+    });
+    const finalUrl = typeof response.url === "string" ? response.url : "";
+    let page = "";
+    try {
+      if (response.status >= 200 && response.status < 300 && typeof response.text === "function") {
+        page = await readLimited(response, MAX_PAGE_BYTES);
+      }
+    } catch {
+      page = "";
+    }
+    try {
+      await response.body?.cancel?.();
+    } catch {
+      /* already drained */
+    }
+    return { finalUrl, page, status: response.status, error: null };
+  } catch (error) {
+    return { finalUrl: "", page: "", status: 0, error };
+  }
+}
+
+/** Anything that would make a URL an acceptable place to stop at. */
+const believable = (url) => {
+  const host = hostOf(url);
+  return Boolean(host) && mapAllowed(host) && !consentHost(host);
+};
+
+/**
+ * Whether a URL is a whole map address rather than a share token.
+ *
+ * `maps.app.goo.gl/YJBuu2o9CKs3reLg9` is a token: a single opaque segment, and
+ * the only thing it means is "ask again and you will be redirected". A share
+ * page that answers 200 and never redirects is that same URL, so it must not be
+ * mistaken for the route — which is exactly how a failed expansion came back
+ * looking like a success. A real map address has a shape: `/maps/dir/…`,
+ * `/maps/place/…`, a `@lat,lng` in it, or at least more than one segment.
+ */
+const looksLikeMapAddress = (url) => {
+  try {
+    const { pathname, search, host } = new URL(url);
+    if (!isShortHost(host)) return true;
+    const segments = pathname.split("/").filter(Boolean);
+    return segments.length > 1 || /maps|dir|place|search|@/.test(`${pathname}${search}`);
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Follow a short link to the map URL it hides, or throw a `MapLinkError` that
  * says why it could not. `fetchImpl` is there so the tests can hand in a fake
  * network instead of talking to Google.
@@ -228,67 +306,128 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
   let cookie = "";
   let lastTimeout = false;
   let failed = false;
+  /** The last network error's code, so a failure can be diagnosed, not guessed. */
+  let failureCode = "";
 
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
-    const { response, error } = await look(current.toString(), fetchImpl, deadline, cookie);
+    const here = current.toString();
+    const { response, error } = await look(here, fetchImpl, deadline, cookie);
 
-    if (!response) {
-      lastTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
-      failed = true;
-      break;
-    }
-
-    const location = response.headers.get("location");
-    const status = response.status;
-
-    // The address is what matters, so the body is dropped unread — except in
-    // the one case where the body *is* the address.
+    let location = "";
     let page = "";
-    if (!location && status >= 200 && status < 300 && typeof response.text === "function") {
-      try {
-        page = await readLimited(response, MAX_PAGE_BYTES);
-      } catch {
-        page = "";
+    let status = 0;
+
+    if (response) {
+      status = response.status;
+      location = response.headers.get("location") ?? "";
+
+      // The address is what matters, so the body is dropped unread — except in
+      // the one case where the body *is* the address.
+      if (!location && status >= 200 && status < 300 && typeof response.text === "function") {
+        try {
+          page = await readLimited(response, MAX_PAGE_BYTES);
+        } catch {
+          page = "";
+        }
       }
-    }
-    try {
-      await response.body?.cancel?.();
-    } catch {
-      /* already drained, or nothing to drain */
+      try {
+        await response.body?.cancel?.();
+      } catch {
+        /* already drained, or nothing to drain */
+      }
+
+      // Consent wall: not a map, and not an answer. Ask the same link again
+      // with the cookie that declines it, which is what a browser does when a
+      // person clicks past the wall.
+      if (location) {
+        let wall = "";
+        try {
+          wall = new URL(location, current).toString();
+        } catch {
+          wall = "";
+        }
+        if (wall && consentHost(hostOf(wall))) {
+          if (cookie) {
+            // Asked twice and still walled: nothing this server can do.
+            failed = true;
+            break;
+          }
+          cookie = "CONSENT=YES+1";
+          continue;
+        }
+      }
+
+      // A page that carries the redirect instead of a 302 for it.
+      if (!location && page) {
+        const fromPage = targetInPage(here, page);
+        if (fromPage && fromPage !== here) {
+          current = new URL(fromPage);
+          continue;
+        }
+      }
+    } else {
+      lastTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+      failureCode = error?.cause?.code || error?.code || error?.name || "network error";
+      failed = true;
     }
 
-    // Consent wall: not a map, and not an answer. Ask the same link again with
-    // the cookie that declines it, which is what a browser does when a person
-    // clicks past the wall.
-    if (location && consentHost(hostOf(new URL(location, current).toString()))) {
-      cookie = "CONSENT=YES+1";
+    // A redirect in the headers: checked, then followed.
+    if (location) {
+      let next;
+      try {
+        next = new URL(location, current);
+      } catch {
+        throw new MapLinkError("That short link points somewhere unreadable.", 422);
+      }
+      // A redirect to itself is the end of the conversation, not a loop.
+      if (next.toString() === here) {
+        const answer = finish(here);
+        if (real) remember(origin, answer);
+        return answer;
+      }
+      if (!/^https?:$/.test(next.protocol) || !mapAllowed(hostOf(next.toString()))) {
+        // Looked at, not followed: a redirect is not allowed to leave the map
+        // services, however it is spelled.
+        throw new MapLinkError("That short link does not lead to a map.", 422);
+      }
+      current = next;
       continue;
     }
 
-    if (!location) {
-      const fromPage = targetInPage(current.toString(), page);
-      // A page that claims to be itself has nothing further to say.
-      if (fromPage && fromPage !== current.toString()) {
-        current = new URL(fromPage);
-        continue;
-      }
-      const answer = finish(current.toString());
+    // No redirect from this hop. If it is already a real map address, that is
+    // the answer; if it is still the shortener, this hop told us nothing.
+    if (believable(here) && looksLikeMapAddress(here) && status < 400) {
+      const answer = finish(here);
       if (real) remember(origin, answer);
       return answer;
     }
 
-    let next;
-    try {
-      next = new URL(location, current);
-    } catch {
-      throw new MapLinkError("That short link points somewhere unreadable.", 422);
+    // Otherwise let the network chase it: a bot-filtered 403, a share page
+    // whose redirect this code cannot read, or a chain longer than the budget.
+    const chased = await chase(here, fetchImpl, deadline, cookie);
+    if (chased) {
+      const target = chased.finalUrl || targetInPage(here, chased.page);
+      if (target && target !== here && believable(target)) {
+        // A chased chain has already been followed to its end, so a target that
+        // is a whole map address *is* the answer — asking it again would be a
+        // second round trip to prove what the network just said.
+        if (looksLikeMapAddress(target)) {
+          const answer = finish(target);
+          if (real) remember(origin, answer);
+          return answer;
+        }
+        current = new URL(target);
+        continue;
+      }
+      if (chased.error) {
+        lastTimeout = chased.error?.name === "TimeoutError" || chased.error?.name === "AbortError";
+        failureCode =
+          chased.error?.cause?.code || chased.error?.code || chased.error?.name || failureCode;
+      }
+      if (chased.status >= 400 && chased.status !== 403) lastTimeout = false;
     }
-    if (!/^https?:$/.test(next.protocol) || !mapAllowed(hostOf(next.toString()))) {
-      // Looked at, not followed: a redirect is not allowed to leave the map
-      // services, however it is spelled.
-      throw new MapLinkError("That short link does not lead to a map.", 422);
-    }
-    current = next;
+    failed = true;
+    break;
   }
 
   if (lastTimeout) {
@@ -298,8 +437,23 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
     );
   }
   if (failed) {
+    // Named, not vague: whoever reads this is trying to get a route in, and the
+    // reason decides whether a second try is worth anything. `ENOTFOUND` and
+    // `ECONNREFUSED` mean the server has no way out to Google at all; a wall or
+    // a page with no redirect means Google answered but said nothing useful.
+    const why = failureCode
+      ? `the network answered ${failureCode}`
+      : cookie
+        ? "Google answered with a consent wall"
+        : "Google answered without a redirect";
+    const proxy =
+      process.env.HTTPS_PROXY || process.env.https_proxy
+        ? " This server is configured to use an outbound proxy — Node's fetch does not follow it unless the server is started with NODE_USE_ENV_PROXY=1."
+        : "";
+    // In the hosting log as well, because the operator reads that too.
+    console.warn(`[maps] could not expand ${origin}: ${why}${proxy}`);
     throw new MapLinkError(
-      "The map service could not be reached from this server. Open the short link in a browser and paste the full address instead.",
+      `The short link did not give up its address from this server (${why}).${proxy} Open the short link in a browser, copy the address from the address bar and paste that here — a full directions link is read without asking any server.`,
       502,
     );
   }
