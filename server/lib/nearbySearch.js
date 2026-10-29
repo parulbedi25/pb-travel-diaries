@@ -1,5 +1,5 @@
 /**
- * Finding a bed, a pump, a workshop or a hospital near a point.
+ * Finding a bed, a meal, a pump, a workshop or a hospital near a point.
  *
  * The browser used to ask Overpass directly, which is the weak link: one
  * endpoint, one attempt, a twenty-second timeout, and no way to see why it
@@ -36,7 +36,7 @@
  * These figures are only the fallback for the rare time the boundary cannot be
  * looked up: a shape of the right order, rather than the whole district.
  */
-export const KIND_RADIUS_KM = { stays: 15, essentials: 25 };
+export const KIND_RADIUS_KM = { stays: 15, food: 12, essentials: 25 };
 
 export const KINDS = Object.keys(KIND_RADIUS_KM);
 
@@ -99,16 +99,35 @@ export function overpassQuery(kind, bounds) {
   const box = boundsClause(bounds);
   const head = "[out:json][timeout:20]";
   if (kind === "stays") {
-    return `${head};nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]${box};out center 120;`;
+    // Everywhere a rider can actually sleep, not only the ones tagged hotel:
+    // a lodge, a homestay and a yatri niwas are beds too, and in the hills
+    // they are most of them.
+    return (
+      `${head};(` +
+      `nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment|chalet)$"]${box};` +
+      `nwr["name"~"lodge|homestay|home stay|guest house|rest house|yatri niwas",i]${box};` +
+      `);out center 160;`
+    );
+  }
+  if (kind === "food") {
+    // Where a rider eats: the restaurant, but also the dhaba, the cafe, the
+    // fast-food counter and the sweet shop with tables behind it.
+    return (
+      `${head};(` +
+      `nwr["amenity"~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"]${box};` +
+      `nwr["name"~"dhaba|dhabha|bhojanal|bhojnalaya|eatery|restaurant|bhojanalya",i]${box};` +
+      `);out center 240;`
+    );
   }
   return (
     `${head};(` +
     `nwr["amenity"="fuel"]${box};` +
     `nwr["amenity"~"^(hospital|clinic)$"]${box};` +
-    `nwr["shop"="motorcycle"]${box};` +
+    `nwr["shop"~"^(motorcycle|car_repair|car_parts|tyres)$"]${box};` +
     `nwr["service:vehicle:motorcycle"="yes"]${box};` +
+    `nwr["service:vehicle:car"="yes"]${box};` +
     `nwr["name"~"Royal Enfield",i]${box};` +
-    `);out center 200;`
+    `);out center 240;`
   );
 }
 
@@ -327,14 +346,16 @@ export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AR
  * asked rather than the API.
  */
 export function googleTerms(kind) {
-  return kind === "stays"
-    ? ["hotels", "guest houses", "hostels"]
-    : ["petrol pumps", "hospitals", "motorcycle repair Royal Enfield"];
+  if (kind === "stays") return ["hotels", "lodges", "homestays", "guest houses", "motels"];
+  if (kind === "food") return ["restaurants", "best restaurants", "dhaba", "cafes"];
+  return ["petrol pumps", "hospitals", "automobile service centre", "motorcycle repair Royal Enfield"];
 }
 
 /** What Nominatim is asked, one free-text term per category. */
 export function nominatimTerms(kind) {
-  return kind === "stays" ? ["hotel", "guest house"] : ["petrol station", "hospital", "motorcycle repair"];
+  if (kind === "stays") return ["hotel", "guest house", "lodge"];
+  if (kind === "food") return ["restaurant", "cafe"];
+  return ["petrol station", "hospital", "car repair"];
 }
 
 /** The bounding box around a point, as Nominatim wants it: west,north,east,south. */
@@ -344,9 +365,9 @@ export function viewboxOf(lat, lng, radiusKm) {
 
 /** What Photon is asked: one free-text term per category, biased to the point. */
 export function photonTerms(kind) {
-  return kind === "stays"
-    ? ["hotel", "guest house", "hostel"]
-    : ["petrol station", "hospital", "motorcycle repair"];
+  if (kind === "stays") return ["hotel", "guest house", "hostel", "motel", "lodge", "homestay"];
+  if (kind === "food") return ["restaurant", "cafe", "fast food", "dhaba"];
+  return ["petrol station", "hospital", "car repair", "motorcycle"];
 }
 
 /** Photon's `osm_key`/`osm_value` pair, read as the tags they stand for. */
@@ -385,6 +406,32 @@ const STAY_COPY = {
   guest_house: "Guest house",
   hostel: "Hostel",
   motel: "Motel",
+  apartment: "Apartment",
+  chalet: "Chalet",
+};
+
+/** Places that are beds, however their `tourism` tag reads. */
+const LODGE_NAME = /\blodge\b|\bhomestay\b|home stay|rest house|yatri niwas|guest house/i;
+
+const EAT_COPY = {
+  restaurant: "Restaurant",
+  cafe: "Cafe",
+  fast_food: "Fast food",
+  food_court: "Food court",
+  ice_cream: "Ice cream",
+  pub: "Pub",
+  bar: "Bar",
+};
+
+/** A dhaba is a restaurant with a different sign on it. */
+const DHABA_NAME = /dhaba|dhabha|bhojanal|bhojnal|bhojanalya/i;
+
+/** The words on a workshop's sign, and what they mean for a rider. */
+const SHOP_COPY = {
+  motorcycle: "Motorcycle workshop",
+  car_repair: "Automobile workshop",
+  car_parts: "Spare parts",
+  tyres: "Tyres & puncture",
 };
 
 const RE_NAME = /royal\s*enfield/i;
@@ -405,10 +452,14 @@ export function itemFromTags(tags, id, lat, lng, origin) {
   let detail = "";
   let budget = false;
 
-  if (STAY_COPY[tourism]) {
+  if (STAY_COPY[tourism] || (LODGE_NAME.test(name) && (amenity || tourism || tags.shop))) {
     kind = "stay";
-    budget = tourism === "guest_house" || tourism === "hostel" || tourism === "motel";
-    detail = `${STAY_COPY[tourism]}${tags.stars ? ` · ${tags.stars}★` : ""}${budget ? " · budget" : ""}`;
+    budget = tourism === "guest_house" || tourism === "hostel" || tourism === "motel" || LODGE_NAME.test(name);
+    const label = LODGE_NAME.test(name) ? "Lodge" : STAY_COPY[tourism] ?? "Stay";
+    detail = `${label}${tags.stars ? ` · ${tags.stars}★` : ""}${budget ? " · budget" : ""}`;
+  } else if (EAT_COPY[amenity]) {
+    kind = "eat";
+    detail = `${DHABA_NAME.test(name) ? "Dhaba" : EAT_COPY[amenity]}${tags.cuisine ? ` · ${tags.cuisine}` : ""}`;
   } else if (amenity === "fuel") {
     kind = "fuel";
     const brand = tags.brand ?? tags.operator ?? "";
@@ -416,9 +467,11 @@ export function itemFromTags(tags, id, lat, lng, origin) {
   } else if (amenity === "hospital" || amenity === "clinic") {
     kind = "hospital";
     detail = `${amenity === "hospital" ? "Hospital" : "Clinic"}${tags.emergency === "yes" ? " · emergency" : ""}`;
-  } else if (tags.shop === "motorcycle" || tags["service:vehicle:motorcycle"] === "yes" || royalEnfield) {
+  } else if (SHOP_COPY[tags.shop] || tags["service:vehicle:motorcycle"] === "yes" || tags["service:vehicle:car"] === "yes" || royalEnfield) {
     kind = "service";
-    detail = royalEnfield ? "Royal Enfield · workshop" : "Motorcycle workshop";
+    detail = royalEnfield
+      ? "Royal Enfield · service centre"
+      : SHOP_COPY[tags.shop] ?? "Automobile workshop";
   }
 
   if (!kind) return null;
@@ -427,7 +480,15 @@ export function itemFromTags(tags, id, lat, lng, origin) {
   if (kind === "stay" && !name) return null;
   const title =
     name ||
-    (kind === "fuel" ? "Fuel station" : kind === "hospital" ? "Hospital" : "Workshop");
+    (kind === "fuel"
+      ? "Fuel station"
+      : kind === "hospital"
+        ? "Hospital"
+        : kind === "eat"
+          ? DHABA_NAME.test(name)
+            ? "Dhaba"
+            : EAT_COPY[amenity] ?? "Eatery"
+          : "Workshop");
 
   return {
     id,
@@ -469,13 +530,17 @@ export function tagsFromNominatim(hit) {
   const tags = {};
   if (type === "fuel" || category === "fuel") tags.amenity = "fuel";
   else if (category === "amenity" && (type === "hospital" || type === "clinic")) tags.amenity = type;
-  else if (type === "hotel" || type === "guest_house" || type === "hostel" || type === "motel") {
+  else if (EAT_COPY[type] || (category === "amenity" && EAT_COPY[type])) tags.amenity = type;
+  else if (["hotel", "guest_house", "hostel", "motel", "apartment", "chalet"].includes(type)) {
     tags.tourism = type;
-  } else if (type === "motorcycle" || type === "car_repair" || category === "shop") {
-    if (type === "motorcycle") tags.shop = "motorcycle";
+  } else if (["motorcycle", "car_repair", "car_parts", "tyres"].includes(type)) {
+    tags.shop = type;
+  } else if (type === "restaurant" || type === "cafe") {
+    tags.amenity = type;
   }
   if (hit.name || hit.display_name) tags.name = hit.name ?? String(hit.display_name ?? "").split(",")[0];
   if (hit.extratags?.brand) tags.brand = hit.extratags.brand;
+  if (hit.extratags?.cuisine) tags.cuisine = hit.extratags.cuisine;
   if (hit.extratags?.opening_hours) tags.opening_hours = hit.extratags.opening_hours;
   return tags;
 }
@@ -523,10 +588,51 @@ export function itemsFromNominatim(hits, origin) {
 
 /** Words that mean a record is a bed, a pump, a hospital or a workshop. */
 const GOOGLE_TOKENS = {
-  stay: ["lodging", "hotel", "guest_house", "guest house", "hostel", "motel", "resort", "homestay", "bed and breakfast"],
+  stay: [
+    "lodging",
+    "hotel",
+    "guest_house",
+    "guest house",
+    "hostel",
+    "motel",
+    "resort",
+    "homestay",
+    "home stay",
+    "lodge",
+    "bed and breakfast",
+    "apartment",
+  ],
+  eat: [
+    "restaurant",
+    "cafe",
+    "fast_food",
+    "food court",
+    "eatery",
+    "dhaba",
+    "biryani",
+    "bakery",
+    "coffee",
+    "pizzeria",
+    "ice cream",
+    "food",
+  ],
   fuel: ["gas_station", "gas station", "petrol", "fuel", "filling station", "petrol pump"],
-  hospital: ["hospital", "clinic", "doctor", "medical", "nursing home", "dispensary"],
-  service: ["car_repair", "motorcycle", "motor cycle", "bike repair", "two wheeler", "workshop", "royal enfield", "garage"],
+  hospital: ["hospital", "clinic", "doctor", "medical", "nursing home", "dispensary", "pharmacy"],
+  service: [
+    "car_repair",
+    "motorcycle",
+    "motor cycle",
+    "bike repair",
+    "two wheeler",
+    "workshop",
+    "royal enfield",
+    "garage",
+    "service center",
+    "service centre",
+    "automobile",
+    "spare parts",
+    "tyre",
+  ],
 };
 
 /** A Google place id, e.g. `0x391ad0a2b:0x1f2ab3c` — never a name. */
@@ -616,13 +722,23 @@ function numbersIn(node, skip, out = [], depth = 0) {
   return out;
 }
 
-/** Which of the four things this record is, from the words around it. */
+/**
+ * Which of the five things this record is, from the words around it.
+ *
+ * What the record *is* wins over what it is called: plenty of Indian
+ * restaurants are named "Hotel Something", so the words that are not the name
+ * are read first and only then the name itself.
+ */
 export function googleKindOf(words, name = "") {
-  const haystack = [...words, name.toLowerCase()];
-  for (const kind of ["stay", "fuel", "hospital", "service"]) {
-    if (haystack.some((word) => GOOGLE_TOKENS[kind].some((token) => word.includes(token)))) return kind;
-  }
-  return null;
+  const check = (haystack) => {
+    for (const kind of ["stay", "eat", "fuel", "hospital", "service"]) {
+      if (haystack.some((word) => GOOGLE_TOKENS[kind].some((token) => word.includes(token)))) return kind;
+    }
+    return null;
+  };
+  const lowerName = String(name).toLowerCase();
+  const context = words.filter((word) => word !== lowerName);
+  return check(context) ?? check([...words, lowerName]);
 }
 
 /**
@@ -687,18 +803,25 @@ export function itemsFromGoogleState(state, origin) {
     const rating = numbersIn(record, new Set()).find(
       (value) => value >= 1 && value <= 5 && !Number.isInteger(value),
     );
-    const budget = kind === "stay" && /hostel|guest|homestay|budget|oyo/i.test(name);
+    const budget = kind === "stay" && /hostel|guest|homestay|lodge|budget|oyo/i.test(name);
 
+    const stars = rating ? ` · ${rating}★` : "";
+    const stayLabel = LODGE_NAME.test(name) ? "Lodge" : budget ? "Guest house · budget" : "Hotel";
+    const eatLabel = DHABA_NAME.test(name) ? "Dhaba" : /cafe|coffee/i.test(name) ? "Cafe" : "Restaurant";
     const detail =
       kind === "stay"
-        ? `${budget ? "Guest house · budget" : "Hotel"}${rating ? ` · ${rating}★` : ""}`
-        : kind === "fuel"
-          ? "Fuel station"
-          : kind === "hospital"
-            ? "Hospital"
-            : royalEnfield
-              ? "Royal Enfield · workshop"
-              : "Motorcycle workshop";
+        ? `${stayLabel}${stars}`
+        : kind === "eat"
+          ? `${eatLabel}${stars}`
+          : kind === "fuel"
+            ? "Fuel station"
+            : kind === "hospital"
+              ? "Hospital"
+              : royalEnfield
+                ? "Royal Enfield · service centre"
+                : /car/i.test(name)
+                  ? "Automobile workshop"
+                  : "Motorcycle workshop";
 
     items.push({
       id: `google/${coords.lat.toFixed(5)},${coords.lng.toFixed(5)}`,
@@ -710,6 +833,9 @@ export function itemsFromGoogleState(state, origin) {
       detail,
       ...(royalEnfield ? { royalEnfield: true } : {}),
       ...(budget ? { budget: true } : {}),
+      // A rating is what a rider reads a food place by, so it goes on the
+      // record rather than staying inside the detail line.
+      ...(rating ? { rating } : {}),
     });
   });
 
@@ -740,7 +866,9 @@ export function rankItems(items, kind) {
   // Only what was asked for: a "stays" answer that came back with a fuel
   // station in it — a regex that matched more than it meant to — must not
   // quietly appear in the beds list.
-  const wanted = items.filter((item) => (kind === "stays" ? item.kind === "stay" : item.kind !== "stay"));
+  const belongs = (item) =>
+    kind === "stays" ? item.kind === "stay" : kind === "food" ? item.kind === "eat" : item.kind !== "stay" && item.kind !== "eat";
+  const wanted = items.filter(belongs);
   const sorted = [...wanted].sort((a, b) => a.distanceKm - b.distanceKm);
   const seen = new Set();
   return sorted.filter((item) => {

@@ -12,6 +12,7 @@ import {
   MapPin,
   Navigation,
   RefreshCcw,
+  UtensilsCrossed,
   Wrench,
   X,
 } from "lucide-react";
@@ -37,7 +38,10 @@ import { cn } from "../utils/cn";
  *
  *  1. **Places to visit** — what is worth a detour, from Wikipedia's geotagged
  *     articles: notable by an editor's judgement rather than a paid listing.
- *  2. **Hotels & rooms** — a bed, from OpenStreetMap, with guest houses and
+ *  2. **Stays** and **Food** — a bed or a meal, from Google and OpenStreetMap:
+ *     hotels but also lodges, homestays and motels; restaurants but also
+ *     dhabas, cafes and fast-food counters, with Google's rating on the row.
+ *  3. **Stays** — a bed, from OpenStreetMap, with guest houses and
  *     hostels shown before hotels, because this is a motorcycle ride and not a
  *     package holiday.
  *  3. **Fuel · Service · Hospital** — petrol, Royal Enfield workshops and
@@ -72,13 +76,14 @@ type Insets = { top: number; right: number; bottom: number; left: number };
 /** Before the panel is measured: a little air on every side. */
 const DEFAULT_INSETS: Insets = { top: 34, right: 34, bottom: 54, left: 34 };
 
-type TabId = "places" | "stays" | "essentials";
+type TabId = "places" | "stays" | "food" | "essentials";
 
 /** What each tab is called when the search is handed to Google instead. */
 const GOOGLE_TERMS: Record<TabId, string> = {
   places: "places to visit",
-  stays: "hotels guest houses",
-  essentials: "petrol pump hospital motorcycle workshop",
+  stays: "hotels lodges homestays guest houses motels",
+  food: "restaurants dhaba cafes",
+  essentials: "petrol pump hospital automobile service centre motorcycle workshop Royal Enfield",
 };
 
 /** The source each tab's list came from, in words a rider reads once. */
@@ -97,8 +102,9 @@ const SOURCE_COPY: Record<string, string> = {
  */
 const TABS: { id: TabId; label: string; short: string; icon: typeof Landmark }[] = [
   { id: "places", label: "Places to visit", short: "Places", icon: Landmark },
-  { id: "stays", label: "Hotels & rooms", short: "Stays", icon: BedDouble },
-  { id: "essentials", label: "Fuel · Service · Hospital", short: "Essentials", icon: Fuel },
+  { id: "stays", label: "Hotels · lodges · homestays", short: "Stays", icon: BedDouble },
+  { id: "food", label: "Restaurants · dhabas · cafes", short: "Food", icon: UtensilsCrossed },
+  { id: "essentials", label: "Fuel · hospital · service centre", short: "Service", icon: Wrench },
 ];
 
 /** One row of the list, whichever tab it came from. */
@@ -114,14 +120,15 @@ interface PinItem {
   image?: string;
   /** The article, when there is one. */
   wikiUrl?: string;
-  /** A chip beside the title: "Royal Enfield", "Guest house · budget". */
+  /** A chip beside the title: "Royal Enfield", "budget", "4.6★". */
   badge?: string;
-  kind: "place" | "stay" | "fuel" | "hospital" | "service";
+  kind: "place" | "stay" | "eat" | "fuel" | "hospital" | "service";
 }
 
 const PLACE_TONE: Record<PinItem["kind"], { pin: string; chip: string; icon: typeof Landmark }> = {
   place: { pin: "bg-ink-950/85 text-white", chip: "bg-white/[0.06] text-zinc-300", icon: Landmark },
   stay: { pin: "bg-emerald-500 text-ink-950", chip: "bg-emerald-500/15 text-emerald-200", icon: BedDouble },
+  eat: { pin: "bg-rose-400 text-ink-950", chip: "bg-rose-400/15 text-rose-200", icon: UtensilsCrossed },
   fuel: { pin: "bg-amber-400 text-ink-950", chip: "bg-amber-400/15 text-amber-200", icon: Fuel },
   hospital: { pin: "bg-red-500 text-white", chip: "bg-red-500/15 text-red-200", icon: HeartPulse },
   service: { pin: "bg-sky-400 text-ink-950", chip: "bg-sky-400/15 text-sky-200", icon: Wrench },
@@ -182,7 +189,15 @@ function amenitiesToItems(items: readonly Amenity[]): PinItem[] {
     lng: item.lng,
     distanceKm: item.distanceKm,
     detail: item.opening ? `${item.detail} · ${item.opening}` : item.detail,
-    badge: item.royalEnfield ? "Royal Enfield" : item.budget ? "budget" : undefined,
+    // The chip a rider scans for: the marque on a workshop, the word on a
+    // cheap bed, and the rating on a place to eat that people rate well.
+    badge: item.royalEnfield
+      ? "Royal Enfield"
+      : item.budget
+        ? "budget"
+        : item.kind === "eat" && (item.rating ?? 0) >= 4
+          ? `${item.rating}★`
+          : undefined,
     kind: item.kind,
   }));
 }
@@ -252,6 +267,12 @@ export default function NearbyPlacesPage() {
     place: origin.name,
     group: "stays",
   });
+  const food = useNearbyAmenities({
+    lat: origin.lat,
+    lng: origin.lng,
+    place: origin.name,
+    group: "food",
+  });
   const essentials = useNearbyAmenities({
     lat: origin.lat,
     lng: origin.lng,
@@ -262,18 +283,20 @@ export default function NearbyPlacesPage() {
   const items = useMemo<PinItem[]>(() => {
     if (tab === "places") return placesToItems(placesQuery.places);
     if (tab === "stays") return amenitiesToItems(stays.items);
+    if (tab === "food") return amenitiesToItems(food.items);
     return amenitiesToItems(essentials.items);
-  }, [tab, placesQuery.places, stays.items, essentials.items]);
+  }, [tab, placesQuery.places, stays.items, food.items, essentials.items]);
 
-  const loading = tab === "places" ? placesQuery.loading : tab === "stays" ? stays.loading : essentials.loading;
-  const error = tab === "places" ? placesQuery.error : tab === "stays" ? stays.error : essentials.error;
-  const reloadActive = tab === "places" ? placesQuery.reload : tab === "stays" ? stays.reload : essentials.reload;
+  const loading = tab === "places" ? placesQuery.loading : tab === "stays" ? stays.loading : tab === "food" ? food.loading : essentials.loading;
+  const error = tab === "places" ? placesQuery.error : tab === "stays" ? stays.error : tab === "food" ? food.error : essentials.error;
+  const reloadActive = tab === "places" ? placesQuery.reload : tab === "stays" ? stays.reload : tab === "food" ? food.reload : essentials.reload;
   const loadingSource =
-    tab === "stays" ? stays.loadingSource : tab === "essentials" ? essentials.loadingSource : "Wikipedia";
+    tab === "stays" ? stays.loadingSource : tab === "food" ? food.loadingSource : tab === "essentials" ? essentials.loadingSource : "Wikipedia";
   /** Which service answered each tab, for the line under the list. */
   const source: Record<TabId, string> = {
     places: "wikipedia",
     stays: stays.source,
+    food: food.source,
     essentials: essentials.source,
   };
   /**
@@ -283,7 +306,7 @@ export default function NearbyPlacesPage() {
    * plainly. When the sources were busy the order they were tried in is
    * printed, so "nothing here" never stands in for "nothing answered".
    */
-  const active = tab === "stays" ? stays : essentials;
+  const active = tab === "stays" ? stays : tab === "food" ? food : essentials;
   const activeTried = tab === "places" ? [] : active.tried;
   const googleSearchUrl = (which: TabId) =>
     `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
@@ -297,7 +320,7 @@ export default function NearbyPlacesPage() {
    * If the town's boundary could not be looked up the server says so, and the
    * line falls back to naming the circle it used instead.
    */
-  const activeArea = tab === "stays" ? stays.area : tab === "essentials" ? essentials.area : null;
+  const activeArea = tab === "stays" ? stays.area : tab === "food" ? food.area : tab === "essentials" ? essentials.area : null;
   const coverage =
     tab === "places"
       ? `Within ${radiusKm} km of ${origin.name}`
@@ -400,11 +423,18 @@ export default function NearbyPlacesPage() {
       : tab === "stays"
         ? {
             title: `No beds listed in ${activeArea?.city ? activeArea.label : origin.name}`,
-            body: `Google and OpenStreetMap have no hotel, guest house or hostel anywhere in ${
+            body: `Google and OpenStreetMap have no hotel, lodge, homestay or guest house anywhere in ${
               activeArea?.city ? activeArea.label : origin.name
             }. Try the next town from the list above, or open the search in Google Maps.`,
           }
-        : {
+        : tab === "food"
+          ? {
+              title: `Nothing to eat listed in ${activeArea?.city ? activeArea.label : origin.name}`,
+              body: `Google and OpenStreetMap have no restaurant, dhaba or cafe anywhere in ${
+                activeArea?.city ? activeArea.label : origin.name
+              }. Try the next town from the list above, or open the search in Google Maps.`,
+            }
+          : {
             title: `Nothing listed in ${activeArea?.city ? activeArea.label : origin.name}`,
             body: `No fuel, workshop or hospital is listed anywhere in ${
               activeArea?.city ? activeArea.label : origin.name
@@ -819,7 +849,14 @@ export default function NearbyPlacesPage() {
                 const active = tab === entry.id;
                 // A tab that is still being filled is shown busy and cannot be
                 // opened: clicking it would only show a half-built list.
-                const asked = entry.id === "stays" ? stays : entry.id === "essentials" ? essentials : null;
+                const asked =
+                  entry.id === "stays"
+                    ? stays
+                    : entry.id === "food"
+                      ? food
+                      : entry.id === "essentials"
+                        ? essentials
+                        : null;
                 const busy = Boolean(asked?.loading && !asked.settled);
                 return (
                   <button

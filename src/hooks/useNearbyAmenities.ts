@@ -20,6 +20,7 @@ import { distanceKm, type MapPoint } from "../utils/liveRoute";
 
 /** How far out each question is asked. A bed is worth a detour; petrol is not. */
 export const STAY_RADIUS_KM = 15;
+export const FOOD_RADIUS_KM = 12;
 export const ESSENTIALS_RADIUS_KM = 25;
 
 /** Kept identical to the server's, so the fallback asks the same question. */
@@ -29,8 +30,8 @@ const MIRRORS = [
   "https://overpass.private.coffee/api/interpreter",
 ];
 
-export type AmenityGroup = "stays" | "essentials";
-export type AmenityKind = "stay" | "fuel" | "hospital" | "service";
+export type AmenityGroup = "stays" | "food" | "essentials";
+export type AmenityKind = "stay" | "eat" | "fuel" | "hospital" | "service";
 
 export interface Amenity {
   /** Stable across reloads, so React keys and pins do not shuffle. */
@@ -48,6 +49,8 @@ export interface Amenity {
   /** Cheaper kinds of bed: guest houses, hostels, motels. */
   budget?: boolean;
   opening?: string;
+  /** Google's own rating out of five, when the answer came from Google. */
+  rating?: number;
 }
 
 /** Which service answered, so the page can say where its list came from. */
@@ -70,20 +73,38 @@ export interface AmenityArea {
  * The browser's own attempt, for when the server cannot answer
  * ------------------------------------------------------------------ */
 
+function radiusFor(group: AmenityGroup): number {
+  return group === "stays" ? STAY_RADIUS_KM : group === "food" ? FOOD_RADIUS_KM : ESSENTIALS_RADIUS_KM;
+}
+
 function overpassQuery(group: AmenityGroup, lat: number, lng: number, radiusKm: number): string {
   const around = `(around:${Math.round(radiusKm * 1000)},${lat.toFixed(4)},${lng.toFixed(4)})`;
   const head = "[out:json][timeout:20]";
   if (group === "stays") {
-    return `${head};nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]${around};out center 80;`;
+    return (
+      `${head};(` +
+      `nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment|chalet)$"]${around};` +
+      `nwr["name"~"lodge|homestay|home stay|guest house|rest house|yatri niwas",i]${around};` +
+      `);out center 120;`
+    );
+  }
+  if (group === "food") {
+    return (
+      `${head};(` +
+      `nwr["amenity"~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"]${around};` +
+      `nwr["name"~"dhaba|dhabha|bhojanal|bhojnalaya|eatery|restaurant",i]${around};` +
+      `);out center 160;`
+    );
   }
   return (
     `${head};(` +
     `nwr["amenity"="fuel"]${around};` +
     `nwr["amenity"~"^(hospital|clinic)$"]${around};` +
-    `nwr["shop"="motorcycle"]${around};` +
+    `nwr["shop"~"^(motorcycle|car_repair|car_parts|tyres)$"]${around};` +
     `nwr["service:vehicle:motorcycle"="yes"]${around};` +
+    `nwr["service:vehicle:car"="yes"]${around};` +
     `nwr["name"~"Royal Enfield",i]${around};` +
-    `);out center 140;`
+    `);out center 200;`
   );
 }
 
@@ -92,6 +113,27 @@ const STAY_COPY: Record<string, string> = {
   guest_house: "Guest house",
   hostel: "Hostel",
   motel: "Motel",
+  apartment: "Apartment",
+  chalet: "Chalet",
+};
+
+const LODGE_NAME = /\blodge\b|\bhomestay\b|home stay|rest house|yatri niwas|guest house/i;
+
+const EAT_COPY: Record<string, string> = {
+  restaurant: "Restaurant",
+  cafe: "Cafe",
+  fast_food: "Fast food",
+  food_court: "Food court",
+  ice_cream: "Ice cream",
+};
+
+const DHABA_NAME = /dhaba|dhabha|bhojanal|bhojnal|bhojanalya/i;
+
+const SHOP_COPY: Record<string, string> = {
+  motorcycle: "Motorcycle workshop",
+  car_repair: "Automobile workshop",
+  car_parts: "Spare parts",
+  tyres: "Tyres & puncture",
 };
 
 const RE_NAME = /royal\s*enfield/i;
@@ -112,11 +154,15 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
   let detail = "";
   let budget = false;
 
-  if (STAY_COPY[tourism]) {
+  if (STAY_COPY[tourism] || (LODGE_NAME.test(name) && (amenity || tourism || tags.shop))) {
     kind = "stay";
-    budget = tourism === "guest_house" || tourism === "hostel" || tourism === "motel";
+    budget = tourism === "guest_house" || tourism === "hostel" || tourism === "motel" || LODGE_NAME.test(name);
     const stars = tags.stars ? ` · ${tags.stars}★` : "";
-    detail = `${STAY_COPY[tourism]}${stars}${budget ? " · budget" : ""}`;
+    const label = LODGE_NAME.test(name) ? "Lodge" : STAY_COPY[tourism] ?? "Stay";
+    detail = `${label}${stars}${budget ? " · budget" : ""}`;
+  } else if (EAT_COPY[amenity]) {
+    kind = "eat";
+    detail = `${DHABA_NAME.test(name) ? "Dhaba" : EAT_COPY[amenity]}${tags.cuisine ? ` · ${tags.cuisine}` : ""}`;
   } else if (amenity === "fuel") {
     kind = "fuel";
     const brand = tags.brand ?? tags.operator ?? "";
@@ -126,9 +172,16 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
     detail = `${amenity === "hospital" ? "Hospital" : "Clinic"}${
       tags.emergency === "yes" ? " · emergency" : ""
     }`;
-  } else if (tags.shop === "motorcycle" || tags["service:vehicle:motorcycle"] === "yes" || royalEnfield) {
+  } else if (
+    SHOP_COPY[tags.shop] ||
+    tags["service:vehicle:motorcycle"] === "yes" ||
+    tags["service:vehicle:car"] === "yes" ||
+    royalEnfield
+  ) {
     kind = "service";
-    detail = royalEnfield ? "Royal Enfield · workshop" : "Motorcycle workshop";
+    detail = royalEnfield
+      ? "Royal Enfield · service centre"
+      : SHOP_COPY[tags.shop] ?? "Automobile workshop";
   }
 
   if (!kind) return null;
@@ -137,7 +190,13 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
   if (kind === "stay" && !name) return null;
   const title =
     name ||
-    (kind === "fuel" ? "Fuel station" : kind === "hospital" ? "Hospital" : "Workshop");
+    (kind === "fuel"
+      ? "Fuel station"
+      : kind === "hospital"
+        ? "Hospital"
+        : kind === "eat"
+          ? EAT_COPY[amenity] ?? "Eatery"
+          : "Workshop");
 
   return {
     id: `${element.type ?? "nwr"}/${element.id ?? `${lat},${lng}`}`,
@@ -163,8 +222,10 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
  * The list is rendered in this order and the pins are laid out in it too, so
  * the first row is always the closest place and the map reads the same way.
  */
-export function rankAmenities(items: readonly Amenity[], _group: AmenityGroup): Amenity[] {
-  const sorted = [...items].sort((a, b) => a.distanceKm - b.distanceKm);
+export function rankAmenities(items: readonly Amenity[], group: AmenityGroup): Amenity[] {
+  const belongs = (item: Amenity) =>
+    group === "stays" ? item.kind === "stay" : group === "food" ? item.kind === "eat" : item.kind !== "stay" && item.kind !== "eat";
+  const sorted = [...items].filter(belongs).sort((a, b) => a.distanceKm - b.distanceKm);
   // The same place tagged twice — a node and its building way — is one place.
   const seen = new Set<string>();
   return sorted.filter((item) => {
@@ -176,7 +237,7 @@ export function rankAmenities(items: readonly Amenity[], _group: AmenityGroup): 
 }
 
 async function askMirror(group: AmenityGroup, lat: number, lng: number, mirror: string): Promise<Amenity[]> {
-  const radius = group === "stays" ? STAY_RADIUS_KM : ESSENTIALS_RADIUS_KM;
+  const radius = radiusFor(group);
   const response = await fetch(mirror, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
