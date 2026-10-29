@@ -808,14 +808,23 @@ export default function RouteStopsEditor({
       // What this paste changed, named: the stops it threw away (red) and the
       // ones it brought in (green) — the link's own points and the towns filled
       // in between them alike, because both are new to this route.
-      const namesNow = new Set(filled.stops.map((stop) => stop.name.trim().toLowerCase()));
-      const namesBefore = new Set(stops.map((stop) => stop.name.trim().toLowerCase()));
+      //
+      // A stop survives only if the new route has the same name *on the same
+      // ground*. Matching on the name alone was the reason a place could vanish
+      // from the map and still not be struck through: a township both routes
+      // pass through kept the old pin's name, so the stop the paste had thrown
+      // away was reported as kept. Two tenths of a degree of latitude is about
+      // 200 m — further than a geocoder jitters, closer than a moved pin.
+      const samePlace = (a: LiveStop, b: LiveStop) =>
+        a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
+        Math.abs(a.lat - b.lat) < 0.002 &&
+        Math.abs(a.lng - b.lng) < 0.002;
       setChanges([
         ...stops
-          .filter((stop) => !namesNow.has(stop.name.trim().toLowerCase()))
+          .filter((stop) => !filled.stops.some((next) => samePlace(stop, next)))
           .map((stop) => ({ name: stop.name, kind: "removed" as const })),
         ...filled.stops
-          .filter((stop) => !namesBefore.has(stop.name.trim().toLowerCase()))
+          .filter((stop) => !stops.some((old) => samePlace(stop, old)))
           .map((stop) => ({ name: stop.name, kind: "added" as const })),
       ]);
 
