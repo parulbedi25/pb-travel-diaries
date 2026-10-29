@@ -467,7 +467,7 @@ export function MapPanel() {
     { theme: "light", title: "Light theme", note: "What visitors see with the day palette" },
     { theme: "dark", title: "Dark theme", note: "What visitors see with the night palette" },
   ];
-  const usesCarto = [map.lightLook, map.darkLook].some((id) => Boolean(lookOf(id)?.carto));
+  const keyMissing = !map.geoapifyKey.trim();
 
   return (
     <div>
@@ -504,26 +504,25 @@ export function MapPanel() {
           <div
             className={cn(
               "rounded-3xl glass p-5 transition-opacity",
-              usesCarto ? "opacity-100" : "opacity-70"
+              keyMissing ? "opacity-100" : "opacity-90"
             )}
           >
-            <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500" htmlFor="carto-key">
-              CARTO key
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500" htmlFor="geoapify-key">
+              Geoapify key
             </label>
             <input
-              id="carto-key"
-              value={map.cartoKey}
-              onChange={(e) => set("Changed the CARTO key", { cartoKey: e.target.value })}
-              placeholder="cb1_…"
+              id="geoapify-key"
+              value={map.geoapifyKey}
+              onChange={(e) => set("Changed the Geoapify key", { geoapifyKey: e.target.value })}
+              placeholder="00000000000000000000000000000000"
               spellCheck={false}
               autoComplete="off"
               className={cn(inputCls, "mt-2 font-mono text-[12px]")}
             />
             <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-              {usesCarto
-                ? "Positron, Voyager and Dark Matter are CARTO's, and need this key. The rest need nothing."
-                : "Nothing you have picked needs this key — Bright, Dark, Liberty and the VersaTiles drawings are keyless. Keep it here so the CARTO looks work if you switch to one."}
-              {" "}A basemap key only unlocks tiles, so it is safe in the page — but it is public: anyone can read it in the build.
+              {keyMissing
+                ? "Without a key the map cannot draw at all — there is no other provider behind it."
+                : "Every drawing in both lists is Geoapify's, so this one key unlocks all of them. It travels with each style and tile request, which means anyone can read it in the page: restrict it to this domain in your Geoapify dashboard rather than treating it as a secret."}
             </p>
           </div>
         </div>
@@ -578,12 +577,14 @@ export function MapPanel() {
               every place name switched off.
             </p>
             <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-              If the chosen drawing cannot load, a keyless one is tried before anything is given up — a map
-              in another drawing beats no map at all. Both previews above are the same basemap the tracker
-              draws, centred on PB's current checkpoint.
+              If the vector style cannot draw — no WebGL, or no key — the same drawing is drawn from
+              Geoapify&apos;s raster tiles instead, so the panel is never empty. Both previews above are
+              the same basemap the tracker draws, centred on PB&apos;s current checkpoint.
             </p>
             <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
-              {lookOf(map.lightLook)?.url ?? (lookOf(map.lightLook)?.carto ? "basemaps.cartocdn.com/gl/…/style.json" : "arcgisonline.com/…/World_Imagery/…")}
+              {lookOf(map.lightLook)?.style
+                ? `maps.geoapify.com/v1/styles/${lookOf(map.lightLook)?.style}/style.json`
+                : "arcgisonline.com/…/World_Imagery/…"}
             </p>
           </div>
         </div>

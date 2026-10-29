@@ -1,41 +1,30 @@
 /**
  * A vector basemap with the labels turned off.
  *
- * Raster tiles have their place names painted into the picture, which is why
- * the only way to get rid of them was to find a map that ships without them —
- * and why CARTO's raster tiles needing a key took the nameless map with them.
+ * Raster tiles have their place names painted into the picture, so a vector
+ * map is the only way to get rid of them honestly. The map arrives as data plus
+ * a style that says how to draw it, and every text label lives in a "symbol"
+ * layer. Switching those layers off is a real off switch, not a workaround: the
+ * names are never drawn, nothing is blurred, covered or watermarked, and the map
+ * underneath is untouched.
  *
- * Vector tiles are different. The map arrives as data plus a style that says
- * how to draw it, and every text label lives in a "symbol" layer. Switching
- * those layers off is a real off switch, not a workaround: the names are never
- * drawn, nothing is blurred, covered or watermarked, and the map underneath is
- * untouched.
+ * Every drawing comes from Geoapify (see ./utils/mapLooks). One style document
+ * per look, fetched with the site's key; the style carries its own tiles, fonts
+ * and sprites, so there is nothing else to configure and no second host to fall
+ * back to. If the style never lands — no WebGL, no key, a host having a bad day
+ * — the same drawing is shown as Geoapify raster tiles underneath, and the
+ * panel says who drew it either way (see MapAttribution in TileBasemap).
  *
- * Which styles are tried, and in what order, is the dashboard's "Map look"
- * setting (see MapSettings in store/siteContent):
+ * Patience is the whole difficulty. Too little and a working map gets thrown
+ * away for being slow. Too much and the panel sits empty while it waits. So:
  *
- *  - CARTO's vector basemaps, with the site's own key. They are the default.
- *  - The keyless styles the site used before CARTO — OpenFreeMap, then
- *    VersaTiles — which are also what CARTO falls back to if its key is ever
- *    refused. That way the map is never lost to a revoked or exhausted key.
- *
- * All of them draw OpenStreetMap's data, so its credit is owed whichever one
- * answers (see MapAttribution in TileBasemap). Tried in order: a provider
- * having a slow day costs a few seconds rather than the map. (Maptoolkit would
- * be another, and is not here on purpose: its styles are proprietary and may
- * only be used with its own tile server.)
- *
- * Patience is the whole difficulty. Too little and a nameless map gets thrown
- * away for being slow, which is how this ended up showing labelled tiles
- * instead. Too much and the panel sits empty while it waits. So:
- *
- *  - A candidate is only abandoned when it has *stalled*. Tiles that are still
+ *  - A style is only abandoned when it has *stalled*. Tiles that are still
  *    arriving, however slowly, mean it is working — and throwing that away
  *    costs more than waiting for it.
- *  - While the nameless map is on its way, the raster map is shown underneath
- *    and dropped the moment tiles land. A slow connection sees a map
- *    immediately and it goes nameless when the nameless one arrives, rather
- *    than an empty panel for as long as it takes.
+ *  - While the vector map is on its way, the raster map is shown underneath and
+ *    dropped the moment tiles land. A slow connection sees a map immediately
+ *    and it goes nameless when the vector one arrives, rather than an empty
+ *    panel for as long as it takes.
  *
  * Two timings in here are deliberate and easy to get wrong:
  *
@@ -57,7 +46,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
-import { providerLabel, styleChain } from "../utils/basemapStyles";
+import { BASEMAP_MAKER, styleChain } from "../utils/basemapStyles";
 import { lookById, type Theme } from "../utils/mapLooks";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
@@ -133,7 +122,7 @@ export default function VectorBasemap({
     theme,
     mapSettings.lightLook,
     mapSettings.darkLook,
-    mapSettings.cartoKey,
+    mapSettings.geoapifyKey,
   ]);
 
   useEffect(() => {
@@ -304,7 +293,7 @@ export default function VectorBasemap({
   // Whichever raster ends up on screen credits itself, because only it knows
   // whether it settled on the nameless drawing or the labelled last resort.
   const credit = attributionClassName && !showingRaster ? (
-    <MapAttribution className={attributionClassName} source={providerLabel(styleUrl)} />
+    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
   ) : null;
 
   if (gaveUp) {

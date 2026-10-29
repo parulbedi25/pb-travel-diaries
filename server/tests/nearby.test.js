@@ -1,11 +1,12 @@
 /**
- * The nearby search: what it asks, and what it does when a server says no.
+ * The nearby search: what it asks Geoapify, and what it does when the answer is
+ * a refusal, an empty town or no town at all.
  *
- * The whole point of moving this off the browser was that one answer cannot
- * be relied on, so most of these tests are about the fallbacks — a busy
- * Overpass mirror, a dead one, all three down and Nominatim answering, and
- * everything down at once. Google is asked first, without a key, by reading
- * the Maps page; its parser is checked on the shape that page ships.
+ * Two questions decide everything here — is this a settlement, and what is
+ * inside its boundary — so most of these tests are about the boundary: a
+ * county must not be mistaken for a town, a boundary wider than the cap must
+ * not be used, and a town with nothing in it must come back empty rather than
+ * answering with the next town's places.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -13,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-// The endpoint tests boot the real app, so the driver has to be the in-memory
+// The endpoint test boots the real app, so the driver has to be the in-memory
 // one before anything imports the database.
 const mediaDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-nearby-media-"));
 const distDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-nearby-dist-"));
@@ -24,682 +25,326 @@ process.env.NODE_ENV = "test";
 process.env.RATE_LIMIT_PER_MINUTE = "0";
 process.env.BCRYPT_ROUNDS = "4";
 process.env.SETUP_LOCKED = "0";
+delete process.env.GEOAPIFY_KEY;
 
 const {
-  KIND_RADIUS_KM,
-  overpassQuery,
-  areaFor,
-  clearAreaCache,
-  boundsFromNominatim,
+  KINDS,
+  KIND_CATEGORIES,
+  MAX_AREA_SPAN_KM,
+  boundsFromBbox,
   spanKmOf,
-  nominatimTerms,
-  viewboxOf,
-  itemFromTags,
-  itemsFromOverpass,
-  itemsFromNominatim,
-  tagsFromNominatim,
-  googleTerms,
-  googleStateFrom,
-  itemsFromGoogleState,
-  itemsFromGoogleMapsHtml,
+  kmBetween,
+  areaFor,
+  itemFromFeature,
   rankItems,
-  photonTerms,
-  tagsFromPhoton,
-  itemsFromPhoton,
   searchNearby,
   searchNearbyCached,
   clearNearbyCache,
-  OVERPASS_MIRRORS,
 } = await import("../lib/nearbySearch.js");
 
+const KEY = "test-key";
 const leh = { lat: 34.1526, lng: 77.5771 };
 
-/** A fake Overpass answer in the shape the real one uses for both nodes and ways. */
-const overpassBody = {
-  elements: [
-    { type: "node", id: 1, lat: 34.16, lon: 77.58, tags: { tourism: "hotel", name: "Grand Dragon", stars: "4" } },
-    { type: "node", id: 2, lat: 34.17, lon: 77.59, tags: { tourism: "guest_house", name: "Chospa Guest House" } },
-    { type: "node", id: 3, lat: 34.155, lon: 77.575, tags: { amenity: "fuel", name: "Indian Oil Leh", brand: "Indian Oil" } },
-    { type: "node", id: 4, lat: 34.15, lon: 77.57, tags: { amenity: "hospital", name: "SNM Hospital", emergency: "yes" } },
-    { type: "node", id: 5, lat: 34.16, lon: 77.57, tags: { shop: "motorcycle", name: "Royal Enfield Leh" } },
-    { type: "node", id: 6, lat: 34.16, lon: 77.58, tags: { tourism: "hotel" } },
-    { type: "node", id: 7, lat: 34.16, lon: 77.58, tags: { amenity: "cafe", name: "A cafe" } },
-    { type: "way", id: 8, center: { lat: 34.14, lon: 77.56 }, tags: { amenity: "clinic", name: "Army Clinic" } },
-  ],
-};
+/* ── fakes ───────────────────────────────────────────────────────────── */
 
-/** The boundary Nominatim would answer with for "Leh": a town, about 30 km. */
-const LEH_AREA_HIT = {
+const ok = (body) => ({ ok: true, status: 200, async json() { return body; } });
+const fail = (status) => ({ ok: false, status, async json() { return {}; } });
+
+/** A geocode hit for Leh, in the shape Geoapify returns. */
+const LEH_HIT = {
   name: "Leh",
-  addresstype: "town",
-  boundingbox: ["34.00", "34.30", "77.40", "77.70"],
-  display_name: "Leh, Ladakh, India",
-  address: { town: "Leh", state: "Ladakh" },
+  city: "Leh",
+  result_type: "city",
+  place_id: "leh-boundary",
+  bbox: { lon1: 77.4, lat1: 34.0, lon2: 77.8, lat2: 34.3 },
 };
 
-/** The area lookup is a settlement search; every search needs one to answer. */
-const isAreaQuery = (url) =>
-  url.includes("nominatim.openstreetmap.org/search") && url.includes("featuretype=settlement");
-
-/**
- * A fetch that answers by URL, and records what it was asked for.
- *
- * The town-boundary lookup is answered here rather than in each test: without
- * a boundary the search deliberately answers nothing, and that is the one
- * thing every other test does not want to think about.
- */
-function fakeFetch(handler, { area = LEH_AREA_HIT } = {}) {
-  const calls = [];
-  const impl = async (url, options) => {
-    calls.push({ url: String(url), body: String(options?.body ?? ""), headers: options?.headers ?? {} });
-    if (area && isAreaQuery(String(url))) return ok(area ? [area] : []);
-    const answer = handler(String(url), options);
-    if (answer instanceof Error) throw answer;
-    return answer;
+/** One Geoapify feature, the way the Places API ships it. */
+function feature({ name, categories, coord = [77.58, 34.16], tags = {}, ...rest }) {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: coord },
+    properties: {
+      name,
+      categories,
+      place_id: `${name}-${coord.join(",")}`,
+      datasource: { sourcename: "openstreetmap", raw: { name, ...tags } },
+      ...rest,
+    },
   };
-  impl.calls = calls;
-  return impl;
 }
 
-const ok = (json) => ({ ok: true, status: 200, async json() { return json; } });
-const okHtml = (html) => ({
-  ok: true,
-  status: 200,
-  async text() { return html; },
-  async json() { return {}; },
-});
-const bad = (status) => ({ ok: false, status, async json() { return {}; }, async text() { return ""; } });
+const isGeocode = (url) => url.includes("/v1/geocode/");
+const isPlaces = (url) => url.includes("/v2/places");
 
-const isGoogle = (url) => url.includes("google.com/maps");
+/** A fetch that answers the two endpoints from one handler each. */
+function fakeFetch(handler) {
+  const calls = [];
+  const run = async (url) => {
+    calls.push(String(url));
+    return handler(String(url));
+  };
+  run.calls = calls;
+  return run;
+}
 
-/** A page in the shape Google sends: one state array, then the flags. */
-const googlePage = (state) =>
-  `<!doctype html><html><body><script>window.APP_INITIALIZATION_STATE=${JSON.stringify(state)};window.APP_FLAGS={};</script></body></html>`;
+/* ── the maths ───────────────────────────────────────────────────────── */
 
-/** A place record as Google packs it: coordinates, a name, a rating, an id. */
-const placeRecord = ({ name, lat, lng, rating, types, id = "0x391ad0a2b:0x1f2ab3c" }) => [
-  null, null, null, null, null, null, null, null, null,
-  [null, null, lat, lng],
-  null,
-  name,
-  null,
-  rating ? [[rating, 248]] : null,
-  id,
-  types,
-];
-
-const googleState = [
-  [null, null, [null, null, leh.lat, leh.lng]],
-  [
-    placeRecord({ name: "The Grand Dragon Ladakh", lat: 34.16, lng: 77.58, rating: 4.6, types: ["lodging", "hotel"] }),
-    placeRecord({ name: "Leh Backpacker Hostel", lat: 34.155, lng: 77.575, rating: 4.2, types: ["lodging", "hostel"], id: "0x391ad0a2b:0x99" }),
-    placeRecord({ name: "Tenzin Cafe", lat: 34.16, lng: 77.58, rating: 4.4, types: ["restaurant"], id: "0x391ad0a2b:0x77" }),
-    [null, null, null, "0x391ad0a2b:0x55"],
-  ],
-];
-
-test("each question is one Overpass query, over a box rather than a circle", () => {
-  const bounds = { south: 34.0, north: 34.3, west: 77.4, east: 77.8 };
-  const stays = overpassQuery("stays", bounds);
-  assert.match(stays, /tourism/);
-  assert.match(stays, /\(34\.0000,77\.4000,34\.3000,77\.8000\)/, "the box is south,west,north,east");
-  assert.ok(!stays.includes("around:"), "no radius is asked for any more");
-  assert.ok(!stays.includes("amenity\",\"fuel"), "a bed search does not ask for petrol");
-
-  const essentials = overpassQuery("essentials", bounds);
-  assert.match(essentials, /\(34\.0000,77\.4000,34\.3000,77\.8000\)/);
-  for (const tag of ["fuel", "hospital", "motorcycle", "car_repair", "Royal Enfield"]) {
-    assert.ok(essentials.includes(tag), `${tag} is part of the question`);
-  }
-
-  // A bed search also finds the lodge and the homestay, which OSM does not
-  // always tag as `tourism=hotel`.
-  assert.match(stays, /lodge|homestay/i);
-
-  const food = overpassQuery("food", bounds);
-  assert.match(food, /\(34\.0000,77\.4000,34\.3000,77\.8000\)/);
-  for (const tag of ["restaurant", "cafe", "fast_food", "dhaba"]) {
-    assert.ok(food.toLowerCase().includes(tag.toLowerCase()), `${tag} is part of the food question`);
-  }
-  assert.ok(!food.includes("hotel"), "a food search does not ask for beds");
-
-  // The radius survives only as the fallback for a town whose boundary could
-  // not be named.
-  assert.deepEqual(KIND_RADIUS_KM, { stays: 15, food: 12, essentials: 25 });
+test("a box is read from its corners, whichever way round they arrive", () => {
+  const bounds = boundsFromBbox({ lon1: 77.8, lat1: 34.3, lon2: 77.4, lat2: 34.0 });
+  assert.deepEqual(bounds, { south: 34.0, north: 34.3, west: 77.4, east: 77.8 });
+  assert.equal(boundsFromBbox({ lon1: "x" }), null);
 });
 
-test("a town's own boundary is looked up once, and covers the whole town", async () => {
-  clearAreaCache();
-  const nangal = { lat: 31.3832, lng: 76.3766 };
+test("a box is as wide as its longer side, not its diagonal", () => {
+  // One degree of latitude is ~111 km; a degree of longitude at this latitude
+  // is a good deal less, so the height is the longer side.
+  const span = spanKmOf({ south: 34, north: 35, west: 77, east: 77.1 });
+  assert.ok(span > 110 && span < 112, `expected about 111 km, got ${span}`);
+});
+
+test("distance is great-circle kilometres", () => {
+  const km = kmBetween({ lat: 31.3832, lng: 76.3766 }, { lat: 31.3832, lng: 76.3766 });
+  assert.equal(km, 0);
+  assert.ok(kmBetween({ lat: 31.38, lng: 76.37 }, { lat: 32.24, lng: 77.19 }) > 100);
+});
+
+/* ── the town ────────────────────────────────────────────────────────── */
+
+test("the town is asked for as a city, and its boundary is what comes back", async () => {
+  const fetchImpl = fakeFetch(() => ok({ results: [LEH_HIT] }));
+  const area = await areaFor({ place: "Leh", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.city, true);
+  assert.equal(area.label, "Leh");
+  assert.equal(area.placeId, "leh-boundary");
+  assert.ok(area.spanKm > 0 && area.spanKm <= MAX_AREA_SPAN_KM);
+  assert.match(fetchImpl.calls[0], /type=city/);
+});
+
+test("a county is not a town, and is not accepted as one", async () => {
+  const fetchImpl = fakeFetch(() =>
+    ok({
+      results: [
+        { ...LEH_HIT, result_type: "county", city: "Rupnagar", place_id: "county-1" },
+        { ...LEH_HIT, result_type: "state", place_id: "state-1" },
+      ],
+    }),
+  );
+  const area = await areaFor({ place: "Rupnagar", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.bounds, null, "no settlement, no area");
+  assert.equal(area.placeId, null);
+  assert.equal(area.city, false);
+});
+
+test("a boundary wider than the cap is a district wearing a town's name", async () => {
+  const huge = { ...LEH_HIT, bbox: { lon1: 74.0, lat1: 30.0, lon2: 79.0, lat2: 35.0 } };
+  const fetchImpl = fakeFetch(() => ok({ results: [huge] }));
+  const area = await areaFor({ place: "Punjab", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.placeId, null);
+  assert.ok(spanKmOf(boundsFromBbox(huge.bbox)) > MAX_AREA_SPAN_KM);
+});
+
+test("when no city matches, the open question is asked and its own type read", async () => {
+  const fetchImpl = fakeFetch((url) =>
+    url.includes("type=city")
+      ? ok({ results: [] })
+      : ok({ results: [{ ...LEH_HIT, result_type: "village", name: "Kiratpur", city: "Kiratpur" }] }),
+  );
+  const area = await areaFor({ place: "Kiratpur Sahib", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.city, true);
+  assert.equal(area.label, "Kiratpur");
+  assert.equal(fetchImpl.calls.length, 2, "the second question is only asked when the first is empty");
+});
+
+test("a stop with no name is placed by its own coordinates", async () => {
   const fetchImpl = fakeFetch((url) => {
-    assert.match(url, /nominatim\.openstreetmap\.org\/search/);
-    return ok([
-      // The state is too wide to be a town, and is refused.
-      { name: "Punjab", addresstype: "state", boundingbox: ["29.5", "32.6", "73.8", "76.9"], display_name: "Punjab, India" },
-      {
-        name: "Nangal",
-        addresstype: "town",
-        boundingbox: ["31.34", "31.43", "76.33", "76.42"],
-        address: { town: "Nangal", state: "Punjab" },
-        display_name: "Nangal, Punjab, India",
-      },
-      // Nearer the point, but a village inside the town: the town wins.
-      { name: "Nangal Wetland", addresstype: "village", boundingbox: ["31.37", "31.39", "76.37", "76.39"], address: { village: "Nangal" } },
-    ]);
-  }, { area: null });
-
-  const area = await areaFor({ place: "Nangal, Punjab", ...nangal, fetchImpl });
-  assert.equal(area.city, true, "a real boundary was found");
-  assert.equal(area.label, "Nangal, Punjab");
-  assert.deepEqual(area.bounds, { south: 31.34, north: 31.43, west: 76.33, east: 76.42 });
-  assert.ok(spanKmOf(area.bounds) > 5, "it is a town, not a pin");
-
-  // The second ask is free: a town does not move.
-  const asksSoFar = fetchImpl.calls.length;
-  const again = await areaFor({ place: "Nangal, Punjab", ...nangal, fetchImpl });
-  assert.deepEqual(again.bounds, area.bounds);
-  assert.equal(fetchImpl.calls.length, asksSoFar, "the boundary was remembered");
-  clearAreaCache();
-});
-
-test("no boundary means no list, rather than somebody else's town", async () => {
-  clearAreaCache();
-  const offline = fakeFetch(() => {
-    throw new Error("offline");
-  }, { area: null });
-
-  const result = await searchNearby({ kind: "stays", lat: 31.38, lng: 76.38, place: "Somewhere", fetchImpl: offline });
-  assert.equal(result.reason, "no-area", "the answer says why it is empty");
-  assert.deepEqual(result.items, [], "nothing is listed rather than the wrong town's places");
-  assert.equal(result.area.city, false);
-  assert.deepEqual(result.tried, [], "no source was troubled: there is no area to ask about");
-
-  // No name at all is the same answer: guessing an area from the pin is what
-  // used to put one town's places in another town's tab.
-  const nameless = await searchNearby({ kind: "stays", lat: 31.38, lng: 76.38, fetchImpl: offline });
-  assert.equal(nameless.reason, "no-area");
-
-  // The box a boundary is checked against: a settlement is usable…
-  assert.ok(
-    boundsFromNominatim(
-      { name: "Anandpur Sahib", addresstype: "town", boundingbox: ["31.20", "31.28", "76.48", "76.56"] },
-      { lat: 31.24, lng: 76.5 },
-    ),
-  );
-  // …a district that holds two towns is not, however snugly it contains the
-  // point: that is the shape that put Nangal's hotels in Anandpur's tab.
-  assert.equal(
-    boundsFromNominatim(
-      { name: "Rupnagar", addresstype: "district", boundingbox: ["30.8", "31.6", "76.2", "76.8"] },
-      { lat: 31.24, lng: 76.5 },
-    ),
-    null,
-    "a district boundary is refused",
-  );
-  // Nor is a box that does not contain the point, or one wider than a city.
-  assert.equal(boundsFromNominatim({ addresstype: "city", boundingbox: ["10", "11", "20", "21"] }, { lat: 31.38, lng: 76.38 }), null);
-  assert.equal(
-    boundsFromNominatim({ addresstype: "city", boundingbox: ["29.5", "32.6", "73.8", "76.9"] }, { lat: 31.38, lng: 76.38 }),
-    null,
-  );
-  clearAreaCache();
-});
-
-test("when Nominatim has nothing, Photon's extent gives the town's box", async () => {
-  clearAreaCache();
-  const mohali = { lat: 30.7046, lng: 76.7179 };
-  const fetchImpl = fakeFetch((url) => {
-    if (url.includes("photon")) {
-      return ok({
-        features: [
-          {
-            geometry: { coordinates: [76.7, 30.7] },
-            properties: {
-              name: "Mohali",
-              osm_value: "city",
-              // `extent` is [west, north, east, south] — a box, not a point.
-              extent: [76.62, 30.79, 76.81, 30.62],
-            },
-          },
-          // A district-sized answer is refused even from Photon.
-          {
-            geometry: { coordinates: [76.5, 30.6] },
-            properties: { name: "Sahibzada Ajit Singh Nagar", osm_value: "district", extent: [76.0, 31.2, 77.0, 30.1] },
-          },
-        ],
-      });
-    }
-    throw new Error("nominatim is busy");
-  }, { area: null });
-
-  const area = await areaFor({ place: "Mohali, Punjab", ...mohali, fetchImpl });
-  assert.equal(area.city, true, "a boundary came from Photon");
-  assert.equal(area.label, "Mohali");
-  assert.deepEqual(area.bounds, { south: 30.62, north: 30.79, west: 76.62, east: 76.81 });
-
-  // And when neither source can name a boundary, still no list.
-  clearAreaCache();
-  const result = await searchNearby({
-    kind: "essentials",
-    ...mohali,
-    place: "Mohali, Punjab",
-    fetchImpl: fakeFetch(() => ok({ elements: [] }), { area: null }),
+    assert.ok(url.includes("/reverse"), "a reverse lookup, not a forward one");
+    return ok({ results: [LEH_HIT] });
   });
-  assert.equal(result.reason, "no-area", "with no boundary from either source, still no list");
-  assert.deepEqual(result.items, []);
-  clearAreaCache();
+  const area = await areaFor({ place: "", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.city, true);
 });
 
-test("a town's places are its own: Anandpur does not list Nangal", async () => {
-  clearAreaCache();
-  const anandpur = { lat: 31.239, lng: 76.502 };
-  // The boundary Nominatim gives for "Anandpur Sahib" — a town of about 8 km.
-  const hit = { name: "Anandpur Sahib", addresstype: "town", boundingbox: ["31.20", "31.28", "76.46", "76.55"], address: { town: "Anandpur Sahib", state: "Punjab" } };
-  const fetchImpl = fakeFetch((url) => {
-    if (url.includes("overpass")) {
-      return ok({
-        elements: [
-          // In Anandpur Sahib itself.
-          { type: "node", id: 1, lat: 31.24, lon: 76.5, tags: { tourism: "hotel", name: "Anandpur Hotel" } },
-          // Nangal is 18 km away and a different town: it must not appear.
-          { type: "node", id: 2, lat: 31.3832, lon: 76.3766, tags: { tourism: "hotel", name: "Nangal Hotel" } },
-        ],
-      });
-    }
-    throw new Error("down");
-  }, { area: hit });
-
-  const result = await searchNearby({ kind: "stays", ...anandpur, place: "Anandpur Sahib, Punjab", fetchImpl });
-  assert.equal(result.area.city, true);
-  assert.equal(result.area.label, "Anandpur Sahib, Punjab");
-  assert.deepEqual(result.items.map((i) => i.title), ["Anandpur Hotel"], "only Anandpur's own places");
-  clearAreaCache();
+test("a geocoder that cannot be reached is no area, not a crash", async () => {
+  const fetchImpl = fakeFetch(() => fail(503));
+  const area = await areaFor({ place: "Leh", ...leh, key: KEY, fetchImpl });
+  assert.equal(area.bounds, null);
+  assert.equal(area.city, false);
 });
 
-test("the question carries a box and terms for the fallback geocoder", () => {
-  assert.deepEqual(nominatimTerms("stays"), ["hotel", "guest house", "lodge"]);
-  assert.equal(viewboxOf(34.1526, 77.5771, 15).split(",").length, 4);
-  assert.ok(googleTerms("stays").includes("lodges"), "a lodge is asked for by name");
-  assert.ok(googleTerms("stays").includes("homestays"), "and so is a homestay");
-  assert.ok(googleTerms("stays").includes("motels"));
-  assert.ok(googleTerms("essentials").some((term) => /royal enfield/i.test(term)));
-  assert.ok(googleTerms("essentials").some((term) => /service cent/i.test(term)), "the auto service centre is asked for");
-  assert.ok(googleTerms("food").some((term) => /dhaba/i.test(term)), "a dhaba is asked for");
-  assert.ok(googleTerms("food").includes("best restaurants"), "and the best-rated places are asked for too");
-  assert.ok(photonTerms("food").includes("cafe"));
-});
+/* ── one place ───────────────────────────────────────────────────────── */
 
-test("an OpenStreetMap element is read for what it actually is", () => {
-  const fuel = itemFromTags({ amenity: "fuel", name: "Pump", brand: "IOC" }, "node/1", 34.16, 77.58, leh);
-  assert.equal(fuel.kind, "fuel");
-  assert.equal(fuel.detail, "Fuel · IOC");
-
-  const stay = itemFromTags({ tourism: "guest_house", name: "Chospa" }, "node/2", 34.16, 77.58, leh);
-  assert.equal(stay.kind, "stay");
-  assert.equal(stay.budget, true, "a guest house is the cheap one");
-
-  assert.equal(itemFromTags({ tourism: "hotel" }, "node/3", 34.16, 77.58, leh), null, "a nameless bed is no bed");
-  assert.equal(itemFromTags({ tourism: "hotel", name: "X" }, "node/5", "34.1", "77.5", leh), null, "no coordinates, no pin");
-
-  // A lodge and a homestay are beds even without `tourism=hotel`.
-  const lodge = itemFromTags({ tourism: "guest_house", name: "Pahalgam Lodge" }, "node/6", 34.16, 77.58, leh);
-  assert.equal(lodge.kind, "stay");
-  assert.equal(lodge.detail.startsWith("Lodge"), true, "the sign says lodge, so the row does too");
-
-  const homestay = itemFromTags({ name: "Wangnoo Homestay", shop: "yes" }, "node/7", 34.16, 77.58, leh);
-  assert.equal(homestay?.kind, "stay");
-
-  // Food is its own kind: the cafe, the dhaba, the fast-food counter.
-  const cafe = itemFromTags({ amenity: "cafe", name: "Cafe Jeevan" }, "node/8", 34.16, 77.58, leh);
-  assert.equal(cafe?.kind, "eat");
-  assert.equal(cafe?.detail, "Cafe");
-
-  const dhaba = itemFromTags({ amenity: "restaurant", name: "Sher-e-Punjab Dhaba", cuisine: "indian" }, "node/9", 34.16, 77.58, leh);
-  assert.equal(dhaba?.kind, "eat");
-  assert.equal(dhaba?.detail, "Dhaba · indian");
-
-  const fast = itemFromTags({ amenity: "fast_food", name: "" }, "node/10", 34.16, 77.58, leh);
-  assert.equal(fast?.title, "Fast food", "an unnamed counter still names what it is");
-
-  // A car workshop is a service centre, not a motorcycle-only idea.
-  const garage = itemFromTags({ shop: "car_repair", name: "Sharma Motors" }, "node/11", 34.16, 77.58, leh);
-  assert.equal(garage?.kind, "service");
-  assert.equal(garage?.detail, "Automobile workshop");
-
-  const enfield = itemFromTags({ shop: "motorcycle", name: "Royal Enfield Leh" }, "node/12", 34.16, 77.58, leh);
-  assert.equal(enfield?.detail, "Royal Enfield · service centre");
-});
-
-test("a whole Overpass answer becomes a list, distances and all", () => {
-  const items = itemsFromOverpass(overpassBody, leh);
-  assert.equal(items.length, 7, "the nameless hotel is dropped, the cafe is a place to eat");
-  assert.equal(items.find((i) => i.title === "Army Clinic").kind, "hospital", "a clinic is a hospital for the list");
-  assert.equal(items.find((i) => i.title === "Royal Enfield Leh").royalEnfield, true);
-});
-
-test("both lists are nearest first — one order for the list and the map", () => {
-  const items = itemsFromOverpass(overpassBody, leh);
-  const stays = rankItems(items.filter((i) => i.kind === "stay"), "stays");
-  assert.deepEqual(stays.map((s) => s.title), ["Grand Dragon", "Chospa Guest House"]);
-
-  const essentials = rankItems(items, "essentials");
-  assert.equal(essentials[0].title, "Indian Oil Leh", "the nearest thing is first, whatever it is");
-  const distances = essentials.map((i) => i.distanceKm);
-  assert.deepEqual(distances, [...distances].sort((a, b) => a - b), "ascending, all the way down");
-  assert.ok(!essentials.some((i) => i.kind === "stay"), "a bed does not appear in the essentials list");
-  assert.ok(!essentials.some((i) => i.kind === "eat"), "nor does a cafe");
-
-  const food = rankItems(items, "food");
-  assert.deepEqual(food.map((i) => i.kind), ["eat"], "the food list is food only");
-});
-
-test("a Royal Enfield service centre is found by its craft tag, not only its name", () => {
-  // The tag the dealers actually carry: `craft=motorcycle_repair`. Asking only
-  // for `shop=motorcycle` is why they never appeared in the service tab.
-  const questions = overpassQuery("essentials", { south: 30.7, north: 30.8, west: 76.7, east: 76.8 });
-  assert.match(questions, /craft.*motorcycle_repair/);
-  assert.match(questions, /name.*Enfield/i);
-
-  const dealer = itemFromTags(
-    { craft: "motorcycle_repair", name: "Enfield Service Centre", operator: "Royal Enfield" },
-    "node/20",
-    30.74,
-    76.78,
-    { lat: 30.74, lng: 76.78 },
-  );
-  assert.equal(dealer.kind, "service");
-  assert.equal(dealer.royalEnfield, true);
-  assert.equal(dealer.detail, "Royal Enfield · service centre");
-
-  // A workshop with a plain name is still a workshop.
-  const indy = itemFromTags({ craft: "motorcycle_repair", name: "Deepak Bike Repair" }, "node/21", 30.74, 76.78, { lat: 30.74, lng: 76.78 });
-  assert.equal(indy.kind, "service");
-  assert.equal(indy.detail, "Motorcycle workshop");
-
-  // "RE Motors" and "Enfield" are how the dealers sign themselves.
-  for (const name of ["RE Motors Mohali", "Royal Enfield Chandigarh", "Enfield Care"]) {
-    const item = itemFromTags({ shop: "motorcycle", name }, "node/22", 30.74, 76.78, { lat: 30.74, lng: 76.78 });
-    assert.equal(item.royalEnfield, true, `${name} is the marque`);
-  }
-
-  // And the craft tag survives the other two sources' shapes.
-  assert.equal(tagsFromNominatim({ class: "craft", type: "motorcycle_repair", name: "X" }).craft, "motorcycle_repair");
-  assert.equal(tagsFromPhoton({ osm_key: "craft", osm_value: "motorcycle_repair", name: "X" }).craft, "motorcycle_repair");
-
-  // Google is asked about the marque by name, since its records say little else.
-  assert.ok(googleTerms("essentials").some((term) => /royal enfield service/i.test(term)));
-});
-
-test("the same place tagged twice is listed once", () => {
-  const twice = [
-    { id: "a", kind: "fuel", title: "Indian Oil", lat: 34.1, lng: 77.5, distanceKm: 1, detail: "" },
-    { id: "b", kind: "fuel", title: "indian oil", lat: 34.1001, lng: 77.5001, distanceKm: 1.1, detail: "" },
-  ];
-  assert.equal(rankItems(twice, "essentials").length, 1);
-});
-
-test("Google's page is read: beds and eateries, each with its rating", () => {
-  const items = itemsFromGoogleState(googleState, leh);
-  assert.deepEqual(
-    items.map((i) => i.kind).sort(),
-    ["eat", "stay", "stay"],
-    "two beds and one place to eat — the id-only record is not a place",
-  );
-  const beds = items.filter((i) => i.kind === "stay");
-  assert.deepEqual(beds.map((i) => i.title), ["The Grand Dragon Ladakh", "Leh Backpacker Hostel"]);
-  assert.match(beds[0].detail, /4\.6★/);
-  assert.equal(beds[1].budget, true, "a hostel is the cheap one");
-  assert.ok(items.every((item) => item.distanceKm < 1), "all are within a kilometre of Leh");
-
-  const cafe = items.find((i) => i.title === "Tenzin Cafe");
-  assert.equal(cafe?.kind, "eat", "a restaurant is food, not a bed");
-  assert.equal(cafe?.rating, 4.4, "its rating travels with it");
-  assert.match(cafe?.detail ?? "", /4\.4★/);
-
-  // The tabs keep to themselves: beds in the beds list, food in the food list.
-  assert.deepEqual(rankItems(items, "stays").map((i) => i.title).sort(), [
-    "Leh Backpacker Hostel",
-    "The Grand Dragon Ladakh",
-  ]);
-  assert.deepEqual(rankItems(items, "food").map((i) => i.title), ["Tenzin Cafe"]);
-  assert.deepEqual(rankItems(items, "essentials"), [], "neither a bed nor a meal is a hospital");
-});
-
-test("a restaurant called a hotel is still a restaurant", () => {
-  // Plenty of Indian eateries are named "Hotel …"; what the record *is* has to
-  // win over what it is called, or the beds list fills with kitchens.
-  const state = [
-    placeRecord({ name: "Hotel Saravana Bhavan", lat: 34.16, lng: 77.58, rating: 4.5, types: ["restaurant"] }),
-    placeRecord({ name: "Hotel Grand Dragon", lat: 34.16, lng: 77.58, rating: 4.2, types: ["lodging"], id: "0x1:0x2" }),
-  ];
-  const items = itemsFromGoogleState(state, leh);
-  assert.equal(items.find((i) => i.title === "Hotel Saravana Bhavan")?.kind, "eat");
-  assert.equal(items.find((i) => i.title === "Hotel Grand Dragon")?.kind, "stay");
-});
-
-test("a homestay, a lodge and a motel are all beds", () => {
-  const state = [
-    placeRecord({ name: "Wangnoo Homestay", lat: 34.16, lng: 77.58, rating: 4.7, types: ["lodging"], id: "0x1:0xa" }),
-    placeRecord({ name: "Pahalgam Lodge", lat: 34.16, lng: 77.58, rating: 4.1, types: ["lodging"], id: "0x1:0xb" }),
-    placeRecord({ name: "Highway Motel", lat: 34.16, lng: 77.58, rating: 3.9, types: ["lodging"], id: "0x1:0xc" }),
-  ];
-  const beds = rankItems(itemsFromGoogleState(state, leh), "stays");
-  assert.equal(beds.length, 3);
-  assert.ok(beds.some((i) => /lodge/i.test(i.detail)), "a lodge says so on its row");
-  assert.ok(beds.every((i) => i.rating > 0), "every bed carries its rating");
-});
-
-test("a rating pair is not mistaken for a place's coordinates", () => {
-  // Google packs a rating and its review count as a two-number array too; the
-  // place is the pair near the point that was searched for.
-  const record = [
-    null, null, null, null, null, null, null, null,
-    [4.6, 4.8],
-    [null, null, 34.16, 77.58],
-    "The Grand Dragon Ladakh",
-    ["lodging"],
-  ];
-  const items = itemsFromGoogleState([record], leh);
-  assert.equal(items.length, 1);
-  assert.equal(items[0].lat, 34.16);
-  assert.equal(items[0].lng, 77.58);
-  assert.ok(items[0].distanceKm < 2, "measured from Leh, not from the middle of the Atlantic");
-});
-
-test("essentials are recognised from the words around the record", () => {
-  const state = [
-    [placeRecord({ name: "Indian Oil Pump", lat: 34.155, lng: 77.575, types: ["gas_station"] })],
-    [placeRecord({ name: "SNM Hospital", lat: 34.15, lng: 77.57, types: ["hospital"], id: "0x1:0x2" })],
-    [placeRecord({ name: "Royal Enfield Leh", lat: 34.16, lng: 77.57, types: ["car_repair"], id: "0x1:0x3" })],
-  ];
-  const items = itemsFromGoogleState(state, leh);
-  assert.deepEqual(items.map((i) => i.kind).sort(), ["fuel", "hospital", "service"]);
-  assert.equal(items.find((i) => i.kind === "service").royalEnfield, true);
-});
-
-test("a page with no data, or no page at all, is an empty answer and not a crash", () => {
-  assert.equal(googleStateFrom("<html><body>no data here</body></html>"), null);
-  assert.equal(googleStateFrom(undefined), null);
-  assert.deepEqual(itemsFromGoogleMapsHtml("<html></html>", leh), []);
-  assert.equal(itemsFromGoogleMapsHtml(googlePage(googleState), leh).length, 3, "two beds and a cafe");
-  // The same place under two searches is one pin.
-  const twice = googlePage([[...googleState[1], ...googleState[1]]]);
-  assert.equal(itemsFromGoogleMapsHtml(twice, leh).length, 3);
-});
-
-test("Google is asked without a key, and its answer is the one that is used", async () => {
-  const fetchImpl = fakeFetch((url) => {
-    if (isGoogle(url)) return okHtml(googlePage(googleState));
-    throw new Error("the other sources are slower, or busy");
-  });
-
-  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
-  assert.equal(result.source, "google");
-  assert.deepEqual(
-    result.items.map((i) => i.title),
-    ["Leh Backpacker Hostel", "The Grand Dragon Ladakh"],
-    "nearest first: the hostel is closer than the hotel",
-  );
-  const googleCalls = fetchImpl.calls.filter((call) => isGoogle(call.url));
-  assert.equal(googleCalls.length, googleTerms("stays").length, "one search page per kind of bed");
-  assert.ok(fetchImpl.calls.every((call) => !call.url.includes("key=")), "no API key anywhere in the question");
-  assert.equal(fetchImpl.calls.length > googleCalls.length, true, "the map sources were asked at the same time, not after");
-  const firstGoogle = googleCalls[0].url;
-  assert.match(firstGoogle, /google\.com\/maps\/search\/hotels\/@34\.15260,77\.57710,\d+z/);
-});
-
-test("a busy mirror does not hold the answer up: the others are asked at the same time", async () => {
-  const fetchImpl = fakeFetch((url) => {
-    if (isGoogle(url)) return okHtml("<html></html>");
-    if (url.includes("photon")) throw new Error("blocked");
-    return url === OVERPASS_MIRRORS[0] ? bad(504) : ok(overpassBody);
-  });
-  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
-
-  assert.equal(result.source, "overpass");
-  assert.equal(result.items.length, 2, "the two beds in the answer, and nothing else");
-  assert.equal(result.tried[0], "Google", "Google was asked, and had nothing");
-  assert.equal(result.tried[1], "OpenStreetMap", "the page is told the source, not the mirror's name");
-  assert.ok(result.notes.some((line) => /504/.test(line)), "the mirror's 504 is on the record");
-
-  const mirrorCalls = fetchImpl.calls.filter((call) => call.url.includes("overpass"));
-  assert.equal(mirrorCalls.length, OVERPASS_MIRRORS.length, "every mirror is asked at once, not one after another");
-  assert.equal(mirrorCalls[0].headers["User-Agent"].includes("pb-travel-diaries"), true, "Overpass is told who is asking");
-});
-
-test("a slow, silent source cannot hold the page: the budget ends the wait", async () => {
-  // Google and the mirrors never answer at all — a hung connection, not a
-  // refusal. The budget is what turns that into an empty answer in a second,
-  // instead of a spinner for minutes.
-  const hang = () => new Promise(() => {});
-  const fetchImpl = fakeFetch((url) => (url.includes("photon") ? ok({ features: [] }) : hang()));
-  const started = Date.now();
-  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl, budgetMs: 250, timeoutMs: 200, fallbackBudgetMs: 150 });
-  const elapsed = Date.now() - started;
-
-  assert.equal(result.source, "none");
-  assert.ok(elapsed < 2000, `the whole question took ${elapsed}ms, not minutes`);
-  assert.deepEqual(result.tried, ["Google", "OpenStreetMap", "Photon", "Nominatim"]);
-});
-
-test("with every mirror down, the geocoder answers instead", async () => {
-  const fetchImpl = fakeFetch((url) => {
-    if (isGoogle(url)) return okHtml("<html></html>");
-    if (url.includes("overpass")) throw new Error("network down");
-    return ok([
-      { osm_type: "node", osm_id: 11, lat: "34.16", lon: "77.58", name: "Chospa Guest House", class: "tourism", type: "guest_house" },
-      { osm_type: "node", osm_id: 12, lat: "34.17", lon: "77.59", name: "Grand Dragon", class: "tourism", type: "hotel" },
-    ]);
-  });
-
-  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl, mirrors: OVERPASS_MIRRORS });
-  assert.equal(result.source, "nominatim");
-  assert.equal(result.items.length, 2, "both terms were asked, and the two places are found once each");
-  assert.equal(result.items[0].title, "Chospa Guest House", "nearest first");
-  assert.match(fetchImpl.calls.at(-1).url, /nominatim\.openstreetmap\.org/);
-  assert.ok(result.notes.some((line) => line.includes("overpass")), "the busy mirrors are on the record");
-});
-
-test("nothing answering is an empty answer that says so, not a throw", async () => {
-  const fetchImpl = fakeFetch(() => {
-    throw new Error("offline");
-  });
-  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
-  assert.equal(result.source, "none");
-  assert.deepEqual(result.items, []);
-  assert.equal(result.area.city, true, "the boundary was found, and every source still had nothing to say");
-  assert.deepEqual(result.tried, ["Google", "OpenStreetMap", "Photon", "Nominatim"], "each source once, in the order tried");
-  const notes = result.notes.join(" | ");
-  for (const source of ["google", "overpass-api.de", "photon", "nominatim"]) {
-    assert.ok(notes.includes(source), `${source} is on the record`);
-  }
-});
-
-test("nominatim's class and type are read as the tags they stand for", () => {
-  const items = itemsFromNominatim(
-    [
-      { osm_type: "node", osm_id: 1, lat: "34.16", lon: "77.58", name: "Leh Fuel", class: "amenity", type: "fuel" },
-      { osm_type: "node", osm_id: 2, lat: "34.16", lon: "77.58", name: "Bike Fix", class: "shop", type: "motorcycle" },
-      { osm_type: "node", osm_id: 3, lat: "34.16", lon: "77.58", name: "A bakery", class: "shop", type: "bakery" },
-    ],
+test("a hotel is read as a bed, with its star class and its distance", () => {
+  const item = itemFromFeature(
+    feature({ name: "Grand Dragon", categories: ["accommodation", "accommodation.hotel"], tags: { stars: "4" }, opening_hours: "24/7" }),
     leh,
   );
-  assert.deepEqual(items.map((i) => i.kind).sort(), ["fuel", "service"]);
+  assert.equal(item.kind, "stay");
+  assert.equal(item.detail, "Hotel · 4★");
+  assert.equal(item.opening, "24/7");
+  assert.equal(item.rating, 4);
+  assert.ok(item.distanceKm > 0);
+});
+
+test("a guest house, a lodge and a homestay are budget beds", () => {
+  const guest = itemFromFeature(
+    feature({ name: "Chospa Guest House", categories: ["accommodation", "accommodation.guest_house"] }),
+    leh,
+  );
+  assert.equal(guest.budget, true);
+  assert.equal(guest.detail, "Guest house · budget");
+
+  const lodge = itemFromFeature(
+    feature({ name: "Neelam Lodge", categories: ["accommodation"] }),
+    leh,
+  );
+  assert.equal(lodge.budget, true);
+  assert.equal(lodge.detail, "Lodge · budget");
+});
+
+test("an eatery keeps the word on its sign — a dhaba is not a restaurant", () => {
+  const dhaba = itemFromFeature(
+    feature({ name: "Rana Vaishnavo Dhaba", categories: ["catering", "catering.restaurant"] }),
+    leh,
+  );
+  assert.equal(dhaba.kind, "eat");
+  assert.equal(dhaba.detail, "Dhaba");
+
+  const cafe = itemFromFeature(
+    feature({ name: "Namza Cafe", categories: ["catering", "catering.cafe"], tags: { cuisine: "tibetan;indian" } }),
+    leh,
+  );
+  assert.equal(cafe.detail, "Cafe · tibetan, indian");
+});
+
+test("a pump carries its brand, a hospital its emergency room", () => {
+  const fuel = itemFromFeature(
+    feature({ name: "Indian Oil", categories: ["service", "service.vehicle", "service.vehicle.fuel"], rest: undefined, brand: "Indian Oil" }),
+    leh,
+  );
+  assert.equal(fuel.kind, "fuel");
+  assert.equal(fuel.detail, "Fuel · Indian Oil");
+
+  const hospital = itemFromFeature(
+    feature({ name: "Civil Hospital", categories: ["healthcare", "healthcare.hospital"], tags: { emergency: "yes" } }),
+    leh,
+  );
+  assert.equal(hospital.kind, "hospital");
+  assert.equal(hospital.detail, "Hospital · emergency");
+});
+
+test("a Royal Enfield workshop is named as one, whatever its shop tag says", () => {
+  const re = itemFromFeature(
+    feature({ name: "Royal Enfield Service Centre", categories: ["commercial", "commercial.vehicle"] }),
+    leh,
+  );
+  assert.equal(re.kind, "service");
+  assert.equal(re.royalEnfield, true);
+  assert.equal(re.detail, "Royal Enfield · service centre");
+
+  const motorcycle = itemFromFeature(
+    feature({ name: "Bike Point", categories: ["commercial", "commercial.vehicle"], commercial: { type: "motorcycle" } }),
+    leh,
+  );
+  assert.equal(motorcycle.detail, "Motorcycle workshop");
+  assert.equal(motorcycle.royalEnfield, undefined);
+});
+
+test("an unnamed bed is dropped; an unnamed pump is a pump", () => {
+  const anonymousBed = itemFromFeature(feature({ name: "", categories: ["accommodation", "accommodation.hotel"] }), leh);
+  assert.equal(anonymousBed, null);
+
+  const anonymousFuel = itemFromFeature(
+    feature({ name: "", categories: ["service", "service.vehicle", "service.vehicle.fuel"] }),
+    leh,
+  );
+  assert.equal(anonymousFuel.title, "Fuel station");
+});
+
+test("a place outside the three tabs is not an item at all", () => {
+  assert.equal(itemFromFeature(feature({ name: "Somewhere", categories: ["tourism", "tourism.attraction"] }), leh), null);
+});
+
+test("both lists are nearest first, and the marque leads the service tab", () => {
+  const items = [
+    { title: "Far", kind: "service", distanceKm: 9, lat: 1, lng: 1 },
+    { title: "Royal Enfield", kind: "service", distanceKm: 8, lat: 2, lng: 2, royalEnfield: true },
+    { title: "Near", kind: "service", distanceKm: 1, lat: 3, lng: 3 },
+  ];
+  assert.deepEqual(rankItems(items, "essentials").map((item) => item.title), ["Royal Enfield", "Near", "Far"]);
+  assert.deepEqual(rankItems(items, "stays").map((item) => item.title), ["Near", "Royal Enfield", "Far"], "distance alone");
+});
+
+/* ── the search ──────────────────────────────────────────────────────── */
+
+test("the places question is clipped to the town's own boundary, never a radius", async () => {
+  const fetchImpl = fakeFetch((url) => {
+    if (isGeocode(url)) return ok({ results: [LEH_HIT] });
+    return ok({ features: [feature({ name: "Grand Dragon", categories: ["accommodation", "accommodation.hotel"] })] });
+  });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", key: KEY, fetchImpl });
+
+  assert.equal(result.source, "geoapify");
+  assert.equal(result.items.length, 1);
+  const placesCall = fetchImpl.calls.find(isPlaces);
+  assert.match(placesCall, /filter=place(3A|%3A)leh-boundary/);
+  assert.equal(/circle:/.test(placesCall), false, "no circle anywhere");
+  assert.match(placesCall, /apiKey=test-key/);
+  assert.equal(KIND_CATEGORIES.stays.join(","), "accommodation");
+});
+
+test("a town with nothing in it answers empty — it does not borrow the next town", async () => {
+  const fetchImpl = fakeFetch((url) => (isGeocode(url) ? ok({ results: [LEH_HIT] }) : ok({ features: [] })));
+  const result = await searchNearby({ kind: "food", ...leh, place: "Leh", key: KEY, fetchImpl });
+  assert.equal(result.items.length, 0);
+  assert.equal(result.source, "geoapify");
+  assert.equal(result.area.label, "Leh");
+});
+
+test("no boundary means no list, and the reason is said out loud", async () => {
+  const fetchImpl = fakeFetch(() => ok({ results: [] }));
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Nowhere", key: KEY, fetchImpl });
+  assert.equal(result.reason, "no-area");
+  assert.deepEqual(result.items, []);
+  assert.equal(result.source, "none");
+});
+
+test("no key is stated plainly rather than asked for and refused", async () => {
+  const fetchImpl = fakeFetch(() => ok({ results: [LEH_HIT] }));
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", key: "", fetchImpl });
+  assert.equal(result.source, "none");
+  assert.match(result.notes.join(" "), /no key/);
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test("a refused or broken answer is an empty answer that says so, not a throw", async () => {
+  const fetchImpl = fakeFetch((url) => (isGeocode(url) ? ok({ results: [LEH_HIT] }) : fail(429)));
+  const result = await searchNearby({ kind: "essentials", ...leh, place: "Leh", key: KEY, fetchImpl });
+  assert.equal(result.source, "none");
+  assert.deepEqual(result.items, []);
+  assert.match(result.notes.join(" "), /429/);
 });
 
 test("the cache answers the second ask, and a failure is not remembered", async () => {
   clearNearbyCache();
-  const fetchImpl = fakeFetch((url) => (isGoogle(url) ? okHtml("<html></html>") : ok(overpassBody)));
-
-  const first = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", fetchImpl });
-  assert.equal(first.cached, false);
-  const asksSoFar = fetchImpl.calls.length;
-  const again = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", fetchImpl });
-  assert.equal(again.cached, true, "the second ask is free");
-  assert.equal(fetchImpl.calls.length, asksSoFar, "nothing was asked a second time");
-
-  // A point nothing answered for is asked again next time rather than cached.
-  const failing = fakeFetch(() => {
-    throw new Error("down");
-  });
-  const failed = await searchNearbyCached({ kind: "stays", lat: 12.9, lng: 77.6, fetchImpl: failing });
-  assert.equal(failed.source, "none");
-  const retried = await searchNearbyCached({ kind: "stays", lat: 12.9, lng: 77.6, fetchImpl: failing });
-  assert.equal(retried.cached, false, "nothing was remembered");
-  clearNearbyCache();
-});
-
-test("the whole town is searched: a bed 20 km out is in the list, if it is in the town", async () => {
-  clearAreaCache();
-  clearNearbyCache();
-  const nangal = { lat: 31.3832, lng: 76.3766 };
+  let calls = 0;
   const fetchImpl = fakeFetch((url) => {
-    if (url.includes("nominatim")) {
-      return ok([
-        {
-          name: "Nangal",
-          addresstype: "town",
-          // A town about 35 km across — the old 15 km circle covered less than half.
-          boundingbox: ["31.25", "31.52", "76.22", "76.54"],
-          address: { town: "Nangal", state: "Punjab" },
-        },
-      ]);
-    }
-    if (url.includes("overpass")) {
-      return ok({
-        elements: [
-          // 2 km out: inside any circle.
-          { type: "node", id: 1, lat: 31.39, lon: 76.38, tags: { tourism: "hotel", name: "Near Hotel" } },
-          // 20 km out: outside the old 15 km radius, still Nangal.
-          { type: "node", id: 2, lat: 31.51, lon: 76.53, tags: { tourism: "guest_house", name: "Far Guest House" } },
-          // 40 km out: not this town at all.
-          { type: "node", id: 3, lat: 31.9, lon: 76.9, tags: { tourism: "hotel", name: "Another Town" } },
-        ],
-      });
-    }
-    throw new Error("down");
-  }, { area: null });
+    if (isGeocode(url)) return ok({ results: [LEH_HIT] });
+    calls += 1;
+    return ok({ features: [feature({ name: "Grand Dragon", categories: ["accommodation", "accommodation.hotel"] })] });
+  });
 
-  const result = await searchNearby({ kind: "stays", ...nangal, place: "Nangal, Punjab", fetchImpl });
-  assert.equal(result.area.city, true);
-  assert.equal(result.area.label, "Nangal, Punjab");
-  const titles = result.items.map((item) => item.title);
-  assert.deepEqual(titles, ["Near Hotel", "Far Guest House"], "the far side of town is included, the next town is not");
-  assert.ok(result.items[1].distanceKm > 15, "the second one is further than the old radius");
-  assert.ok(!titles.includes("Another Town"));
+  const first = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", key: KEY, fetchImpl });
+  const second = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", key: KEY, fetchImpl });
+  assert.equal(first.cached, false);
+  assert.equal(second.cached, true);
+  assert.equal(calls, 1);
 
-  // And Overpass was asked for the town's box, not a circle around the pin.
-  const overpassCall = fetchImpl.calls.find((call) => call.url.includes("overpass"));
-  const asked = decodeURIComponent(overpassCall.body);
-  assert.match(asked, /\(31\.2500,76\.2200,31\.5200,76\.5400\)/, "the town's box was asked for");
-  assert.ok(!asked.includes("around:"), "no circle was asked for");
-  clearAreaCache();
+  // A different town is a different question.
+  await searchNearbyCached({ kind: "stays", ...leh, place: "Nangal", key: KEY, fetchImpl });
+  assert.equal(calls, 2);
   clearNearbyCache();
 });
-
-/* ------------------------------------------------------------------ *
- * The endpoint the page calls
- * ------------------------------------------------------------------ */
 
 test("the endpoint answers a page that asks for beds, and refuses nonsense", async () => {
   const { createApp } = await import("../app.js");
@@ -710,10 +355,14 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
     const href = String(url);
-    if (isGoogle(href)) return okHtml("<html></html>");
-    if (isAreaQuery(href)) return ok([LEH_AREA_HIT]);
-    if (href.includes("overpass") || href.includes("nominatim")) {
-      return { ok: true, status: 200, async json() { return overpassBody; } };
+    if (isGeocode(href)) return ok({ results: [LEH_HIT] });
+    if (isPlaces(href)) {
+      return ok({
+        features: [
+          feature({ name: "Grand Dragon", categories: ["accommodation", "accommodation.hotel"], coord: [77.58, 34.16] }),
+          feature({ name: "Chospa Guest House", categories: ["accommodation", "accommodation.guest_house"], coord: [77.60, 34.18] }),
+        ],
+      });
     }
     return realFetch(url, options);
   };
@@ -725,36 +374,19 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
     const found = await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771&place=Leh`);
     assert.equal(found.status, 200);
     const body = await found.json();
-    assert.equal(body.source, "overpass");
+    assert.equal(body.source, "geoapify");
     assert.equal("radiusKm" in body, false, "the answer is an area now, not a radius");
-    assert.equal(body.area.city, true, "the name given resolves to the town's own boundary");
-    assert.equal(body.area.label, "Leh, Ladakh");
-    assert.equal(body.items.length, 2, "beds only");
+    assert.equal(body.area.city, true);
+    assert.equal(body.area.label, "Leh");
+    assert.equal(body.items.length, 2);
     assert.equal(body.items[0].title, "Grand Dragon", "nearest first");
-    assert.equal("googleKey" in body, false, "there is no key to talk about");
 
-    const essentials = await (await fetch(`${base}/api/nearby?kind=essentials&lat=34.1526&lng=77.5771&place=Leh`)).json();
-    assert.ok(essentials.area.spanKm > 0, "the answer names the ground it covers");
-
-    // Food is its own question, and its own answer: the cafe, not the beds.
-    const food = await (await fetch(`${base}/api/nearby?kind=food&lat=34.1526&lng=77.5771&place=Leh`)).json();
-    assert.equal(food.source, "overpass");
-    assert.deepEqual(food.items.map((item) => item.kind), ["eat"]);
-    assert.equal(food.items[0].title, "A cafe");
-    assert.equal(essentials.items[0].title, "Indian Oil Leh");
-
-    // A second ask is served from the cache: one more outbound call would show
-    // up as a different answer, and it does not.
     const again = await (await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771&place=Leh`)).json();
     assert.equal(again.cached, true);
 
     assert.equal((await fetch(`${base}/api/nearby?kind=shops&lat=34&lng=77`)).status, 400);
     assert.equal((await fetch(`${base}/api/nearby?kind=stays&lat=999&lng=77`)).status, 400);
     assert.equal((await fetch(`${base}/api/nearby?kind=stays&lat=34&lng=abc`)).status, 400);
-
-    // The key endpoint is gone with the key: nothing is configured, nothing to
-    // store, nothing to leak.
-    assert.equal((await fetch(`${base}/api/nearby/key`)).status, 404);
   } finally {
     globalThis.fetch = realFetch;
     clearNearbyCache();
@@ -762,67 +394,11 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
   }
 });
 
-test("photon is asked by term, and its features read like any other map item", async () => {
-  const fetchImpl = fakeFetch((url) => {
-    if (isGoogle(url)) return okHtml("<html></html>");
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          features: [
-            {
-              geometry: { coordinates: [77.58, 34.16] },
-              properties: { osm_type: "node", osm_id: 5, osm_key: "tourism", osm_value: "guest_house", name: "Chospa Guest House", opening_hours: "24/7" },
-            },
-            {
-              geometry: { coordinates: [77.59, 34.17] },
-              properties: { osm_type: "node", osm_id: 6, osm_key: "tourism", osm_value: "hotel", name: "Grand Dragon" },
-            },
-            {
-              geometry: { coordinates: [77.60, 34.18] },
-              properties: { osm_type: "node", osm_id: 7, osm_key: "shop", osm_value: "bakery", name: "Bakery" },
-            },
-          ],
-        };
-      },
-    };
-  });
-
-  const result = await searchNearby({
-    kind: "stays",
-    ...leh,
-    place: "Leh",
-    fetchImpl,
-    mirrors: [],
-  });
-
-  assert.equal(result.source, "photon");
-  assert.deepEqual(result.items.map((i) => i.title), ["Chospa Guest House", "Grand Dragon"]);
-  assert.equal(result.items[0].opening, "24/7");
-  const photonCalls = fetchImpl.calls.filter((call) => call.url.includes("photon.komoot.io"));
-  assert.ok(photonCalls.every((call) => call.url.includes("lat=34.1526")), "the point biases every term");
-  assert.deepEqual(photonTerms("stays"), ["hotel", "guest house", "hostel", "motel", "lodge", "homestay"]);
-
-  assert.deepEqual(tagsFromPhoton({ osm_key: "amenity", osm_value: "fuel", name: "Pump" }), { amenity: "fuel", name: "Pump" });
-  assert.deepEqual(tagsFromPhoton({ osm_key: "tourism", osm_value: "hostel", name: "H" }), { tourism: "hostel", name: "H" });
-  assert.deepEqual(tagsFromPhoton({ osm_key: "shop", osm_value: "motorcycle", name: "RE" }), { shop: "motorcycle", name: "RE" });
-  assert.equal(itemsFromPhoton([{ geometry: { coordinates: [] } }], leh).length, 0);
-});
-
-test("photon is asked only after every mirror, and before nominatim", async () => {
-  const fetchImpl = fakeFetch((url) => {
-    if (isGoogle(url)) return okHtml("<html></html>");
-    if (url.includes("overpass")) throw new Error("down");
-    if (url.includes("photon")) throw new Error("blocked");
-    return ok([{ osm_type: "node", osm_id: 1, lat: "34.16", lon: "77.58", name: "Pump", class: "amenity", type: "fuel" }]);
-  });
-  const result = await searchNearby({ kind: "essentials", ...leh, place: "Leh", fetchImpl });
-  assert.equal(result.source, "nominatim");
-  const order = fetchImpl.calls
-    .filter((call) => !isGoogle(call.url))
-    .map((call) => (call.url.includes("overpass") ? "overpass" : call.url.includes("photon") ? "photon" : "nominatim"));
-  assert.deepEqual(order.slice(0, 4), ["overpass", "overpass", "overpass", "photon"]);
-  assert.equal(order.at(-1), "nominatim");
-  assert.equal(isGoogle(fetchImpl.calls[0].url), true, "Google was asked before any of them");
+test("every tab asks for a category set Geoapify actually publishes", () => {
+  const known = new Set(["accommodation", "catering", "service.vehicle", "commercial.vehicle", "healthcare"]);
+  for (const kind of KINDS) {
+    for (const category of KIND_CATEGORIES[kind]) {
+      assert.ok(known.has(category), `${kind} asks for an unknown category: ${category}`);
+    }
+  }
 });

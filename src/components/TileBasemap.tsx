@@ -1,23 +1,18 @@
 /**
- * Raster tiles — the fallback for when WebGL is not available.
+ * Raster tiles — the map for when the vector one cannot be drawn.
  *
- * The tracker and the dashboard both use VectorBasemap, which can switch
- * labels off properly. This exists for the browsers where MapLibre cannot
- * start at all, and it draws the same thing: a map with no place names on it.
- * CARTO's `*_nolabels` rasters need no WebGL and are drawn from OpenStreetMap's
- * data with every label left out — so the fallback is no longer the labelled
- * compromise it used to be.
+ * The tracker and the dashboard both use VectorBasemap, which draws Geoapify's
+ * vector styles and switches their place labels off properly. This exists for
+ * the two cases that leave it with nothing to draw: a browser without WebGL,
+ * and a site with no Geoapify key to fetch a style with.
  *
- * They do want the key, though. Without it they answer 200 with a grey
- * "API KEY REQUIRED" placeholder, which is the worst kind of failure: a tile
- * that loaded and a map that is empty. So the key rides along in the tile URL,
- * and when there is no key the CARTO raster is skipped entirely and
- * OpenStreetMap's tiles are used instead — labelled, but honest about it.
+ * It draws the same provider's same drawing, as pre-rendered tiles. Geoapify's
+ * rasters need the key too, so a blank key is reported plainly rather than
+ * asked for — a tile host's refusal draws as a grey square, and a grey square
+ * that answers 200 is the worst kind of failure.
  *
- * OpenStreetMap's own tiles are still behind that, for the day CARTO cannot be
- * reached. They *are* labelled — a raster tile carries its names in the
- * picture — so they are a genuine last resort, and the credit on screen
- * changes to say "labels shown" when they are the ones drawing.
+ * Satellite is the one thing here Geoapify does not publish: that is Esri's
+ * World Imagery, a photograph of the ground with no names painted into it.
  *
  * Tiles are placed by hand rather than with a map library, so the arithmetic
  * lives in utils/tiles alongside the mercator projector that places the pins —
@@ -27,7 +22,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import { lookById, type Theme } from "../utils/mapLooks";
+import { rasterStyleFor } from "../utils/basemapStyles";
 import { rasterTileUrl, tilesForView, type RasterSource, type TileView } from "../utils/tiles";
+import { cn } from "../utils/cn";
 
 export type { TileView };
 
@@ -64,22 +61,22 @@ export default function TileBasemap({
   // chosen, the others queue behind it — a host having a bad day should cost a
   // different drawing, not the map.
   const mapSettings = settings ?? resolveMapSettings(content.map);
-  const cartoKey = mapSettings.cartoKey.trim();
+  const key = mapSettings.geoapifyKey.trim();
   // The raster path is reached either because satellite was chosen (the tiles
   // *are* that look) or because the vector style would not draw, in which case
-  // the labelled map is the last resort and says so in its credit.
-  const imagery = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme).imagery;
+  // Geoapify's raster of the same drawing stands in.
+  const look = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme);
+  const looksSatellite = Boolean(look.imagery);
+  const rasterStyle = rasterStyleFor(mapSettings, theme);
   const chain = useMemo<RasterSource[]>(() => {
-    // Without a key CARTO's tiles are grey "API KEY REQUIRED" squares, so they
-    // are not asked for at all — the labelled map is the better of the two
-    // failures, and at least it says what it is.
-    const carto: RasterSource[] = cartoKey ? ["carto"] : [];
-    if (imagery) return ["satellite", ...carto, "osm"];
-    return [...carto, "osm"];
-  }, [imagery, cartoKey]);
+    // Without a key Geoapify's tiles are refusals, so they are not asked for at
+    // all; the panel says why instead (see the notice below).
+    if (looksSatellite) return ["satellite"];
+    return key ? ["geoapify"] : [];
+  }, [looksSatellite, key]);
 
   const [step, setStep] = useState(0);
-  const source = chain[Math.min(step, chain.length - 1)];
+  const source: RasterSource = chain[Math.min(step, Math.max(chain.length - 1, 0))];
   const failures = useRef(0);
 
   useEffect(() => {
@@ -105,6 +102,18 @@ export default function TileBasemap({
     setStep((i) => Math.min(i + 1, chain.length - 1));
   };
 
+  // Nothing to ask for and nothing to show: the honest panel is a blank one
+  // with the reason on it, not a request that will be refused.
+  if (!chain.length) {
+    return (
+      <div className={cn(className, "grid place-items-center bg-ink-900")} aria-hidden="true">
+        <p className="px-4 text-center text-[10px] leading-relaxed text-zinc-500">
+          Add a Geoapify key in the dashboard to draw the map.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <>
     <div
@@ -112,19 +121,11 @@ export default function TileBasemap({
       data-raster-theme={theme}
       data-raster-source={source}
       aria-hidden="true"
-      // CARTO publishes a drawing per theme, so nothing is recoloured. Only the
-      // labelled OSM last resort has a single white-page drawing, and that one
-      // is inverted in dark mode so it does not glow behind white text.
-      style={
-        source === "osm" && theme !== "light"
-          ? { filter: "invert(1) hue-rotate(180deg) brightness(0.72) saturate(0.7)" }
-          : undefined
-      }
     >
       {tiles.map((tile) => (
         <img
           key={`${tile.tx}/${tile.ty}`}
-          src={rasterTileUrl(source, theme === "light" ? "light" : "dark", tile.tileZoom, tile, cartoKey)}
+          src={rasterTileUrl(source, rasterStyle, tile.tileZoom, tile, key)}
           alt=""
           loading="eager"
           onError={onTileError}
@@ -145,7 +146,7 @@ export default function TileBasemap({
     {attributionClassName && (
       <MapAttribution
         className={attributionClassName}
-        source={source === "osm" ? "raster" : source === "satellite" ? "ESRI" : "CARTO"}
+        source={source === "satellite" ? "Esri" : "Geoapify"}
       />
     )}
     </>
@@ -153,31 +154,15 @@ export default function TileBasemap({
 }
 
 /**
- * Required by the tile licence. Both the vector and the raster map are drawing
- * on OpenStreetMap's data, so its credit is always owed; OpenFreeMap's is added
- * when it is the one serving.
- *
- * The raster map is the fallback, and its tiles have names painted into them.
- * When it is on screen the credit says so, because a labelled map appearing
- * where a nameless one belongs should never pass as a silent success.
- */
-/** Where to send the credit for each provider that might be drawing. */
-const PROVIDER_LINKS: Record<string, string> = {
-  OpenFreeMap: "https://openfreemap.org",
-  VersaTiles: "https://versatiles.org",
-  CARTO: "https://carto.com/attributions",
-};
-
-/**
  * Who drew what is on screen.
  *
- * Most of these are drawings of OpenStreetMap's data, so its credit comes
- * first. Satellite is the exception: that is Esri's photography, and crediting
- * OpenStreetMap for a photograph would be a lie — so it says whose picture it
- * is instead.
+ * Both of the site's maps draw OpenStreetMap's data, so its credit is always
+ * owed: Geoapify renders it, and the licence asks Geoapify to be named for the
+ * tiles as well. Satellite is the exception — that is Esri's photography, and
+ * crediting OpenStreetMap for a photograph would be a lie.
  */
 const CREDITS: Record<string, { label: string; href: string; text: string }> = {
-  ESRI: {
+  Esri: {
     label: "Esri",
     href: "https://www.esri.com/en-us/legal/terms/data-attributions",
     text: "Maxar, Earthstar Geographics and the GIS community",
@@ -189,11 +174,10 @@ export function MapAttribution({
   source,
 }: {
   className?: string;
-  /** Who is drawing the map, or "raster" for the labelled fallback. */
+  /** Who is drawing the map: "Geoapify" or "Esri". */
   source?: string;
 }) {
-  const provider = source && source !== "raster" ? source : undefined;
-  const imagery = provider ? CREDITS[provider] : undefined;
+  const imagery = source ? CREDITS[source] : undefined;
   if (imagery) {
     return (
       <p className={className}>
@@ -212,7 +196,16 @@ export function MapAttribution({
   }
   return (
     <p className={className}>
-      ©{" "}
+      Powered by{" "}
+      <a
+        href="https://www.geoapify.com/"
+        target="_blank"
+        rel="noreferrer"
+        className="underline decoration-dotted underline-offset-2 hover:no-underline"
+      >
+        Geoapify
+      </a>{" "}
+      · ©{" "}
       <a
         href="https://www.openstreetmap.org/copyright"
         target="_blank"
@@ -222,21 +215,6 @@ export function MapAttribution({
         OpenStreetMap
       </a>{" "}
       contributors
-      {provider && (
-        <>
-          {" "}
-          ·{" "}
-          <a
-            href={PROVIDER_LINKS[provider] ?? "https://www.openstreetmap.org/copyright"}
-            target="_blank"
-            rel="noreferrer"
-            className="underline decoration-dotted underline-offset-2 hover:no-underline"
-          >
-            {provider}
-          </a>
-        </>
-      )}
-      {source === "raster" && <> · labels shown</>}
     </p>
   );
 }

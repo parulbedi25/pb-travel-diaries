@@ -236,17 +236,18 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
 /**
  * How the maps are drawn.
  *
- * A *look* is one drawing of the world: a style URL from a tile host, or Esri's
- * satellite imagery. There is one for the light theme and one for the dark,
- * chosen separately — a site can be Bright by day and Dark Matter by night, and
- * the two do not have to come from the same maker. The catalogue of looks lives
- * in utils/mapLooks, because the dashboard and the map components must agree on
- * exactly what each id means.
+ * A *look* is one drawing of the world: one of Geoapify's MapLibre styles,
+ * which arrives complete — its own tiles, fonts, sprites and colours — so a
+ * look is a name plus the site's key. There is one for the light theme and one
+ * for the dark, chosen separately, and the two do not have to match: a site can
+ * be Bright by day and Dark Matter by night.
  *
- * `cartoKey` unlocks CARTO's drawings only (Positron, Voyager, Dark Matter).
- * The keyless looks — OpenFreeMap's and VersaTiles' — need nothing, so the map
- * keeps working if the key is ever refused or its quota is reached. The key is a
- * *basemap* key: it only unlocks tiles, so it is safe in the bundle.
+ * `geoapifyKey` is the key that unlocks them. It is a *basemap* key: the
+ * browser has to send it with every style and tile request, so it is visible in
+ * the page whatever we do — the honest mitigation is to restrict it to this
+ * domain in the Geoapify dashboard, not to hide it here. The server's nearby
+ * search uses `GEOAPIFY_KEY` from the environment when it is set, so the same
+ * key does not have to be the one that spends credits on place lookups.
  *
  * Satellite is a look like any other, available for either theme, and is drawn
  * by the raster path because a photograph has no style layers to switch off.
@@ -256,21 +257,26 @@ export interface MapSettings {
   lightLook: MapLookId;
   /** The drawing used while the site is in dark mode. */
   darkLook: MapLookId;
-  /** CARTO basemap key. Blank leaves the keyless drawings to draw. */
-  cartoKey: string;
+  /** Geoapify key. Blank leaves the map with no style and no tiles. */
+  geoapifyKey: string;
 }
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
-  lightLook: "bright",
-  darkLook: "osm-dark",
-  cartoKey: "cb1_4u3q_1_dc135904c1fc4472cf673c4d",
+  lightLook: "osm-bright",
+  darkLook: "dark-matter",
+  geoapifyKey: "0383366d3de84c54b9383738d8e60a28",
 };
 
-/** The old shape, which had one look for both themes. */
+/**
+ * What an older site saved: CARTO's key, or the provider-and-drawing pair that
+ * came before the looks were one catalogue. Both are read once and translated,
+ * so an upgrade keeps the map the owner had chosen.
+ */
 interface LegacyMapSettings {
   provider?: unknown;
   cartoStyle?: unknown;
   cartoKey?: unknown;
+  geoapifyKey?: unknown;
 }
 
 /**
@@ -279,29 +285,40 @@ interface LegacyMapSettings {
  * looks that means the same thing.
  */
 export function resolveMapSettings(map?: Partial<MapSettings> | LegacyMapSettings | null): MapSettings {
-  const key = typeof map?.cartoKey === "string" ? map.cartoKey.trim() : DEFAULT_MAP_SETTINGS.cartoKey;
-  const legacy = (map ?? {}) as LegacyMapSettings;
+  const saved = (map ?? {}) as LegacyMapSettings;
+  const key =
+    typeof saved.geoapifyKey === "string" && saved.geoapifyKey.trim()
+      ? saved.geoapifyKey.trim()
+      : DEFAULT_MAP_SETTINGS.geoapifyKey;
 
   const known = (value: unknown): value is MapLookId =>
     typeof value === "string" && MAP_LOOKS.some((look) => look.id === value);
 
-  // A saved pair of looks is taken as it stands.
-  const lightLook = known((map as Partial<MapSettings> | undefined)?.lightLook)
-    ? ((map as Partial<MapSettings>).lightLook as MapLookId)
-    : undefined;
-  const darkLook = known((map as Partial<MapSettings> | undefined)?.darkLook)
-    ? ((map as Partial<MapSettings>).darkLook as MapLookId)
-    : undefined;
-  if (lightLook && darkLook) return { lightLook, darkLook, cartoKey: key };
+  const savedMap = map as Partial<MapSettings> | undefined;
+  const lightLook = known(savedMap?.lightLook) ? savedMap!.lightLook : undefined;
+  const darkLook = known(savedMap?.darkLook) ? savedMap!.darkLook : undefined;
 
-  // Otherwise translate the old single choice: satellite as a provider, or one
-  // of CARTO's drawings, or the keyless look that stood in for both themes.
+  // A saved pair of looks is taken as it stands.
+  if (lightLook && darkLook) return { lightLook, darkLook, geoapifyKey: key };
+
+  // Otherwise translate the older choice: satellite as a provider, or one of
+  // the drawings the site used to offer, onto the nearest look today. A drawing
+  // that was pinned for both themes stays pinned for both.
   const fromLegacy = (): { lightLook: MapLookId; darkLook: MapLookId } => {
-    if (legacy.provider === "satellite") return { lightLook: "satellite", darkLook: "satellite" };
-    const style = legacy.cartoStyle;
-    if (legacy.provider === "carto" && (style === "voyager" || style === "positron" || style === "dark-matter")) {
-      // A drawing that was pinned for both themes stays pinned for both.
-      const id = style === "dark-matter" ? "dark-matter" : style;
+    if (saved.provider === "satellite") return { lightLook: "satellite", darkLook: "satellite" };
+    const style = saved.cartoStyle;
+    const legacy: Record<string, MapLookId> = {
+      positron: "positron",
+      voyager: "osm-bright",
+      "dark-matter": "dark-matter",
+      bright: "osm-bright",
+      liberty: "osm-liberty",
+      "osm-dark": "dark-matter",
+      gray: "toner-grey",
+      "colorful-dark": "dark-matter-purple-roads",
+    };
+    if (saved.provider === "carto" && typeof style === "string" && legacy[style]) {
+      const id = legacy[style];
       return { lightLook: id, darkLook: id };
     }
     return {
@@ -313,7 +330,7 @@ export function resolveMapSettings(map?: Partial<MapSettings> | LegacyMapSetting
   return {
     lightLook: lightLook ?? migrated.lightLook,
     darkLook: darkLook ?? migrated.darkLook,
-    cartoKey: key,
+    geoapifyKey: key,
   };
 }
 

@@ -13,7 +13,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import type { LiveStop } from "../store/siteContent";
+import { resolveMapSettings, useSite, type LiveStop } from "../store/siteContent";
 import {
   SOURCE_LABELS,
   describePoint,
@@ -37,7 +37,7 @@ import { inputCls } from "./fieldStyles";
 /**
  * Editor for the live tracker's route.
  *
- * One surface, and it is the one you can work on: a map of OpenStreetMap with
+ * One surface, and it is the one you can work on: the site's Geoapify basemap with
  * no place names on it, with numbered draggable pins on top — click to drop a
  * stop, drag to move it. The map is pinned to the same projection as the pins,
  * so what you click is what you get.
@@ -72,46 +72,31 @@ const round = (n: number) => Math.round(n * 1e4) / 1e4;
 /**
  * Look a place up by name.
  *
- * Two keyless services, tried in turn: Nominatim (OpenStreetMap) first because
- * it knows landmarks as well as towns, then Open-Meteo's geocoder, which is
- * smaller but answers fast and is not rate-limited per second the way
- * Nominatim is. Failing both is not fatal — the coordinates can always be
- * typed in by hand — but it should be rare, because a single unplaceable stop
- * used to refuse a whole route.
+ * One service, the one that draws the site's maps: Geoapify's geocoder. It
+ * knows an address as well as a town, so the readable name is asked for first
+ * and the full postal string only if that finds nothing — "Manali" resolves
+ * where "Manali, Himachal Pradesh, India, 175131" can miss. A failure is not
+ * fatal: the coordinates can always be typed in by hand, and a single
+ * unplaceable stop used to refuse a whole route.
  */
 async function geocodeOne(
   query: string,
+  key: string,
 ): Promise<{ lat: number; lng: number } | null> {
+  const apiKey = key.trim();
+  if (!apiKey) return null;
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
-      query,
-    )}`;
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
-    if (response.ok) {
-      const json = (await response.json()) as { lat?: string; lon?: string }[];
-      const first = Array.isArray(json) ? json[0] : undefined;
-      const lat = Number(first?.lat);
-      const lng = Number(first?.lon);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        return { lat: round(lat), lng: round(lng) };
-      }
-    }
-  } catch {
-    // Fall through to the second service.
-  }
-
-  try {
-    const url = `https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=${encodeURIComponent(
-      query,
-    )}`;
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const params = new URLSearchParams({ text: query, lang: "en", limit: "1", format: "json", apiKey });
+    const response = await fetch(`https://api.geoapify.com/v1/geocode/search?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
     if (!response.ok) return null;
-    const json = (await response.json()) as {
-      results?: { latitude?: number; longitude?: number }[];
-    };
+    const json = (await response.json()) as { results?: { lat?: number; lon?: number }[] };
     const first = json.results?.[0];
-    if (typeof first?.latitude !== "number" || typeof first?.longitude !== "number") return null;
-    return { lat: round(first.latitude), lng: round(first.longitude) };
+    const lat = Number(first?.lat);
+    const lng = Number(first?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat: round(lat), lng: round(lng) };
   } catch {
     return null;
   }
@@ -119,12 +104,11 @@ async function geocodeOne(
 
 /**
  * Place a stop named only by its address, trying the readable name before the
- * full postal string — "Manali" resolves where "Manali, Himachal Pradesh,
- * India, 175131" can miss.
+ * full postal string.
  */
-async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
+async function geocode(query: string, key: string): Promise<{ lat: number; lng: number } | null> {
   for (const attempt of lookupQueries(query)) {
-    const found = await geocodeOne(attempt);
+    const found = await geocodeOne(attempt, key);
     if (found) return found;
   }
   return null;
@@ -140,11 +124,23 @@ async function geocode(query: string): Promise<{ lat: number; lng: number } | nu
 async function reverseLookup(
   lat: number,
   lng: number,
+  key: string,
 ): Promise<{ name: string; state?: string } | null> {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=12&lat=${lat}&lon=${lng}`;
+  const apiKey = key.trim();
+  if (!apiKey) return null;
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lng),
+    lang: "en",
+    limit: "1",
+    format: "json",
+    apiKey,
+  });
   let response: Response;
   try {
-    response = await fetch(url, { headers: { Accept: "application/json" } });
+    response = await fetch(`https://api.geoapify.com/v1/geocode/reverse?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
   } catch {
     // A blocked or offline lookup is not a reason to fail an import: the
     // coordinates are already known, only the name is missing.
@@ -152,13 +148,12 @@ async function reverseLookup(
   }
   if (!response.ok) return null;
   const json = (await response.json()) as {
-    name?: string;
-    display_name?: string;
-    address?: Record<string, string>;
+    results?: { name?: string; address_line1?: string; state?: string; state_district?: string }[];
   };
-  const name = (json.name || json.display_name?.split(",")[0] || "").trim();
+  const hit = json.results?.[0];
+  const name = String(hit?.name ?? hit?.address_line1 ?? "").trim();
   if (!name) return null;
-  const state = json.address?.state ?? json.address?.state_district;
+  const state = hit?.state ?? hit?.state_district;
   return state ? { name, state } : { name };
 }
 
@@ -233,6 +228,16 @@ export default function RouteStopsEditor({
     null,
   );
   const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
+  /**
+   * The Geoapify key, from the site's map settings.
+   *
+   * Geocoding, reverse geocoding and the town search all ask Geoapify, so they
+   * all need this — and the browser already has it, because the map itself is
+   * drawn with it. Blank is a real state: the lookups then say they could not
+   * place a stop rather than asking a host that will refuse the request.
+   */
+  const { content } = useSite();
+  const geoapifyKey = resolveMapSettings(content.map).geoapifyKey;
   /** The replace button, so arming it is not undone by its own click. */
   const replaceRef = useRef<HTMLButtonElement | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -416,7 +421,7 @@ export default function RouteStopsEditor({
     setLooking(true);
     setLookError("");
     try {
-      const found = await geocode(name);
+      const found = await geocode(name, geoapifyKey);
       if (!found) {
         setLookError(`Could not find “${name}”. Add it by clicking the grid or typing coordinates.`);
         return;
@@ -547,7 +552,7 @@ export default function RouteStopsEditor({
    * Turn what the link said into stops.
    *
    * A link can name an end or give it as coordinates, and either way the other
-   * half is looked up — the name from Nominatim's reverse lookup, the position
+   * half is looked up — the name from Geoapify's reverse geocoder, the position
    * from its search. Nothing is written until every point resolves, so a link
    * half-read cannot leave the tracker with two stops and a hole.
    */
@@ -567,12 +572,12 @@ export default function RouteStopsEditor({
 
     if (lat === undefined || lng === undefined) {
       if (!address) return null;
-      const found = await geocode(address);
+      const found = await geocode(address, geoapifyKey);
       if (!found) return null;
       lat = found.lat;
       lng = found.lng;
     } else if (!name) {
-      const looked = await reverseLookup(lat, lng);
+      const looked = await reverseLookup(lat, lng, geoapifyKey);
       if (looked) {
         name = looked.name;
         state = looked.state;
@@ -618,6 +623,7 @@ export default function RouteStopsEditor({
         roadKm = road.distanceKm;
       }
       const { stops: found, source } = await findMajorStops(geometry, {
+        key: geoapifyKey,
         avoid: stops.map((stop) => stop.name),
         max: 12,
         gapKm: 30,

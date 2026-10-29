@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import RideMap from "./RideMap";
 import { cn } from "../utils/cn";
+import { resolveMapSettings, useSite } from "../store/siteContent";
 import {
   findPlaceByName,
   loadSavedPlaces,
@@ -55,6 +56,8 @@ export default function PlaceFinder({
   ownerId: number | null;
   theme: MemberTheme;
 }) {
+  const { content } = useSite();
+  const apiKey = resolveMapSettings(content.map).geoapifyKey;
   const [places, setPlaces] = useState<SavedPlace[]>(() => loadSavedPlaces(ownerId));
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,10 +110,12 @@ export default function PlaceFinder({
     setBusy(true);
     setError("");
     try {
-      const found = await findPlaceByName(typed);
+      const found = await findPlaceByName(typed, apiKey);
       if (!found) {
         setError(
-          `Could not find “${typed}”. Try the town and the state together — or save it by its coordinates.`,
+          apiKey
+            ? `Could not find “${typed}”. Try the town and the state together — or save it by its coordinates.`
+            : "Add a Geoapify key in the dashboard, and the search will work. Until then a place can be saved by its coordinates.",
         );
         setManual(true);
         return;

@@ -8,28 +8,7 @@ import {
 import { haversineKm } from "./routeProgress";
 import type { LiveStop } from "../store/siteContent";
 
-/**
- * The towns a rider actually passes through between two stops.
- *
- * Pasting a Google Maps link gives the ends of a journey — Nangal, Nubra
- * Valley — and nothing in between, so the tracker shows a 778 km ride as a
- * single hop. The places on the way are already mapped: OpenStreetMap tags
- * settlements with `place=city` and `place=town`, and Overpass serves exactly
- * those nodes for a bounding box, with no key and no account.
- *
- * Three steps, all here:
- *
- *  1. Ask Overpass for every city/town in the box around the road.
- *  2. Keep the ones that actually sit on the road — distance to the drawn
- *     route, not to the straight line between its ends.
- *  3. Space them out: a rider wants Mandi and Manali, not eight villages
- *     eleven kilometres apart. Bigger populations win a contested slot.
- *
- * Anything the service cannot answer leaves the route exactly as imported;
- * there is a small offline list of well-known north-Indian towns so the
- * Nangal → Nubra kind of route still gets its stops when Overpass is down.
- */
-
+/** A town the ride passes, and where along it. */
 export interface MajorStop {
   name: string;
   lat: number;
@@ -48,7 +27,24 @@ interface Candidate {
   place: string;
 }
 
+/**
+ * Filling a long ride in with the towns it passes through.
+ *
+ * A pasted route gives two ends; a rider wants the towns between them, because
+ * that is where the nights and the petrol are. Those towns come from Geoapify —
+ * one Places query over the route's own bounding box for the settlement
+ * categories — and are then filtered by how far they sit from the road and
+ * spaced out along it, so a suggestion is always somewhere the ride actually
+ * goes.
+ *
+ * The provider can be missing (no key, a refusal, a shared connection having a
+ * bad evening), so a short list of well-known towns rides along in the build.
+ * It is only ever used after the same filtering, which means a route somewhere
+ * else in the country gets no suggestions rather than wrong ones.
+ */
 export interface MajorStopOptions {
+  /** The site's Geoapify key. Without one the carried list is used instead. */
+  key?: string;
   /** Keep suggestions this far from the road at most. */
   radiusKm?: number;
   /** How many to suggest. */
@@ -61,8 +57,8 @@ export interface MajorStopOptions {
   avoid?: readonly string[];
 }
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const DEFAULT_OPTIONS: Required<Omit<MajorStopOptions, "avoid">> = {
+const GEOAPIFY_PLACES_URL = "https://api.geoapify.com/v2/places";
+const DEFAULT_OPTIONS: Required<Omit<MajorStopOptions, "avoid" | "key">> = {
   radiusKm: 12,
   max: 12,
   gapKm: 30,
@@ -193,15 +189,8 @@ function offRoadKmRank(place: Candidate, geometry: readonly LatLng[]): number {
 }
 
 /* ------------------------------------------------------------------ *
- * Overpass
+ * Geoapify
  * ------------------------------------------------------------------ */
-
-interface OverpassElement {
-  lat?: number;
-  lon?: number;
-  center?: { lat?: number; lon?: number };
-  tags?: { name?: string; place?: string; population?: string };
-}
 
 function bboxOf(geometry: readonly LatLng[], pad = 0.2): [number, number, number, number] {
   let south = 90;
@@ -217,41 +206,69 @@ function bboxOf(geometry: readonly LatLng[], pad = 0.2): [number, number, number
   return [south - pad, west - pad, north + pad, east + pad];
 }
 
-async function overpassTowns(
+/**
+ * Every city and town in the box around the road, from Geoapify.
+ *
+ * One Places query over the route's own bounding box, asking for the two
+ * settlement categories — the same provider that draws the map and answers the
+ * nearby tabs, so a ride and its suggestions cannot disagree about where a
+ * town is. The population comes from the record where it has one, because that
+ * is what decides which towns are worth a stop.
+ */
+async function geoapifyTowns(
   geometry: readonly LatLng[],
+  key: string,
   timeoutMs: number,
 ): Promise<Candidate[]> {
+  const apiKey = key.trim();
+  if (!apiKey) return [];
   const [south, west, north, east] = bboxOf(geometry);
-  const query =
-    `[out:json][timeout:${Math.round(timeoutMs / 1000)}];` +
-    `nwr["place"~"^(city|town)$"](${south.toFixed(4)},${west.toFixed(4)},` +
-    `${north.toFixed(4)},${east.toFixed(4)});out center;`;
+  const params = new URLSearchParams({
+    categories: "populated_place.city,populated_place.town",
+    filter: `rect:${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`,
+    limit: "500",
+    lang: "en",
+    apiKey,
+  });
 
-  const response = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: `data=${encodeURIComponent(query)}`,
+  const response = await fetch(`${GEOAPIFY_PLACES_URL}?${params.toString()}`, {
+    headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`Overpass answered ${response.status}`);
+  if (!response.ok) throw new Error(`Geoapify answered ${response.status}`);
 
-  const json = (await response.json()) as { elements?: OverpassElement[] };
-  return (json.elements ?? [])
-    .map((element) => {
-      const lat = element.lat ?? element.center?.lat;
-      const lng = element.lon ?? element.center?.lon;
-      const name = element.tags?.name?.trim();
-      if (!name || typeof lat !== "number" || typeof lng !== "number") return null;
-      const population = Number.parseInt(element.tags?.population ?? "", 10);
+  const json = (await response.json()) as {
+    features?: {
+      geometry?: { coordinates?: number[] };
+      properties?: {
+        name?: string;
+        categories?: string[];
+        datasource?: { raw?: { place?: string; population?: number | string } };
+      };
+    }[];
+  };
+
+  return (json.features ?? [])
+    .map((feature) => {
+      const coords = feature.geometry?.coordinates;
+      const lng = Number(Array.isArray(coords) ? coords[0] : NaN);
+      const lat = Number(Array.isArray(coords) ? coords[1] : NaN);
+      const raw = feature.properties?.datasource?.raw ?? {};
+      const name = String(feature.properties?.name ?? raw.place ?? "").trim();
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const population = Number.parseInt(String(raw.population ?? ""), 10);
+      const place =
+        raw.place ??
+        ((feature.properties?.categories ?? []).includes("populated_place.city") ? "city" : "town");
       return {
         name,
         lat,
         lng,
         population: Number.isFinite(population) ? population : 0,
-        place: element.tags?.place ?? "town",
+        place,
       } satisfies Candidate;
     })
-    .filter((c): c is Candidate => c !== null);
+    .filter((candidate): candidate is Candidate => candidate !== null);
 }
 
 /* ------------------------------------------------------------------ *
@@ -259,7 +276,7 @@ async function overpassTowns(
  * ------------------------------------------------------------------ */
 
 /**
- * Well-known towns, for when Overpass is unreachable.
+ * Well-known towns, for when the provider cannot be reached.
  *
  * Only places this site's rides actually go near, and only ever used after
  * filtering by distance to the road — so a route somewhere else in the country
@@ -345,7 +362,7 @@ export async function findMajorStops(
   const { timeoutMs = 20_000, ...pickOptions } = options;
 
   try {
-    const towns = await overpassTowns(geometry, timeoutMs);
+    const towns = await geoapifyTowns(geometry, options.key ?? "", timeoutMs);
     if (towns.length) {
       return { stops: pickMajorStops(towns, geometry, pickOptions), source: "map" };
     }

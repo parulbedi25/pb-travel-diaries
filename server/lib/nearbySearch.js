@@ -1,606 +1,320 @@
 /**
  * Finding a bed, a meal, a pump, a workshop or a hospital near a point.
  *
- * The browser used to ask Overpass directly, which is the weak link: one
- * endpoint, one attempt, a twenty-second timeout, and no way to see why it
- * failed. Overpass's public instance is a volunteer service that is busy
- * often and unreachable sometimes, and a tab that silently shows nothing
- * looks like a broken feature rather than a busy server.
+ * Everything here is Geoapify. It is a licensed API with a real key, so there
+ * is one answer to ask for instead of four to race: two requests, both cheap.
  *
- * So the search happens here, where it can be retried and fall back:
+ *  1. **What is the town?** A forward geocode of the stop's name, asked for a
+ *     *city*, returns the town's own boundary id and its box. That boundary is
+ *     the whole question — "every bed in Anandpur Sahib" — and not a circle
+ *     around the pin, which is what used to put Nangal's hotels in Anandpur's
+ *     tab and Nangal's workshops in Kiratpur's.
+ *  2. **What is in it?** One Places query per tab with `filter=place:<id>`,
+ *     which is the provider's own clipping to that boundary. There is no
+ *     radius here at all, deliberately: a radius is the shape of the bug this
+ *     replaced, so a town that has nothing in it gets an empty tab with the
+ *     reason, never the next town's list.
  *
- *  1. **Google**, asked the way a browser asks it — the Maps search page
- *     itself, whose results are read out of the page Google sends back. No
- *     API key, no billing account, nothing to configure: the same public
- *     results anyone sees on maps.google.com, asked by category around the
- *     point. It is tried first because it is the most complete answer, and a
- *     rider looking for a bed wants Google's list.
- *  2. **Overpass**, across several mirrors in turn — the main instance, then
- *     two independent community servers. One `out center` query per question,
- *     with a User-Agent naming this site, as Overpass asks.
- *  3. **Photon**, a keyless geocoder built on the same OpenStreetMap data,
- *     asked by tag around a point. Fast, and it does not share a server with
- *     Overpass, so it answers on the evenings Overpass is loaded.
- *  4. **Nominatim**, OpenStreetMap's own geocoder, category-searching a
- *     bounding box: the same data asked a different way one last time.
+ * What comes back is mapped onto the same item the page has always drawn —
+ * name, kind, one line of detail, an opening time, a distance from the rider's
+ * own stop — so the page did not have to learn a new vocabulary for a new
+ * provider. The OSM tags behind each record (`datasource.raw`) still decide the
+ * wording: a dhaba is a restaurant with a different sign on it, a `stars` tag
+ * on a hotel is its star class, and a Royal Enfield name on a workshop is the
+ * one a rider can actually be fixed at.
  *
- * Whatever answers, the shape handed back is the same, and the answer is
- * cached for ten minutes so flipping between tabs costs nothing.
+ * Nothing is thrown at the caller for a busy service: a failed search returns
+ * no items and says why, and the ten-minute cache means flipping between tabs
+ * costs one request rather than one per flip.
  */
 
-/**
- * The radius each question used to be asked over.
- *
- * Nothing is searched by radius any more — a question is about a town, and a
- * circle around a pin drags in the next town, which is exactly what was wrong
- * before. These figures survive only as the size a fallback box is drawn at,
- * for the one case that needs one: no boundary, no list.
- */
-export const KIND_RADIUS_KM = { stays: 15, food: 12, essentials: 25 };
-
-export const KINDS = Object.keys(KIND_RADIUS_KM);
+export const KINDS = ["stays", "food", "essentials"];
 
 /**
- * A city, not a district and not a state.
+ * A town, not a district and not a state.
  *
  * A settlement's own boundary is what a rider means by "all of Mohali". A
  * tehsil or district boundary — Rupnagar, which holds both Anandpur Sahib and
  * Nangal — is not: that is the shape that put Nangal's hotels in Anandpur's
- * list.
+ * list, and Geoapify will happily return one if it is asked for a county.
  */
+export const SETTLEMENT_RANKS = ["city", "town", "village", "municipality", "borough", "suburb"];
+
+/** A boundary wider than this is a district wearing a town's name. */
 export const MAX_AREA_SPAN_KM = 45;
 
-/** The kinds of place that count as a settlement, tightest first. */
-export const SETTLEMENT_RANKS = ["city", "town", "municipality", "village", "suburb", "borough"];
+/** The geocode is one quick question before the real one. */
+export const AREA_TIMEOUT_MS = 4_000;
+/** The places query is the one worth waiting a moment for. */
+export const SEARCH_TIMEOUT_MS = 7_000;
 
-/** The area lookup is one quick question before the real one. */
-export const AREA_TIMEOUT_MS = 3_000;
+export const GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search";
+export const REVERSE_URL = "https://api.geoapify.com/v1/geocode/reverse";
+export const PLACES_URL = "https://api.geoapify.com/v2/places";
 
 /**
- * Overpass mirrors, tried in order.
+ * The key the build ships with, so a fresh site's map and its nearby tabs work
+ * before anybody opens the dashboard. It is the same value the map settings
+ * default to in `src/store/siteContent.tsx` — the browser bundle and this
+ * server are built separately, so the two constants have to agree by hand.
+ * `GEOAPIFY_KEY` in the environment overrides both, and is the one to set on a
+ * deployment where the tile key must stay separate from the search key.
+ */
+export const DEFAULT_GEOAPIFY_KEY = "0383366d3de84c54b9383738d8e60a28";
+
+/**
+ * What each tab asks for, in Geoapify's category vocabulary.
  *
- * All three run the same software and the same data; they are different
- * servers, in different places, run by different people. The second is the
- * one the OSM community points at when the main instance is loaded, and the
- * third is a long-standing German mirror.
+ * Parents on purpose: `accommodation` covers hotels, guest houses, hostels,
+ * motels, apartments and chalets, and a new leaf category added by the provider
+ * tomorrow is then still included rather than silently missed. `commercial`
+ * vehicle is where a Royal Enfield dealer lives when it is tagged as a
+ * motorcycle shop rather than a workshop.
  */
-export const OVERPASS_MIRRORS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-];
-
-const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-const PHOTON_URL = "https://photon.komoot.io/api";
-const GOOGLE_MAPS_URL = "https://www.google.com/maps/search";
-
-/** Overpass asks callers to identify themselves; this is who we are. */
-const USER_AGENT = "pb-travel-diaries/1.0 (nearby places; +https://pbfrompb.in)";
-
-/**
- * Google is a different kind of server: ask it as a script does and it may
- * hand back the cut-down page, which carries no results. So the Maps page is
- * asked with an ordinary browser's headers, because that is the page with the
- * data in it.
- */
-const BROWSER_HEADERS = {
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "en-IN,en-GB;q=0.9,en;q=0.8",
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+export const KIND_CATEGORIES = {
+  stays: ["accommodation"],
+  food: ["catering"],
+  essentials: ["service.vehicle", "commercial.vehicle", "healthcare"],
 };
+
+/** How many places one tab may return, and how many the provider sends. */
+const RESULT_LIMIT = 60;
+const PAGE_LIMIT = 100;
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 200;
 const cache = new Map();
 
-/* ------------------------------------------------------------------ *
- * The question
- * ------------------------------------------------------------------ */
-
-/**
- * The Overpass query for one question, over an area.
- *
- * The area is a bounding box — the city's own box — not a circle around a
- * point, because a rider asking about Jaisalmer means Jaisalmer, and a 15 km
- * radius either cuts the town in half or misses the far end of it.
- */
-export function overpassQuery(kind, bounds) {
-  const box = boundsClause(bounds);
-  const head = "[out:json][timeout:20]";
-  if (kind === "stays") {
-    // Everywhere a rider can actually sleep, not only the ones tagged hotel:
-    // a lodge, a homestay and a yatri niwas are beds too, and in the hills
-    // they are most of them.
-    return (
-      `${head};(` +
-      `nwr["tourism"~"^(hotel|guest_house|hostel|motel|apartment|chalet)$"]${box};` +
-      `nwr["name"~"lodge|homestay|home stay|guest house|rest house|yatri niwas",i]${box};` +
-      `);out center 160;`
-    );
-  }
-  if (kind === "food") {
-    // Where a rider eats: the restaurant, but also the dhaba, the cafe, the
-    // fast-food counter and the sweet shop with tables behind it.
-    return (
-      `${head};(` +
-      `nwr["amenity"~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"]${box};` +
-      `nwr["name"~"dhaba|dhabha|bhojanal|bhojnalaya|eatery|restaurant|bhojanalya",i]${box};` +
-      `);out center 240;`
-    );
-  }
-  return (
-    `${head};(` +
-    `nwr["amenity"="fuel"]${box};` +
-    `nwr["amenity"~"^(hospital|clinic)$"]${box};` +
-    // A workshop is tagged `craft=motorcycle_repair` at least as often as
-    // `shop=motorcycle`, and the Royal Enfield service centres almost always
-    // are — that tag never being asked for is why they did not appear.
-    `nwr["craft"~"^(motorcycle_repair|car_repair)$"]${box};` +
-    `nwr["shop"~"^(motorcycle|motorcycle_repair|car_repair|car_parts|tyres)$"]${box};` +
-    `nwr["service:vehicle:motorcycle"="yes"]${box};` +
-    `nwr["service:vehicle:car"="yes"]${box};` +
-    `nwr["name"~"Royal Enfield|Enfield|RE Service|RE Motors",i]${box};` +
-    `);out center 300;`
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * The area a question is about
- * ------------------------------------------------------------------ */
+/* ── small maths, shared with the rest of the app ────────────────────── */
 
 /** A box: `{ south, north, west, east }`, in degrees. */
-export function boundsAround(lat, lng, radiusKm) {
-  const dLat = radiusKm / 111;
-  const dLng = radiusKm / Math.max(0.2, 111 * Math.cos((lat * Math.PI) / 180));
-  return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
+export function boundsFromBbox(bbox) {
+  const lat1 = Number(bbox?.lat1);
+  const lat2 = Number(bbox?.lat2);
+  const lon1 = Number(bbox?.lon1);
+  const lon2 = Number(bbox?.lon2);
+  if (![lat1, lat2, lon1, lon2].every(Number.isFinite)) return null;
+  return {
+    south: Math.min(lat1, lat2),
+    north: Math.max(lat1, lat2),
+    west: Math.min(lon1, lon2),
+    east: Math.max(lon1, lon2),
+  };
 }
 
 /** How wide a box is — its longer side, in kilometres. */
 export function spanKmOf(bounds) {
-  const midLat = (bounds.north + bounds.south) / 2;
-  const heightKm = (bounds.north - bounds.south) * 111;
-  const widthKm = (bounds.east - bounds.west) * 111 * Math.cos((midLat * Math.PI) / 180);
-  return Math.max(heightKm, widthKm);
+  const midLat = ((bounds.north + bounds.south) / 2) * (Math.PI / 180);
+  const kmPerDegLat = 110.574;
+  const kmPerDegLng = 111.32 * Math.cos(midLat);
+  const height = (bounds.north - bounds.south) * kmPerDegLat;
+  const width = (bounds.east - bounds.west) * kmPerDegLng;
+  return Math.max(Math.abs(width), Math.abs(height));
 }
-
-/** Overpass's box syntax: `(south,west,north,east)`. */
-export function boundsClause(bounds) {
-  return `(${bounds.south.toFixed(4)},${bounds.west.toFixed(4)},${bounds.north.toFixed(4)},${bounds.east.toFixed(4)})`;
-}
-
-/** Nominatim's: `west,north,east,south`. */
-export function viewboxOfBounds(bounds) {
-  return [bounds.west, bounds.north, bounds.east, bounds.south].map((n) => n.toFixed(5)).join(",");
-}
-
-/** Is a place inside the box? A drop of slack covers a boundary road. */
-export function insideBounds(lat, lng, bounds, padKm = 0) {
-  const pad = padKm / 111;
-  return (
-    lat >= bounds.south - pad &&
-    lat <= bounds.north + pad &&
-    lng >= bounds.west - pad &&
-    lng <= bounds.east + pad
-  );
-}
-
-/** What kind of place a Nominatim answer is, read as one word. */
-function areaRankOf(hit) {
-  const kind = String(hit.addresstype ?? hit.type ?? "").toLowerCase();
-  if (SETTLEMENT_RANKS.includes(kind)) return kind;
-  if (["city_district", "district", "county", "state_district", "administrative"].includes(kind)) return "district";
-  if (["state", "region", "country"].includes(kind)) return "too-wide";
-  return "other";
-}
-
-/**
- * The box a Nominatim answer describes, if it is usable.
- *
- * `boundingbox` arrives as `[south, north, west, east]` strings; a box that is
- * wider than a city, or that does not contain the point being asked about, is
- * not the area a rider meant.
- */
-export function boundsFromNominatim(hit, origin) {
-  const box = Array.isArray(hit?.boundingbox) ? hit.boundingbox.map(Number) : null;
-  if (!box || box.length !== 4 || box.some((n) => !Number.isFinite(n))) return null;
-  const [south, north, west, east] = box;
-  if (north <= south || east <= west) return null;
-  // A settlement or nothing: a district box would swallow the next town.
-  if (!SETTLEMENT_RANKS.includes(areaRankOf(hit))) return null;
-  const bounds = { south, north, west, east };
-  if (spanKmOf(bounds) > MAX_AREA_SPAN_KM) return null;
-  if (origin && !insideBounds(origin.lat, origin.lng, bounds, 2)) return null;
-  return bounds;
-}
-
-/** The name a rider would use for an area: "Leh", "Nangal". */
-function areaLabelOf(hit) {
-  const address = hit?.address ?? {};
-  const local = address.city ?? address.town ?? address.village ?? address.suburb ?? address.municipality;
-  const name = String(local ?? hit?.name ?? String(hit?.display_name ?? "").split(",")[0] ?? "").trim();
-  const state = String(address.state ?? "").trim();
-  if (!name) return "";
-  return state && state.toLowerCase() !== name.toLowerCase() ? `${name}, ${state}` : name;
-}
-
-/**
- * The city a point is in, as a box.
- *
- * Asked of Nominatim by the name the page already has — the stop the rider
- * picked — and then, when that name finds nothing usable, of Nominatim's
- * reverse lookup, which names the town the coordinates are actually in. The
- * smallest usable answer that contains the point wins, so "Nangal" is Nangal
- * and not the whole of Punjab.
- *
- * A day-long cache, because a city does not move, and a shared promise per
- * key, because the two tabs ask at the same moment.
- */
-const areaCache = new Map();
-const AREA_TTL_MS = 24 * 60 * 60 * 1000;
-const AREA_CACHE_MAX = 300;
-const areaInFlight = new Map();
-
-export function clearAreaCache() {
-  areaCache.clear();
-  areaInFlight.clear();
-}
-
-/**
- * A settlement's box from Photon.
- *
- * Photon indexes the same OpenStreetMap places as Nominatim and returns each
- * one's `extent` — `[west, north, east, south]` — which is exactly the box the
- * search needs. It is keyless and it is a different server, so it answers on
- * the mornings Nominatim is pacing its callers, and it is asked second rather
- * than first only because its `extent` is not guaranteed for every place.
- */
-async function photonAreaLookup(name, origin, { fetchImpl, timeoutMs }) {
-  if (!name) return null;
-  try {
-    const params = new URLSearchParams({ q: name, limit: "10", lang: "en" });
-    const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
-      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const json = await readJson(response, "Photon");
-    const wanted = name.toLowerCase();
-    const candidates = (Array.isArray(json?.features) ? json.features : [])
-      .map((feature) => {
-        const properties = feature?.properties ?? {};
-        const extent = Array.isArray(properties.extent) ? properties.extent.map(Number) : null;
-        if (!extent || extent.length !== 4 || extent.some((n) => !Number.isFinite(n))) return null;
-        const [west, north, east, south] = extent;
-        if (north <= south || east <= west) return null;
-        const bounds = { south, north, west, east };
-        const hit = {
-          name: properties.name,
-          addresstype: String(properties.osm_value ?? properties.type ?? "").toLowerCase(),
-        };
-        return { hit, bounds, span: spanKmOf(bounds) };
-      })
-      .filter(Boolean)
-      .filter((entry) => SETTLEMENT_RANKS.includes(areaRankOf(entry.hit)))
-      .filter((entry) => entry.span <= MAX_AREA_SPAN_KM)
-      .filter((entry) => insideBounds(origin.lat, origin.lng, entry.bounds, 2));
-    if (!candidates.length) return null;
-    const exact = candidates.filter((entry) => String(entry.hit.name ?? "").toLowerCase() === wanted);
-    const pool = exact.length ? exact : candidates;
-    pool.sort((a, b) => a.span - b.span);
-    const best = pool[0];
-    return { bounds: best.bounds, label: best.hit.name || name };
-  } catch {
-    return null;
-  }
-}
-
-/** The name without the qualifier: "Anandpur Sahib, Punjab" → "Anandpur Sahib". */
-function shortPlaceName(place) {
-  return String(place ?? "").split(",")[0].trim();
-}
-
-async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
-  // A refusal here is not the end of the lookup: there is a second source, and
-  // then a reverse lookup, so a pacing error reads as "no answer" rather than
-  // throwing the whole thing away.
-  const ask = async (params) => {
-    try {
-      const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
-        headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      return await readJson(response, "Nominatim");
-    } catch {
-      return null;
-    }
-  };
-
-  const origin = { lat, lng };
-  const asked = shortPlaceName(place);
-
-  /**
-   * The best answer out of a list.
-   *
-   * Only settlements get this far — a district is refused inside
-   * `boundsFromNominatim` — and among them the one whose name is exactly what
-   * was asked for wins over a nearer-sounding suburb, then a town over a
-   * village, then the tightest box. That is what keeps "Anandpur Sahib" from
-   * resolving to a box that also holds Nangal.
-   */
-  const usable = (hits) => {
-    const scored = (Array.isArray(hits) ? hits : [])
-      .map((hit) => ({ hit, bounds: boundsFromNominatim(hit, origin), rank: areaRankOf(hit) }))
-      .filter((entry) => entry.bounds);
-    if (!scored.length) return null;
-    const wanted = asked.toLowerCase();
-    const exact = scored.filter((entry) => String(entry.hit.name ?? "").toLowerCase() === wanted);
-    const pool = exact.length ? exact : scored;
-    pool.sort(
-      (a, b) =>
-        SETTLEMENT_RANKS.indexOf(a.rank) - SETTLEMENT_RANKS.indexOf(b.rank) ||
-        spanKmOf(a.bounds) - spanKmOf(b.bounds),
-    );
-    return pool[0];
-  };
-
-  if (asked) {
-    // `featuretype=settlement` is Nominatim's own way of saying "a town, not a
-    // tehsil": it filters out exactly the boundary that caused the overlap.
-    const params = new URLSearchParams({
-      format: "jsonv2",
-      q: asked,
-      limit: "10",
-      addressdetails: "1",
-      countrycodes: "in",
-      featuretype: "settlement",
-    });
-    const found = usable(await ask(params));
-    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || asked };
-  }
-
-  // Nominatim paced us or had nothing: Photon answers the same question from
-  // the same data, and hands back the settlement's `extent` — a box.
-  const fromPhoton = await photonAreaLookup(asked, origin, { fetchImpl, timeoutMs });
-  if (fromPhoton) return fromPhoton;
-
-  // The name did not resolve: ask what town these coordinates are in, then
-  // look that name up, which is what gives a box rather than a point.
-  const reverse = new URLSearchParams({ format: "jsonv2", lat: String(lat), lon: String(lng), zoom: "10", addressdetails: "1" });
-  const here = await ask(reverse);
-  const town = String(
-    here?.address?.city ?? here?.address?.town ?? here?.address?.village ?? here?.address?.municipality ?? "",
-  ).trim();
-  if (town) {
-    const params = new URLSearchParams({
-      format: "jsonv2",
-      q: town,
-      limit: "10",
-      addressdetails: "1",
-      countrycodes: "in",
-      featuretype: "settlement",
-    });
-    const found = usable(await ask(params));
-    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || town };
-  }
-  return null;
-}
-
-/**
- * The area a question is about.
- *
- * `bounds` is the town's own boundary box — the only shape the search will
- * ever use. When it cannot be found `bounds` is null, and the caller answers
- * nothing at all: a circle around the pin is precisely what put Nangal's
- * hotels in Anandpur's list, and a wrong list is worse than an empty one that
- * says why.
- *
- * `city: true` means a settlement boundary was found and the list covers the
- * whole of it. A failure is not cached, so one bad minute for Nominatim does
- * not blank a tab for a day; a success is cached for a day, because a town's
- * boundary does not move.
- */
-export async function areaFor({ place, lat, lng, fetchImpl, timeoutMs = AREA_TIMEOUT_MS }) {
-  const label = String(place ?? "").trim();
-  const unknown = { bounds: null, label: label || "this stop", city: false, spanKm: 0 };
-
-  // Without a name there is nothing to look a boundary up by, and guessing one
-  // from the coordinates is how a list ends up in the wrong town.
-  if (!label) return unknown;
-
-  const key = `${label.toLowerCase()}|${lat.toFixed(2)},${lng.toFixed(2)}`;
-  const hit = areaCache.get(key);
-  if (hit && Date.now() - hit.at < AREA_TTL_MS) return hit.value;
-
-  const running = areaInFlight.get(key);
-  if (running) return running;
-
-  const lookup = (async () => {
-    try {
-      const found = await nominatimAreaLookup(label, lat, lng, { fetchImpl, timeoutMs });
-      if (!found) return unknown;
-      return {
-        bounds: found.bounds,
-        label: found.label,
-        city: true,
-        spanKm: Math.round(spanKmOf(found.bounds)),
-      };
-    } catch {
-      return unknown;
-    }
-  })();
-
-  areaInFlight.set(key, lookup);
-  try {
-    const value = await lookup;
-    // Only a real boundary is worth remembering.
-    if (value.city) {
-      areaCache.set(key, { at: Date.now(), value });
-      if (areaCache.size > AREA_CACHE_MAX) areaCache.delete(areaCache.keys().next().value);
-    }
-    return value;
-  } finally {
-    areaInFlight.delete(key);
-  }
-}
-
-/**
- * What Google is asked, one free-text search per category. These are the words
- * a rider would type into Maps, not API type names, because the page is being
- * asked rather than the API.
- */
-export function googleTerms(kind) {
-  if (kind === "stays") return ["hotels", "lodges", "homestays", "guest houses", "motels"];
-  if (kind === "food") return ["restaurants", "best restaurants", "dhaba", "cafes"];
-  return [
-    "petrol pumps",
-    "hospitals",
-    "automobile service centre",
-    "Royal Enfield service centre",
-    "Royal Enfield showroom",
-    "bike service centre",
-  ];
-}
-
-/** What Nominatim is asked, one free-text term per category. */
-export function nominatimTerms(kind) {
-  if (kind === "stays") return ["hotel", "guest house", "lodge"];
-  if (kind === "food") return ["restaurant", "cafe"];
-  return ["petrol station", "hospital", "car repair"];
-}
-
-/** The bounding box around a point, as Nominatim wants it: west,north,east,south. */
-export function viewboxOf(lat, lng, radiusKm) {
-  return viewboxOfBounds(boundsAround(lat, lng, radiusKm));
-}
-
-/** What Photon is asked: one free-text term per category, biased to the point. */
-export function photonTerms(kind) {
-  if (kind === "stays") return ["hotel", "guest house", "hostel", "motel", "lodge", "homestay"];
-  if (kind === "food") return ["restaurant", "cafe", "fast food", "dhaba"];
-  return ["petrol station", "hospital", "car repair", "motorcycle"];
-}
-
-/** Photon's `osm_key`/`osm_value` pair, read as the tags they stand for. */
-export function tagsFromPhoton(properties) {
-  const key = String(properties.osm_key ?? "");
-  const value = String(properties.osm_value ?? "");
-  const tags = {};
-  if (key === "amenity") tags.amenity = value;
-  else if (key === "tourism") tags.tourism = value;
-  else if (key === "shop") tags.shop = value;
-  else if (key === "craft") tags.craft = value;
-  else if (key === "service" && value === "vehicle") tags["service:vehicle:motorcycle"] = "yes";
-  const name = properties.name ?? properties.street;
-  if (name) tags.name = String(name);
-  if (properties.opening_hours) tags.opening_hours = String(properties.opening_hours);
-  return tags;
-}
-
-/* ------------------------------------------------------------------ *
- * The answer
- * ------------------------------------------------------------------ */
-
-const EARTH_KM = 6371;
-const toRad = (deg) => (deg * Math.PI) / 180;
 
 /** Great-circle kilometres — the same figure the page shows. */
 export function kmBetween(a, b) {
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
+  const rad = (value) => (value * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const lat1 = rad(a.lat);
+  const lat2 = rad(b.lat);
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-const STAY_COPY = {
-  hotel: "Hotel",
-  guest_house: "Guest house",
-  hostel: "Hostel",
-  motel: "Motel",
-  apartment: "Apartment",
-  chalet: "Chalet",
-};
+/* ── the town ────────────────────────────────────────────────────────── */
 
-/** Places that are beds, however their `tourism` tag reads. */
-const LODGE_NAME = /\blodge\b|\bhomestay\b|home stay|rest house|yatri niwas|guest house/i;
+/** The name a rider would use for an area: "Leh", "Nangal". */
+function areaLabelOf(hit, fallback) {
+  const name = String(hit?.city ?? hit?.name ?? hit?.address_line1 ?? "").trim();
+  return name || String(fallback ?? "").trim();
+}
 
-const EAT_COPY = {
-  restaurant: "Restaurant",
-  cafe: "Cafe",
-  fast_food: "Fast food",
-  food_court: "Food court",
-  ice_cream: "Ice cream",
-  pub: "Pub",
-  bar: "Bar",
-};
+function isEmptyArea(place) {
+  return { label: String(place ?? "").trim(), bounds: null, spanKm: 0, city: false, placeId: null };
+}
 
-/** A dhaba is a restaurant with a different sign on it. */
-const DHABA_NAME = /dhaba|dhabha|bhojanal|bhojnal|bhojanalya/i;
-
-/** The words on a workshop's sign, and what they mean for a rider. */
-const SHOP_COPY = {
-  motorcycle: "Motorcycle workshop",
-  car_repair: "Automobile workshop",
-  car_parts: "Spare parts",
-  tyres: "Tyres & puncture",
-};
-
-/** The `craft` tag a workshop carries — the one Royal Enfield dealers use. */
-const CRAFT_COPY = {
-  motorcycle_repair: "Motorcycle workshop",
-  car_repair: "Automobile workshop",
-};
-
-const RE_NAME = /royal\s*enfield|\benfield\b|\bRE\s+(service|motors|showroom)\b/i;
+async function geocode(url, params, { fetchImpl, timeoutMs }) {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetchImpl(`${url}?${query}`, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`Geoapify answered ${response.status}`);
+  const json = await response.json();
+  return Array.isArray(json?.results) ? json.results : [];
+}
 
 /**
- * One OpenStreetMap element as an item, or null when it is not one we asked
- * for. Written for Overpass's `tags`, and reused for Nominatim's `class` and
- * `type` by passing them in as tags.
+ * The town the stop is in, and the boundary id the places query clips to.
+ *
+ * Asked by name first — that is the question the page already has an answer to
+ * — and by coordinate when the stop has no name. A result is only accepted if
+ * it reads like a settlement and is not so wide that it must be a district, so
+ * the honest failure ("no area") stays possible instead of a town-sized answer
+ * being invented.
  */
-export function itemFromTags(tags, id, lat, lng, origin) {
-  if (typeof lat !== "number" || typeof lng !== "number") return null;
-  const name = String(tags.name ?? "").trim();
+export async function areaFor({ place, lat, lng, key, fetchImpl, timeoutMs = AREA_TIMEOUT_MS }) {
+  const run = fetchImpl ?? globalThis.fetch;
+  const ask = { key, lang: "en", limit: "5", format: "json" };
+  const wanted = String(place ?? "").trim();
+
+  let results = [];
+  try {
+    if (wanted) {
+      results = await geocode(
+        GEOCODE_URL,
+        { ...ask, text: wanted, type: "city" },
+        { fetchImpl: run, timeoutMs },
+      );
+      // A hamlet is not a city: if the strict question finds nothing, ask the
+      // open one and read the result's own type instead.
+      if (!results.length) {
+        results = await geocode(
+          GEOCODE_URL,
+          { ...ask, text: wanted },
+          { fetchImpl: run, timeoutMs },
+        );
+      }
+    } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      results = await geocode(
+        REVERSE_URL,
+        { ...ask, lat: String(lat), lon: String(lng) },
+        { fetchImpl: run, timeoutMs },
+      );
+    }
+  } catch {
+    // A geocoder having a bad day is an empty answer, not a crash: the page
+    // says it could not find the area rather than showing another town's list.
+    return isEmptyArea(wanted);
+  }
+
+  for (const hit of results) {
+    const rank = String(hit?.result_type ?? "");
+    if (rank && !SETTLEMENT_RANKS.includes(rank)) continue;
+    const bounds = boundsFromBbox(hit?.bbox);
+    if (!bounds) continue;
+    const spanKm = spanKmOf(bounds);
+    if (spanKm > MAX_AREA_SPAN_KM) continue;
+    const placeId = typeof hit?.place_id === "string" ? hit.place_id : null;
+    if (!placeId) continue;
+    return {
+      label: areaLabelOf(hit, wanted),
+      bounds,
+      spanKm: Number(spanKm.toFixed(1)),
+      city: true,
+      placeId,
+    };
+  }
+
+  return isEmptyArea(wanted);
+}
+
+/* ── one place, read as an item ──────────────────────────────────────── */
+
+const RE_NAME = /royal\s*enfield|\benfield\b|\bRE\s+(service|motors|showroom)\b/i;
+/**
+ * Names that mean a bed without a category to say so. "Guest house" is not in
+ * here on purpose: it is a category of its own, and a hotel called "Chospa
+ * Guest House" should not be relabelled a lodge.
+ */
+const LODGE_NAME = /\blodge\b|\bhomestay\b|home stay|rest house|yatri niwas/i;
+const DHABA_NAME = /dhaba|dhabha|bhojanal|bhojnal|bhojanalya/i;
+
+const STAY_COPY = {
+  "accommodation.hotel": "Hotel",
+  "accommodation.guest_house": "Guest house",
+  "accommodation.hostel": "Hostel",
+  "accommodation.motel": "Motel",
+  "accommodation.apartment": "Apartment",
+  "accommodation.chalet": "Chalet",
+  "accommodation.hostel_dormitory": "Hostel dorm",
+};
+
+const EAT_COPY = {
+  "catering.restaurant": "Restaurant",
+  "catering.cafe": "Cafe",
+  "catering.fast_food": "Fast food",
+  "catering.food_court": "Food court",
+  "catering.ice_cream": "Ice cream",
+};
+
+const BUDGET_STAYS = new Set([
+  "accommodation.guest_house",
+  "accommodation.hostel",
+  "accommodation.motel",
+]);
+
+/** The most specific category a record carries, longest key wins. */
+function leafOf(categories, prefix) {
+  const matches = (categories ?? []).filter((name) => String(name).startsWith(prefix));
+  return matches.sort((a, b) => String(b).length - String(a).length)[0] ?? "";
+}
+
+/**
+ * One Geoapify feature as the item the page draws, or null when it is not one
+ * of the things this tab asked for.
+ */
+export function itemFromFeature(feature, origin) {
+  const props = feature?.properties ?? {};
+  const coords = feature?.geometry?.coordinates;
+  const lng = Number(Array.isArray(coords) ? coords[0] : props.lon);
+  const lat = Number(Array.isArray(coords) ? coords[1] : props.lat);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const categories = Array.isArray(props.categories) ? props.categories.map(String) : [];
+  const tags = props.datasource?.raw ?? {};
+  const name = String(props.name ?? tags.name ?? "").trim();
   const royalEnfield = RE_NAME.test(name);
-  const tourism = tags.tourism ?? "";
-  const amenity = tags.amenity ?? "";
 
   let kind = null;
   let detail = "";
   let budget = false;
 
-  if (STAY_COPY[tourism] || (LODGE_NAME.test(name) && (amenity || tourism || tags.shop))) {
+  const stayLeaf = leafOf(categories, "accommodation");
+  const eatLeaf = leafOf(categories, "catering");
+  const healthLeaf = leafOf(categories, "healthcare");
+  const vehicleLeaf = leafOf(categories, "service.vehicle") || leafOf(categories, "commercial.vehicle");
+
+  if (stayLeaf || categories.includes("accommodation")) {
     kind = "stay";
-    budget = tourism === "guest_house" || tourism === "hostel" || tourism === "motel" || LODGE_NAME.test(name);
-    const label = LODGE_NAME.test(name) ? "Lodge" : STAY_COPY[tourism] ?? "Stay";
-    detail = `${label}${tags.stars ? ` · ${tags.stars}★` : ""}${budget ? " · budget" : ""}`;
-  } else if (EAT_COPY[amenity]) {
+    budget = BUDGET_STAYS.has(stayLeaf) || LODGE_NAME.test(name);
+    const stars = tags.stars ? ` · ${String(tags.stars).replace(/[^\d.]/g, "")}★` : "";
+    const label = LODGE_NAME.test(name) ? "Lodge" : STAY_COPY[stayLeaf] ?? "Stay";
+    detail = `${label}${stars}${budget ? " · budget" : ""}`;
+  } else if (eatLeaf || categories.includes("catering")) {
     kind = "eat";
-    detail = `${DHABA_NAME.test(name) ? "Dhaba" : EAT_COPY[amenity]}${tags.cuisine ? ` · ${tags.cuisine}` : ""}`;
-  } else if (amenity === "fuel") {
+    const cuisine = typeof tags.cuisine === "string" ? tags.cuisine.replace(/;/g, ", ") : "";
+    detail = `${DHABA_NAME.test(name) ? "Dhaba" : EAT_COPY[eatLeaf] ?? "Eatery"}${
+      cuisine ? ` · ${cuisine}` : ""
+    }`;
+  } else if (categories.includes("service.vehicle.fuel")) {
     kind = "fuel";
-    const brand = tags.brand ?? tags.operator ?? "";
+    const brand = String(props.brand ?? tags.brand ?? tags.operator ?? "").trim();
     detail = brand ? `Fuel · ${brand}` : "Fuel station";
-  } else if (amenity === "hospital" || amenity === "clinic") {
+  } else if (healthLeaf || categories.includes("healthcare")) {
     kind = "hospital";
-    detail = `${amenity === "hospital" ? "Hospital" : "Clinic"}${tags.emergency === "yes" ? " · emergency" : ""}`;
-  } else if (
-    CRAFT_COPY[tags.craft] ||
-    SHOP_COPY[tags.shop] ||
-    tags["service:vehicle:motorcycle"] === "yes" ||
-    tags["service:vehicle:car"] === "yes" ||
-    royalEnfield
-  ) {
+    const label = healthLeaf === "healthcare.hospital" ? "Hospital" : "Clinic";
+    detail = `${label}${tags.emergency === "yes" ? " · emergency" : ""}`;
+  } else if (vehicleLeaf || categories.includes("service.vehicle") || categories.includes("commercial.vehicle")) {
     kind = "service";
+    const vehicleType = String(props.commercial?.type ?? tags.shop ?? "");
     detail = royalEnfield
       ? "Royal Enfield · service centre"
-      : CRAFT_COPY[tags.craft] ?? SHOP_COPY[tags.shop] ?? "Automobile workshop";
+      : /motorcycle/i.test(vehicleType)
+        ? "Motorcycle workshop"
+        : /car/i.test(vehicleType)
+          ? "Car workshop"
+          : "Automobile workshop";
   }
 
   if (!kind) return null;
   // A bed with no name is a bed nobody can ask for; the others read fine
   // unnamed, so they keep a plain title.
   if (kind === "stay" && !name) return null;
+
   const title =
     name ||
     (kind === "fuel"
@@ -608,13 +322,14 @@ export function itemFromTags(tags, id, lat, lng, origin) {
       : kind === "hospital"
         ? "Hospital"
         : kind === "eat"
-          ? DHABA_NAME.test(name)
-            ? "Dhaba"
-            : EAT_COPY[amenity] ?? "Eatery"
+          ? EAT_COPY[eatLeaf] ?? "Eatery"
           : "Workshop");
 
+  const rating = Number.parseFloat(String(tags.stars ?? ""));
+  const opening = String(props.opening_hours ?? tags.opening_hours ?? "").trim();
+
   return {
-    id,
+    id: String(props.place_id ?? `geoapify/${lat.toFixed(5)},${lng.toFixed(5)}`),
     kind,
     title,
     lat,
@@ -623,658 +338,84 @@ export function itemFromTags(tags, id, lat, lng, origin) {
     detail,
     ...(royalEnfield ? { royalEnfield: true } : {}),
     ...(budget ? { budget: true } : {}),
-    ...(tags.opening_hours ? { opening: tags.opening_hours } : {}),
+    ...(opening ? { opening } : {}),
+    ...(Number.isFinite(rating) && rating > 0 && rating <= 5 ? { rating } : {}),
   };
 }
 
-/** An Overpass payload as items. */
-export function itemsFromOverpass(json, origin) {
-  const elements = Array.isArray(json?.elements) ? json.elements : [];
-  const items = [];
-  for (const element of elements) {
-    const lat = element.lat ?? element.center?.lat;
-    const lng = element.lon ?? element.center?.lon;
-    const item = itemFromTags(
-      element.tags ?? {},
-      `${element.type ?? "nwr"}/${element.id ?? `${lat},${lng}`}`,
-      lat,
-      lng,
-      origin,
-    );
-    if (item) items.push(item);
-  }
-  return items;
-}
-
-/** Nominatim's `class`/`type` pair, read as the tags they stand for. */
-export function tagsFromNominatim(hit) {
-  const category = String(hit.class ?? "");
-  const type = String(hit.type ?? "");
-  const tags = {};
-  if (type === "fuel" || category === "fuel") tags.amenity = "fuel";
-  else if (category === "amenity" && (type === "hospital" || type === "clinic")) tags.amenity = type;
-  else if (EAT_COPY[type] || (category === "amenity" && EAT_COPY[type])) tags.amenity = type;
-  else if (["hotel", "guest_house", "hostel", "motel", "apartment", "chalet"].includes(type)) {
-    tags.tourism = type;
-  } else if (category === "craft" && (type === "motorcycle_repair" || type === "car_repair")) {
-    tags.craft = type;
-  } else if (["motorcycle", "car_repair", "car_parts", "tyres"].includes(type)) {
-    tags.shop = type;
-  } else if (type === "restaurant" || type === "cafe") {
-    tags.amenity = type;
-  }
-  if (hit.name || hit.display_name) tags.name = hit.name ?? String(hit.display_name ?? "").split(",")[0];
-  if (hit.extratags?.brand) tags.brand = hit.extratags.brand;
-  if (hit.extratags?.cuisine) tags.cuisine = hit.extratags.cuisine;
-  if (hit.extratags?.opening_hours) tags.opening_hours = hit.extratags.opening_hours;
-  return tags;
-}
-
-/** Photon features as items, skipping the ones that are not what was asked for. */
-export function itemsFromPhoton(features, origin) {
-  const items = [];
-  for (const feature of Array.isArray(features) ? features : []) {
-    const coordinates = feature?.geometry?.coordinates;
-    if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
-    const [lng, lat] = coordinates.map(Number);
-    const item = itemFromTags(
-      tagsFromPhoton(feature.properties ?? {}),
-      `photon/${feature.properties?.osm_type ?? "node"}/${feature.properties?.osm_id ?? `${lat},${lng}`}`,
-      lat,
-      lng,
-      origin,
-    );
-    if (item) items.push(item);
-  }
-  return items;
-}
-
-/** Nominatim hits as items, skipping the ones that are not what was asked for. */
-export function itemsFromNominatim(hits, origin) {
-  const items = [];
-  for (const hit of Array.isArray(hits) ? hits : []) {
-    const lat = Number(hit.lat);
-    const lng = Number(hit.lon);
-    const item = itemFromTags(
-      tagsFromNominatim(hit),
-      `osm/${hit.osm_type ?? "node"}/${hit.osm_id ?? `${lat},${lng}`}`,
-      lat,
-      lng,
-      origin,
-    );
-    if (item) items.push(item);
-  }
-  return items;
-}
-
-/* ------------------------------------------------------------------ *
- * Google, asked as a page
- * ------------------------------------------------------------------ */
-
-/** Words that mean a record is a bed, a pump, a hospital or a workshop. */
-const GOOGLE_TOKENS = {
-  stay: [
-    "lodging",
-    "hotel",
-    "guest_house",
-    "guest house",
-    "hostel",
-    "motel",
-    "resort",
-    "homestay",
-    "home stay",
-    "lodge",
-    "bed and breakfast",
-    "apartment",
-  ],
-  eat: [
-    "restaurant",
-    "cafe",
-    "fast_food",
-    "food court",
-    "eatery",
-    "dhaba",
-    "biryani",
-    "bakery",
-    "coffee",
-    "pizzeria",
-    "ice cream",
-    "food",
-  ],
-  fuel: ["gas_station", "gas station", "petrol", "fuel", "filling station", "petrol pump"],
-  hospital: ["hospital", "clinic", "doctor", "medical", "nursing home", "dispensary", "pharmacy"],
-  service: [
-    "car_repair",
-    "motorcycle",
-    "motor cycle",
-    "bike repair",
-    "two wheeler",
-    "workshop",
-    "royal enfield",
-    "garage",
-    "service center",
-    "service centre",
-    "motorcycle_repair",
-    "bike service",
-    "enfield",
-    "showroom",
-    "automobile",
-    "spare parts",
-    "tyre",
-  ],
-};
-
-/** A Google place id, e.g. `0x391ad0a2b:0x1f2ab3c` — never a name. */
-const HEX_ID = /^0x[0-9a-f]+:0x[0-9a-f]+$/i;
-const URLISH = /^(https?:\/\/|www\.|\/)/i;
-
-/**
- * Every array in the page's data, visited once.
- *
- * Google's Maps page hands the browser one enormous state array; the places
- * live in it as arrays of their own. Rather than depend on an index that
- * changes between builds of their page, this walks the whole thing and lets
- * the shape of a record identify itself.
- */
-function eachArray(node, visit, depth = 0) {
-  if (depth > 24 || !node || typeof node !== "object") return;
-  if (Array.isArray(node)) {
-    visit(node);
-    for (const child of node) eachArray(child, visit, depth + 1);
-    return;
-  }
-  for (const child of Object.values(node)) eachArray(child, visit, depth + 1);
-}
-
-/**
- * Every coordinate pair a record's children could be read as.
- *
- * `[lat, lng]` and `[null, null, lat, lng]` both appear in Google's data, and
- * so do number pairs that are not coordinates at all — a rating and its review
- * count look exactly like a latitude and a longitude. So the caller gets all of
- * them and picks the one nearest the point being searched, which is the only
- * one that could be the place.
- */
-function coordinateCandidates(record) {
-  const out = [];
-  for (const child of record) {
-    if (!Array.isArray(child)) continue;
-    const numbers = child.filter((entry) => typeof entry === "number");
-    if (numbers.length < 2) continue;
-    const others = child.filter((entry) => entry !== null && entry !== undefined);
-    if (others.length !== numbers.length) continue;
-    // `[lat, lng]` or `[null, null, lat, lng]`, most specific last.
-    const [lat, lng] = numbers.length >= 4 ? numbers.slice(-2) : numbers;
-    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
-    if (lat === 0 && lng === 0) continue;
-    out.push({ lat, lng });
-  }
-  return out;
-}
-
-/** All the words in a record's subtree, lowercased, for classification. */
-function wordsIn(node, out = [], depth = 0) {
-  if (depth > 6) return out;
-  if (typeof node === "string") {
-    out.push(node.toLowerCase());
-    return out;
-  }
-  if (!node || typeof node !== "object") return out;
-  if (Array.isArray(node)) {
-    for (const child of node) wordsIn(child, out, depth + 1);
-    return out;
-  }
-  for (const child of Object.values(node)) {
-    if (typeof child === "string") out.push(child.toLowerCase());
-    else wordsIn(child, out, depth + 1);
-  }
-  return out;
-}
-
-/** Every number in a record's subtree, skipping the ones used as coordinates. */
-function numbersIn(node, skip, out = [], depth = 0) {
-  if (depth > 5 || node === null || node === undefined) return out;
-  if (typeof node === "number") {
-    if (!skip.has(node)) out.push(node);
-    return out;
-  }
-  if (typeof node !== "object") return out;
-  const children = Array.isArray(node) ? node : Object.values(node);
-  for (const child of children) {
-    // A pair that was read as coordinates is not also a rating.
-    if (Array.isArray(child) && child.length <= 4 && coordinateCandidates([child]).length) {
-      for (const number of child) if (typeof number === "number") skip.add(number);
-      continue;
-    }
-    numbersIn(child, skip, out, depth + 1);
-  }
-  return out;
-}
-
-/**
- * Which of the five things this record is, from the words around it.
- *
- * What the record *is* wins over what it is called: plenty of Indian
- * restaurants are named "Hotel Something", so the words that are not the name
- * are read first and only then the name itself.
- */
-export function googleKindOf(words, name = "") {
-  const check = (haystack) => {
-    for (const kind of ["stay", "eat", "fuel", "hospital", "service"]) {
-      if (haystack.some((word) => GOOGLE_TOKENS[kind].some((token) => word.includes(token)))) return kind;
-    }
-    return null;
-  };
-  const lowerName = String(name).toLowerCase();
-  const context = words.filter((word) => word !== lowerName);
-  return check(context) ?? check([...words, lowerName]);
-}
-
-/**
- * The data array out of a Google Maps page.
- *
- * The page ships as `window.APP_INITIALIZATION_STATE=[…];window.APP_FLAGS=…`.
- * Only the first of those is wanted, and a build of their page that renames it
- * simply yields nothing — which is why OpenStreetMap is still underneath.
- */
-export function googleStateFrom(html) {
-  const match = String(html ?? "").match(/window\.APP_INITIALIZATION_STATE\s*=\s*(\[[\s\S]*?\]);\s*window\./);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Google's results as items.
- *
- * A record is recognised by what it has, not where it sits: a name that is a
- * name, coordinates in the right ranges, and a word somewhere near it saying
- * it is a hotel or a pump. The same place listed under two searches is one
- * place.
- */
-export function itemsFromGoogleState(state, origin) {
-  const items = [];
-  if (!state) return items;
-
-  eachArray(state, (record) => {
-    // A place record is flat and modest; the containers around it are not.
-    if (record.length > 220) return;
-    // Direct children only: a record is flat, and reading grandchildren would
-    // turn one place into several.
-    const strings = record.filter((child) => typeof child === "string" && child.trim());
-    const named = strings
-      .filter((text) => !HEX_ID.test(text) && !URLISH.test(text))
-      .filter((text) => text.trim().length >= 2 && text.trim().length <= 90)
-      .sort((a, b) => b.length - a.length);
-    if (!named.length) return;
-
-    const candidates = coordinateCandidates(record);
-    if (!candidates.length) return;
-    // The real coordinates are the ones near the point that was searched for.
-    const coords = candidates.reduce((best, next) =>
-      kmBetween(origin, next) < kmBetween(origin, best) ? next : best,
-    );
-
-    const name = named[0].trim();
-    // A category word on its own is not a place.
-    if (Object.values(GOOGLE_TOKENS).flat().includes(name.toLowerCase())) return;
-
-    const words = wordsIn(record);
-    const kind = googleKindOf(words, name);
-    if (!kind) return;
-
-    const royalEnfield = RE_NAME.test(name);
-    // Google's rating is a number between 1 and 5 with a decimal on it, kept
-    // somewhere in the record — and never one of the coordinates.
-    const rating = numbersIn(record, new Set()).find(
-      (value) => value >= 1 && value <= 5 && !Number.isInteger(value),
-    );
-    const budget = kind === "stay" && /hostel|guest|homestay|lodge|budget|oyo/i.test(name);
-
-    const stars = rating ? ` · ${rating}★` : "";
-    const stayLabel = LODGE_NAME.test(name) ? "Lodge" : budget ? "Guest house · budget" : "Hotel";
-    const eatLabel = DHABA_NAME.test(name) ? "Dhaba" : /cafe|coffee/i.test(name) ? "Cafe" : "Restaurant";
-    const detail =
-      kind === "stay"
-        ? `${stayLabel}${stars}`
-        : kind === "eat"
-          ? `${eatLabel}${stars}`
-          : kind === "fuel"
-            ? "Fuel station"
-            : kind === "hospital"
-              ? "Hospital"
-              : royalEnfield
-                ? "Royal Enfield · service centre"
-                : /car/i.test(name)
-                  ? "Automobile workshop"
-                  : "Motorcycle workshop";
-
-    items.push({
-      id: `google/${coords.lat.toFixed(5)},${coords.lng.toFixed(5)}`,
-      kind,
-      title: name,
-      lat: coords.lat,
-      lng: coords.lng,
-      distanceKm: Number(kmBetween(origin, coords).toFixed(2)),
-      detail,
-      ...(royalEnfield ? { royalEnfield: true } : {}),
-      ...(budget ? { budget: true } : {}),
-      // A rating is what a rider reads a food place by, so it goes on the
-      // record rather than staying inside the detail line.
-      ...(rating ? { rating } : {}),
-    });
-  });
-
-  return items;
-}
-
-/** A whole page as items — the state, or nothing. */
-export function itemsFromGoogleMapsHtml(html, origin) {
-  const items = itemsFromGoogleState(googleStateFrom(html), origin);
-  // The same place can be listed in two categories; keep the nearest copy.
-  const seen = new Map();
-  for (const item of items) {
-    const key = `${item.title.toLowerCase()}@${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
-    const kept = seen.get(key);
-    if (!kept || item.distanceKm < kept.distanceKm) seen.set(key, item);
-  }
-  return [...seen.values()];
-}
-
-/**
- * Nearest first — one answer to "what is around here", whatever the tab.
- *
- * The list on the page and the pins on the map read in the same order, so the
- * nearest bed or pump is always the first thing offered, and the same place
- * tagged twice is one place.
- */
+/** Nearest first, with the rider's own marque at the top of the service tab. */
 export function rankItems(items, kind) {
-  // Only what was asked for: a "stays" answer that came back with a fuel
-  // station in it — a regex that matched more than it meant to — must not
-  // quietly appear in the beds list.
-  const belongs = (item) =>
-    kind === "stays" ? item.kind === "stay" : kind === "food" ? item.kind === "eat" : item.kind !== "stay" && item.kind !== "eat";
-  const wanted = items.filter(belongs);
-  const sorted = [...wanted].sort((a, b) => a.distanceKm - b.distanceKm);
-  const seen = new Set();
-  return sorted.filter((item) => {
-    const key = `${item.title.toLowerCase()}@${item.lat.toFixed(3)},${item.lng.toFixed(3)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  return [...items].sort((a, b) => {
+    if (kind === "essentials" && Boolean(a.royalEnfield) !== Boolean(b.royalEnfield)) {
+      return a.royalEnfield ? -1 : 1;
+    }
+    return a.distanceKm - b.distanceKm;
   });
 }
 
-/* ------------------------------------------------------------------ *
- * Asking
- * ------------------------------------------------------------------ */
+/* ── the search ──────────────────────────────────────────────────────── */
 
-async function readJson(response, what) {
-  if (!response.ok) throw new Error(`${what} answered ${response.status}`);
-  return response.json();
-}
-
-/** One Overpass mirror, one question over the area. Throws so the caller can try the next. */
-async function askOverpass(url, kind, bounds, origin, { fetchImpl, timeoutMs }) {
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      "User-Agent": USER_AGENT,
-    },
-    body: `data=${encodeURIComponent(overpassQuery(kind, bounds))}`,
+async function askPlaces(kind, area, origin, { key, fetchImpl, timeoutMs }) {
+  const run = fetchImpl ?? globalThis.fetch;
+  const filter = area.placeId
+    ? `place:${area.placeId}`
+    : `rect:${area.bounds.west},${area.bounds.south},${area.bounds.east},${area.bounds.north}`;
+  const query = new URLSearchParams({
+    categories: KIND_CATEGORIES[kind].join(","),
+    filter,
+    limit: String(PAGE_LIMIT),
+    lang: "en",
+  });
+  const response = await run(`${PLACES_URL}?${query.toString()}&apiKey=${encodeURIComponent(key)}`, {
+    headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  return itemsFromOverpass(await readJson(response, "Overpass"), origin);
-}
-
-/** Nominatim, one term — the last resort, so it gets one try, not three. */
-async function askNominatim(kind, bounds, origin, { fetchImpl, timeoutMs }) {
-  const viewbox = viewboxOfBounds(bounds);
-  const [term] = nominatimTerms(kind);
-  const params = new URLSearchParams({
-    format: "jsonv2",
-    q: term,
-    viewbox,
-    bounded: "1",
-    limit: "25",
-    addressdetails: "0",
-    extratags: "1",
-  });
-  const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
-    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  return itemsFromNominatim(await readJson(response, "Nominatim"), origin);
+  if (!response.ok) throw new Error(`Geoapify places answered ${response.status}`);
+  const json = await response.json();
+  const features = Array.isArray(json?.features) ? json.features : [];
+  return features
+    .map((feature) => itemFromFeature(feature, origin))
+    .filter((item) => item !== null);
 }
 
 /**
- * Photon, every term at once.
+ * A whole town's worth of one kind of place.
  *
- * The terms were asked one after another, which made the whole source as slow
- * as three calls added together. Photon is keyless and has no pacing rule, so
- * they go out together and the answers are merged.
- */
-async function askPhoton(kind, lat, lng, bounds, { fetchImpl, timeoutMs }) {
-  const answers = await Promise.allSettled(
-    photonTerms(kind).map(async (term) => {
-      const params = new URLSearchParams({
-        q: term,
-        lat: String(lat),
-        lon: String(lng),
-        limit: "25",
-        // A bias, not a box: Photon sorts by distance from the point, and the
-        // radius is applied here rather than left to the service.
-        lang: "en",
-      });
-      const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
-        headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      const json = await readJson(response, "Photon");
-      return itemsFromPhoton(json.features, { lat, lng }).filter((item) =>
-        insideBounds(item.lat, item.lng, bounds, 1),
-      );
-    }),
-  );
-  const all = [];
-  for (const answer of answers) if (answer.status === "fulfilled") all.push(...answer.value);
-  if (answers.every((answer) => answer.status === "rejected")) {
-    throw answers[0].reason;
-  }
-  return all;
-}
-
-/**
- * Google, one search page per category.
- *
- * The page is asked exactly as a browser asks it — `/maps/search/<words>/@lat,
- * lng,<zoom>z` — and the results are read out of the answer. The zoom is set
- * from the area so Google's own list is about as wide as the town, and the
- * box is then applied here, because Google's idea of "near" is generous.
- */
-async function askGoogle(kind, lat, lng, bounds, { fetchImpl, timeoutMs }) {
-  // Google's zoom levels: 15 is a neighbourhood, 13 a town, 11 an hour's drive.
-  const span = spanKmOf(bounds);
-  const zoom = span <= 3 ? 15 : span <= 8 ? 14 : span <= 18 ? 13 : span <= 40 ? 12 : 11;
-  const all = [];
-  for (const term of googleTerms(kind)) {
-    const url = `${GOOGLE_MAPS_URL}/${encodeURIComponent(term)}/@${lat.toFixed(5)},${lng.toFixed(5)},${zoom}z?hl=en`;
-    const response = await fetchImpl(url, {
-      headers: BROWSER_HEADERS,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`Google answered ${response.status}`);
-    const html = await response.text();
-    all.push(
-      ...itemsFromGoogleMapsHtml(html, { lat, lng }).filter((item) =>
-        insideBounds(item.lat, item.lng, bounds, 1),
-      ),
-    );
-  }
-  return all;
-}
-
-/**
- * Every Overpass mirror at once, the first non-empty answer kept.
- *
- * Asking them in turn meant three timeouts in a row when the network was
- * having a bad day — a minute and a half before the rider saw anything. They
- * run the same data on different servers, so whichever answers first is the
- * answer.
- */
-async function askAnyMirror(mirrors, kind, bounds, origin, { fetchImpl, timeoutMs, onError }) {
-  return new Promise((resolve, reject) => {
-    if (!mirrors.length) {
-      reject(new Error("no mirror to ask"));
-      return;
-    }
-    let settled = false;
-    let pending = mirrors.length;
-    for (const mirror of mirrors) {
-      askOverpass(mirror, kind, bounds, origin, { fetchImpl, timeoutMs }).then(
-        (items) => {
-          if (settled) return;
-          if (items.length) {
-            settled = true;
-            resolve(items);
-            return;
-          }
-          if (--pending === 0) {
-            settled = true;
-            resolve([]);
-          }
-        },
-        (error) => {
-          onError?.(mirror, error);
-          if (settled) return;
-          if (--pending === 0) {
-            settled = true;
-            reject(new Error("every mirror was busy"));
-          }
-        },
-      );
-    }
-  });
-}
-
-/**
- * How long the whole question is allowed to take.
- *
- * A rider opening this tab expects a list, not a spinner: the sources are
- * asked together and the first good answer wins, so a reachable one arrives in
- * a few hundred milliseconds. The limits below are what happens when the
- * network is having a bad day — never four minutes, as three sequential
- * mirrors and a paced geocoder once added up to.
- */
-export const SEARCH_TIMEOUT_MS = 4_000;
-export const SEARCH_BUDGET_MS = 5_000;
-export const FALLBACK_BUDGET_MS = 2_500;
-
-/**
- * The first non-empty answer, or null once every task has failed or gone
- * quiet past the budget. Each task is `{ label, run }`, and `run` resolves to
- * items — an empty list counts as "no answer", not as a result.
- */
-function firstAnswer(tasks, budgetMs) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let pending = tasks.length;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-    // The timer is a cap, not a delay: whatever is still in flight when it
-    // fires has already lost. It is cleared the moment somebody answers, so a
-    // normal search holds the process open for no longer than it takes.
-    const timer = setTimeout(() => finish(null), budgetMs);
-    if (!pending) {
-      finish(null);
-      return;
-    }
-    for (const task of tasks) {
-      task.run().then(
-        (items) => {
-          if (Array.isArray(items) && items.length) finish({ task, items });
-          else if (--pending === 0) finish(null);
-        },
-        () => {
-          if (--pending === 0) finish(null);
-        },
-      );
-    }
-  });
-}
-
-/** Nothing below is trusted to honour its own timeout, so the caller caps it. */
-function withCap(promise, ms) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => resolve([]), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-/**
- * Search a whole town, asking every source that can answer at the same time.
- *
- * The area is the town's own box — looked up once, cached for a day — so the
- * question is "every bed in Leh", not "every bed within 15 km of a pin", which
- * gave half a town on one side and the next one on the other.
- *
- * Google, the Overpass mirrors and Photon are all keyless, free, and faster
- * than the rider is patient, so they are asked together and the first one with
- * something to say is the answer. Nominatim, which paces its callers and is
- * the slowest, is only asked if the first wave came back with nothing.
- *
- * Never throws for a busy service: the caller gets whatever the first
- * answering source found, and `source` says which one it was so the page can
- * be honest about it. `tried` is there for the log and for the page's own
- * "what did you try" line; `notes` keeps the technical detail.
+ * Never throws for a busy service: the caller gets the items that came back and
+ * `tried`/`notes` say what happened, so the page can be honest rather than
+ * showing a spinner that never resolves.
  */
 export async function searchNearby({
   kind,
   lat,
   lng,
   place,
+  key,
   fetchImpl,
-  mirrors = OVERPASS_MIRRORS,
   timeoutMs = SEARCH_TIMEOUT_MS,
-  budgetMs = SEARCH_BUDGET_MS,
-  fallbackBudgetMs = FALLBACK_BUDGET_MS,
   areaTimeoutMs = AREA_TIMEOUT_MS,
 } = {}) {
-  if (!KIND_RADIUS_KM[kind]) throw new Error(`Unknown nearby kind: ${kind}`);
+  if (!KINDS.includes(kind)) throw new Error(`Unknown nearby kind: ${kind}`);
   const origin = { lat, lng };
-  const run = fetchImpl ?? globalThis.fetch;
-
-  // `tried` is what the page shows: the sources that were asked, in order,
-  // once each, in words a rider reads. `notes` keeps the technical detail.
-  const tried = [];
   const notes = [];
-  const note = (source, error) => notes.push(`${source}: ${error?.message ?? error}`);
 
-  const area = await areaFor({ place, lat, lng, fetchImpl: run, timeoutMs: areaTimeoutMs });
-  const areaOut = { label: area.label, spanKm: area.spanKm, city: area.city, bounds: area.bounds };
+  if (!key) {
+    return {
+      source: "none",
+      area: null,
+      items: [],
+      tried: [],
+      notes: ["geoapify: no key configured"],
+    };
+  }
 
-  // No town boundary, no list. A circle drawn around the pin is what used to
-  // put Nangal's hotels in Anandpur's tab, so the honest answer is nothing,
-  // with the reason — not somebody else's town.
-  if (!area.bounds) {
+  const area = await areaFor({ place, lat, lng, key, fetchImpl, timeoutMs: areaTimeoutMs });
+  const areaOut = { label: area.label, spanKm: area.spanKm, city: area.city };
+
+  // No town boundary, no list. Without one the only thing left is a circle
+  // around the pin, which is what used to answer with the next town's places —
+  // so the honest answer is nothing, with the reason.
+  if (!area.placeId) {
     return {
       source: "none",
       area: areaOut,
@@ -1284,103 +425,45 @@ export async function searchNearby({
       notes: ["area: no settlement boundary found"],
     };
   }
-  const bounds = area.bounds;
 
-  const wave = [
-    {
-      label: "Google",
-      run: async () => {
-        try {
-          return await askGoogle(kind, lat, lng, bounds, { fetchImpl: run, timeoutMs });
-        } catch (error) {
-          note("google", error);
-          return [];
-        }
-      },
-    },
-    {
-      label: "OpenStreetMap",
-      run: async () => {
-        try {
-          return await askAnyMirror(mirrors, kind, bounds, origin, {
-            fetchImpl: run,
-            timeoutMs,
-            onError: (mirror, error) => note(new URL(mirror).host, error?.message ?? error),
-          });
-        } catch (error) {
-          note("overpass", error);
-          return [];
-        }
-      },
-    },
-    {
-      label: "Photon",
-      run: async () => {
-        try {
-          return await askPhoton(kind, lat, lng, bounds, { fetchImpl: run, timeoutMs });
-        } catch (error) {
-          note("photon", error);
-          return [];
-        }
-      },
-    },
-  ];
-  for (const task of wave) tried.push(task.label);
-
-  // Belt and braces: whatever a source returns is clipped to the town's box,
-  // because "in Leh" is the question, not "near this pin".
-  const inArea = (items) => items.filter((item) => insideBounds(item.lat, item.lng, bounds, 1));
-
-  const winner = await firstAnswer(wave, budgetMs);
-  if (winner) {
+  try {
+    const items = await askPlaces(kind, area, origin, { key, fetchImpl, timeoutMs });
     return {
-      source:
-        winner.task.label === "Google"
-          ? "google"
-          : winner.task.label === "OpenStreetMap"
-            ? "overpass"
-            : "photon",
+      source: "geoapify",
       area: areaOut,
-      items: rankItems(inArea(winner.items), kind).slice(0, 60),
-      tried,
+      items: rankItems(items, kind).slice(0, RESULT_LIMIT),
+      tried: ["Geoapify"],
+      notes,
+    };
+  } catch (error) {
+    notes.push(`geoapify: ${error?.message ?? error}`);
+    return {
+      source: "none",
+      area: areaOut,
+      items: [],
+      tried: ["Geoapify"],
       notes,
     };
   }
-
-  tried.push("Nominatim");
-  try {
-    const items = await withCap(
-      askNominatim(kind, bounds, origin, { fetchImpl: run, timeoutMs: fallbackBudgetMs }),
-      fallbackBudgetMs,
-    );
-    if (items.length) {
-      return { source: "nominatim", area: areaOut, items: rankItems(inArea(items), kind).slice(0, 60), tried, notes };
-    }
-    notes.push("nominatim: nothing nearby");
-  } catch (error) {
-    note("nominatim", error);
-  }
-
-  return { source: "none", area: areaOut, items: [], tried, notes };
 }
 
 /** The cached answer for a point, or a fresh one. */
 export async function searchNearbyCached(params) {
   // The place is part of the key: two towns a few hundred metres apart still
   // mean different areas, and one must not be answered with the other's list.
-  const key = `${params.kind}:${Number(params.lat).toFixed(3)},${Number(params.lng).toFixed(3)}:${String(
+  const cacheKey = `${params.kind}:${Number(params.lat).toFixed(3)},${Number(params.lng).toFixed(3)}:${String(
     params.place ?? "",
   )
     .trim()
     .toLowerCase()}`;
-  const hit = cache.get(key);
+  const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { ...hit.value, cached: true };
 
   const value = await searchNearby(params);
   // Only a real answer is worth keeping; a failed one should be retried the
   // next time somebody opens the tab.
-  if (value.items.length || value.source !== "none") {
-    cache.set(key, { at: Date.now(), value });
+  if (value.items.length || value.source !== "none" || value.reason) {
+    cache.set(cacheKey, { at: Date.now(), value });
     if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
   }
   return { ...value, cached: false };

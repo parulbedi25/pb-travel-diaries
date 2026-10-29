@@ -38,14 +38,13 @@ import { cn } from "../utils/cn";
  *
  *  1. **Places to visit** — what is worth a detour, from Wikipedia's geotagged
  *     articles: notable by an editor's judgement rather than a paid listing.
- *  2. **Stays** and **Food** — a bed or a meal, from Google and OpenStreetMap:
- *     hotels but also lodges, homestays and motels; restaurants but also
- *     dhabas, cafes and fast-food counters, with Google's rating on the row.
- *  3. **Stays** — a bed, from OpenStreetMap, with guest houses and
- *     hostels shown before hotels, because this is a motorcycle ride and not a
- *     package holiday.
+ *  2. **Stays and Food** — a bed or a meal, from Geoapify: hotels but also
+ *     lodges, homestays and motels; restaurants but also dhabas, cafes and
+ *     fast-food counters, with the star tag on the row where the record has
+ *     one. The same provider that draws the maps answers the search, so there
+ *     is one key and one account of where a list came from.
  *  3. **Fuel · Service · Hospital** — petrol, Royal Enfield workshops and
- *     motorcycle shops, and hospitals or clinics, all from the same map.
+ *     motorcycle shops, and hospitals or clinics, all from the same search.
  *
  * Everything is asked around a **chosen stop**: the dropdown holds every name
  * in the live tracker, so the page can answer for Nangal before the ride starts
@@ -88,11 +87,8 @@ const GOOGLE_TERMS: Record<TabId, string> = {
 
 /** The source each tab's list came from, in words a rider reads once. */
 const SOURCE_COPY: Record<string, string> = {
-  google: "Google",
-  overpass: "OpenStreetMap (Overpass)",
-  photon: "OpenStreetMap (Photon)",
-  nominatim: "OpenStreetMap (Nominatim)",
-  none: "no source answered",
+  geoapify: "Geoapify",
+  none: "no answer",
 };
 
 /**
@@ -429,14 +425,14 @@ export default function NearbyPlacesPage() {
       : tab === "stays"
         ? {
             title: `No beds listed in ${activeArea?.city ? activeArea.label : origin.name}`,
-            body: `Google and OpenStreetMap have no hotel, lodge, homestay or guest house anywhere in ${
+            body: `Geoapify has no hotel, lodge, homestay or guest house anywhere in ${
               activeArea?.city ? activeArea.label : origin.name
             }. Try the next town from the list above, or open the search in Google Maps.`,
           }
         : tab === "food"
           ? {
               title: `Nothing to eat listed in ${activeArea?.city ? activeArea.label : origin.name}`,
-              body: `Google and OpenStreetMap have no restaurant, dhaba or cafe anywhere in ${
+              body: `Geoapify has no restaurant, dhaba or cafe anywhere in ${
                 activeArea?.city ? activeArea.label : origin.name
               }. Try the next town from the list above, or open the search in Google Maps.`,
             }
@@ -608,11 +604,9 @@ export default function NearbyPlacesPage() {
       <p className="border-t border-white/[0.07] px-3.5 py-2 text-[9.5px] leading-relaxed text-zinc-500">
         {tab === "places"
           ? "Places & photos: Wikipedia · Wikimedia Commons (CC BY-SA)"
-          : source[tab] === "google"
-            ? "Results from Google Maps · nearest first"
-            : source[tab] && source[tab] !== "none"
-              ? `${SOURCE_COPY[source[tab]] ?? "OpenStreetMap"} · © OpenStreetMap contributors (ODbL) · nearest first`
-              : `Tried ${activeTried.length ? activeTried.join(" → ") : "every source"}`}
+          : source[tab] && source[tab] !== "none"
+            ? `${SOURCE_COPY[source[tab]] ?? "Geoapify"} · © OpenStreetMap contributors (ODbL) · nearest first`
+            : `Tried ${activeTried.length ? activeTried.join(" → ") : "Geoapify"}`}
       </p>
     </>
   );
@@ -931,15 +925,15 @@ export default function NearbyPlacesPage() {
           >
             Wikimedia Commons
           </a>{" "}
-          (CC BY-SA). Beds, fuel, workshops and hospitals from{" "}
+          (CC BY-SA). Beds, fuel, workshops and hospitals come from{" "}
           <a
-            href="https://www.openstreetmap.org/copyright"
-            {...externalLinkProps("https://www.openstreetmap.org/copyright")}
+            href="https://www.geoapify.com/"
+            {...externalLinkProps("https://www.geoapify.com/")}
             className="underline decoration-dotted underline-offset-2 hover:text-zinc-300"
           >
-            OpenStreetMap
+            Geoapify
           </a>{" "}
-          (ODbL). Maps © OpenStreetMap contributors. Prices and opening hours are not published on the
+          (© OpenStreetMap contributors, ODbL). Maps © Geoapify and OpenStreetMap contributors. Prices and opening hours are not published on the
           map, so a bed is called budget only when the map says it is a guest house or a hostel — check
           before you ride to it.
         </p>
