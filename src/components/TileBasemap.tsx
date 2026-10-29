@@ -1,8 +1,8 @@
 /**
  * A raster basemap — a picture of the ground instead of a drawing.
  *
- * Every one of the site's drawings comes from Geoapify as a vector style, and
- * the vector map switches its labels off. A raster has no layers to switch off,
+ * The site's drawings come from a map vendor as vector styles, and the vector
+ * map switches its labels off. A raster has no layers to switch off,
  * so only rasters with no names printed on them are allowed here: Esri's
  * imagery, and Esri's light and dark canvases. A raster of a *drawn* map would
  * carry its place names in the picture and break the promise the vector map
@@ -102,10 +102,13 @@ const RASTER_CREDITS: Record<"imagery" | "canvas", { lead: string; text: string 
 export function MapAttribution({
   className,
   map,
+  maker = "Geoapify",
 }: {
   className?: string;
-  /** What is being drawn: a Geoapify drawing, Esri imagery, or an Esri canvas. */
+  /** What is being drawn: a vendor's drawing, Esri imagery, or an Esri canvas. */
   map?: MapCredit;
+  /** Which vendor drew it — the drawing's credit names the one that answered. */
+  maker?: string;
 }) {
   const raster = map === "imagery" || map === "canvas" ? RASTER_CREDITS[map] : undefined;
   const link = "underline decoration-dotted underline-offset-2 hover:no-underline";
@@ -143,9 +146,9 @@ export function MapAttribution({
             OpenMapTiles
           </a>{" "}
           ·{" "}
-          <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer" className={link}>
-            Geoapify
-          </a>
+          {/* Named, not linked: each vendor has its own terms page, and the
+              credit only has to say whose drawing this is. */}
+          <span>{maker}</span>
         </>
       )}
     </p>

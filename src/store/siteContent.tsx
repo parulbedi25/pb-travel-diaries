@@ -16,7 +16,7 @@ import { liftAll, normalizeLoaded, withChildrenOn } from "../utils/cascadeRules"
 import { setAt } from "../utils/objectPath";
 import { cascadeChild, cascadeSection } from "../admin/cascade";
 import { hasCountdownExpired } from "../utils/countdownTiming";
-import { MAP_LOOKS, type MapLookId } from "../utils/mapLooks";
+import { lookById, vendorById, type MapVendorId } from "../utils/mapLooks";
 
 /* ═══════════════════════ Types ═══════════════════════ */
 
@@ -242,28 +242,40 @@ export function resolveFooter(footer?: Partial<FooterSettings>): FooterSettings 
  * catalogue of looks lives in utils/mapLooks, because the dashboard and the map
  * components must agree on exactly what each id means.
  *
- * `geoapifyKey` is the one key the map needs: it unlocks every drawing, the
- * tiles underneath them, and every place lookup the site makes. The owner
- * pastes it in the dashboard (Settings → Map → Map API key) and it is saved
- * with the site, so every browser gets the same one. It travels in each style
- * and tile URL, which means it is readable in the page: restrict it to this
- * domain in the Geoapify dashboard rather than treating it as a secret.
+ * `mapVendor` and `mapKey` are what draw the map: the owner picks a vendor in
+ * the dashboard (Settings → Map → Map API key), pastes that vendor's key, and
+ * saves. `geoapifyKey` stays separate because place lookups — the towns on a
+ * pasted route, a stop searched for, a member's saved places — are Geoapify's
+ * wherever the drawing comes from, and changing map vendor must not break them.
+ * Every key travels in each style URL, which means it is readable in the page:
+ * restrict it to this domain at the vendor rather than treating it as a secret.
  *
  * Satellite is a look like any other, available for either theme, and is drawn
  * by the raster path because a photograph has no style layers to switch off.
  */
 export interface MapSettings {
   /** The drawing used while the site is in light mode. */
-  lightLook: MapLookId;
+  lightLook: string;
   /** The drawing used while the site is in dark mode. */
-  darkLook: MapLookId;
-  /** Geoapify key. Blank leaves the map with no style and no tiles. */
+  darkLook: string;
+  /** Who draws the map: Geoapify, MapTiler, Stadia or Mapbox. */
+  mapVendor: MapVendorId;
+  /** That vendor's key or token. Blank leaves the map with no style. */
+  mapKey: string;
+  /**
+   * The Geoapify key, which is what looks places up — the towns on a pasted
+   * route, a stop searched for, a member's saved places. It is the same string
+   * as `mapKey` whenever Geoapify is also drawing the map, and kept apart from
+   * it so changing map vendor never breaks place search.
+   */
   geoapifyKey: string;
 }
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
   lightLook: "osm-bright",
   darkLook: "dark-matter",
+  mapVendor: "geoapify",
+  mapKey: "0383366d3de84c54b9383738d8e60a28",
   geoapifyKey: "0383366d3de84c54b9383738d8e60a28",
 };
 
@@ -277,6 +289,8 @@ interface LegacyMapSettings {
   cartoStyle?: unknown;
   cartoKey?: unknown;
   geoapifyKey?: unknown;
+  mapVendor?: unknown;
+  mapKey?: unknown;
 }
 
 /**
@@ -291,23 +305,44 @@ export function resolveMapSettings(map?: Partial<MapSettings> | LegacyMapSetting
       ? saved.geoapifyKey.trim()
       : DEFAULT_MAP_SETTINGS.geoapifyKey;
 
-  const known = (value: unknown): value is MapLookId =>
-    typeof value === "string" && MAP_LOOKS.some((look) => look.id === value);
+  const vendor = vendorById(typeof saved.mapVendor === "string" ? saved.mapVendor : undefined).id;
+  // A site saved before the map had vendors keeps working with no edits: its
+  // Geoapify key is the key the map draws with as well as the one that looks
+  // places up, because Geoapify is what it was already drawing with.
+  const mapKey =
+    typeof saved.mapKey === "string" && saved.mapKey.trim()
+      ? saved.mapKey.trim()
+      : vendor === "geoapify"
+        ? key
+        : "";
+
+  const known = (value: unknown): value is string => typeof value === "string";
 
   const savedMap = map as Partial<MapSettings> | undefined;
   const lightLook = known(savedMap?.lightLook) ? savedMap!.lightLook : undefined;
   const darkLook = known(savedMap?.darkLook) ? savedMap!.darkLook : undefined;
 
-  // A saved pair of looks is taken as it stands.
-  if (lightLook && darkLook) return { lightLook, darkLook, geoapifyKey: key };
+  // A saved pair of looks is taken as it stands, provided this vendor can draw
+  // them: an id left over from another vendor is translated to the drawing this
+  // one uses for the same theme, so switching vendor never leaves the site
+  // pointing at a style that vendor has never heard of.
+  if (lightLook && darkLook) {
+    return {
+      lightLook: lookById(lightLook, "light", vendor).id,
+      darkLook: lookById(darkLook, "dark", vendor).id,
+      mapVendor: vendor,
+      mapKey,
+      geoapifyKey: key,
+    };
+  }
 
   // Otherwise translate the older choice: satellite as a provider, or one of
   // the drawings the site used to offer, onto the nearest look today. A drawing
   // that was pinned for both themes stays pinned for both.
-  const fromLegacy = (): { lightLook: MapLookId; darkLook: MapLookId } => {
+  const fromLegacy = (): { lightLook: string; darkLook: string } => {
     if (saved.provider === "satellite") return { lightLook: "satellite", darkLook: "satellite" };
     const style = saved.cartoStyle;
-    const legacy: Record<string, MapLookId> = {
+    const legacy: Record<string, string> = {
       positron: "positron",
       voyager: "osm-bright",
       "dark-matter": "dark-matter",
@@ -328,8 +363,10 @@ export function resolveMapSettings(map?: Partial<MapSettings> | LegacyMapSetting
   };
   const migrated = fromLegacy();
   return {
-    lightLook: lightLook ?? migrated.lightLook,
-    darkLook: darkLook ?? migrated.darkLook,
+    lightLook: lookById(lightLook ?? migrated.lightLook, "light", vendor).id,
+    darkLook: lookById(darkLook ?? migrated.darkLook, "dark", vendor).id,
+    mapVendor: vendor,
+    mapKey,
     geoapifyKey: key,
   };
 }

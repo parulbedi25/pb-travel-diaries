@@ -10,10 +10,11 @@
  * drawn, nothing is blurred, covered or watermarked, and the map underneath is
  * untouched.
  *
- * The style comes from the dashboard's "Map look" setting — one Geoapify
- * drawing per theme (see MapSettings in store/siteContent and utils/mapLooks).
- * One style document per look, fetched with the site's key; the style carries
- * its own tiles, fonts and sprites, so there is nothing else to configure.
+ * The style comes from the dashboard's "Map look" setting — one drawing per
+ * theme, from whichever vendor the owner chose (see MapSettings in
+ * store/siteContent and utils/mapLooks). One style document per look, fetched
+ * with that vendor's key; the style carries its own tiles, fonts and sprites,
+ * so there is nothing else to configure.
  *
  * Drawing needs MapLibre's worker, and a bundled page has to be told where that
  * worker is — see installMapWorker, without which nothing is drawn at all.
@@ -59,7 +60,7 @@ import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
 import type { MapBase } from "../utils/tiles";
 import { styleChain } from "../utils/basemapStyles";
-import { lookById, type Theme } from "../utils/mapLooks";
+import { lookById, vendorById, type Theme } from "../utils/mapLooks";
 import { installMapWorker } from "../utils/mapWorker";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
@@ -168,7 +169,12 @@ export default function VectorBasemap({
   const base: MapBase = theme === "light" ? "light" : "dark";
 
   const mapSettings = settings ?? resolveMapSettings(content.map);
-  const look = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme);
+  const vendor = vendorById(mapSettings.mapVendor);
+  const look = lookById(
+    theme === "light" ? mapSettings.lightLook : mapSettings.darkLook,
+    theme,
+    vendor.id,
+  );
   const chain = styleChain(mapSettings, theme);
   const gaveUp = candidate >= chain.length;
   const styleUrl = chain[Math.min(candidate, chain.length - 1)];
@@ -179,7 +185,8 @@ export default function VectorBasemap({
     theme,
     mapSettings.lightLook,
     mapSettings.darkLook,
-    mapSettings.geoapifyKey,
+    mapSettings.mapKey,
+    mapSettings.mapVendor,
   ]);
 
   useEffect(() => {
@@ -362,18 +369,19 @@ export default function VectorBasemap({
   // No key, no drawing — but still a map: the base underneath, with the one
   // instruction that fixes it written over the top. A blank panel looks like a
   // bug; this is a task.
-  if (!mapSettings.geoapifyKey.trim() && !look.imagery) {
+  if (!mapSettings.mapKey.trim() && !look.imagery) {
     return (
       <>
         <TileBasemap view={view} width={width} height={height} className={className} base={base} />
         <div
           className={className}
           role="img"
-          aria-label="The map needs a Geoapify key"
+          aria-label={`The map needs a ${vendor.keyName}`}
           style={{ display: "grid", placeItems: "center", background: "rgba(9,9,11,0.7)" }}
         >
           <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-300">
-            The drawn map needs a key — paste one in the dashboard under{" "}
+            The drawn map needs {vendor.label}&apos;s {vendor.keyName.toLowerCase()} — paste one in
+            the dashboard under{" "}
             <span className="font-semibold text-white">Settings → Map → Map API key</span>. Until
             then the site shows the plain base map.
           </p>
@@ -415,6 +423,7 @@ export default function VectorBasemap({
         <MapAttribution
           className={attributionClassName}
           map={painted ? "drawing" : "canvas"}
+          maker={look.maker}
         />
       )}
     </>

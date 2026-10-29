@@ -13,11 +13,23 @@ import {
   type ThemeTokens,
 } from "../store/siteContent";
 import VectorBasemap from "../components/VectorBasemap";
-import { MAP_LOOKS, looksFor, type MapLook, type MapLookId, type Theme as MapTheme } from "../utils/mapLooks";
+import {
+  MAP_VENDORS,
+  looksFor,
+  lookById,
+  vendorById,
+  vendorDefault,
+  type MapLook,
+  type MapVendorId,
+  type Theme as MapTheme,
+} from "../utils/mapLooks";
 import ColorPicker from "./ColorPicker";
 import { cn } from "../utils/cn";
 import Switch from "./Switch";
 import { inputCls } from "./fieldStyles";
+
+/** The dashboard's field label, from the same place every other editor gets it. */
+const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500";
 
 const pillBtn = "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors";
 
@@ -443,26 +455,36 @@ function LookCard({
 }
 
 /**
- * The one place an owner pastes the map key.
+ * The one place an owner sets up the map: who draws it, and with what key.
  *
  * A card of its own above the looks rather than a line in a form: without a key
- * nothing draws — no style, no tiles, no places — and whoever is installing the
- * site needs to see that before choosing anything. The key is shown masked,
- * because it is long, pasted from another dashboard, and easy to paste twice.
+ * nothing draws, and whoever is installing the site needs to see that before
+ * choosing anything. The vendor comes first because it decides everything
+ * below it — which key is needed, where it comes from, and which drawings are
+ * on offer.
+ *
+ * The Geoapify key is asked for separately, and only when Geoapify is *not* the
+ * vendor drawing the map: place lookups are Geoapify's business whatever draws
+ * the ground, and changing map vendor must not quietly break them.
  */
 function MapKeyCard({
   map,
   saved,
-  onChange,
+  onVendor,
+  onKey,
+  onPlacesKey,
 }: {
   map: MapSettings;
   saved: MapSettings;
-  onChange: (value: string) => void;
+  onVendor: (vendor: MapVendorId) => void;
+  onKey: (value: string) => void;
+  onPlacesKey: (value: string) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
-  const key = map.geoapifyKey.trim();
+  const vendor = vendorById(map.mapVendor);
+  const key = map.mapKey.trim();
   const missing = !key;
-  const changed = key !== saved.geoapifyKey.trim();
+  const changed = key !== saved.mapKey.trim() || vendor.id !== saved.mapVendor;
 
   return (
     <div className={cn("rounded-3xl glass p-5", missing && "border-red-400/30")}>
@@ -471,43 +493,67 @@ function MapKeyCard({
           <KeyRound className="h-3.5 w-3.5" /> Map API key
         </p>
         <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
-          Geoapify
+          {vendor.label}
         </span>
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-        One key for the whole map: the drawings, the tiles under them, and every place lookup — the towns
-        on a pasted route, a stop you search for, a member's saved places. Paste it from your Geoapify
-        dashboard; the free plan covers this site several times over.
+        Pick who draws the map, paste the key that vendor gave you, and save. The drawings below, the
+        tiles under them and the credit line all follow the vendor — there is nothing else to change.
       </p>
 
-      <div className="mt-3 flex items-stretch gap-2">
-        <input
-          id="geoapify-key"
-          value={map.geoapifyKey}
-          onChange={(e) => onChange(e.target.value)}
-          type={revealed ? "text" : "password"}
-          placeholder="Paste your Geoapify key"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="Geoapify API key"
-          className={cn(inputCls, "font-mono text-[12px]")}
-        />
-        <button
-          type="button"
-          onClick={() => setRevealed((v) => !v)}
-          aria-pressed={revealed}
-          title={revealed ? "Hide the key" : "Show the key"}
-          className="grid w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
-        >
-          {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </button>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)] sm:items-start">
+        <div>
+          <label className={labelCls} htmlFor="map-vendor">
+            Vendor
+          </label>
+          <select
+            id="map-vendor"
+            value={vendor.id}
+            onChange={(event) => onVendor(event.target.value as MapVendorId)}
+            className={inputCls}
+          >
+            {MAP_VENDORS.map((option) => (
+              <option key={option.id} value={option.id} className="bg-ink-900">
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className={labelCls} htmlFor="map-key">
+            {vendor.keyName}
+          </label>
+          <div className="flex items-stretch gap-2">
+            <input
+              id="map-key"
+              value={map.mapKey}
+              onChange={(e) => onKey(e.target.value)}
+              type={revealed ? "text" : "password"}
+              placeholder={`Paste your ${vendor.keyName}`}
+              spellCheck={false}
+              autoComplete="off"
+              aria-label={vendor.keyName}
+              className={cn(inputCls, "font-mono text-[12px]")}
+            />
+            <button
+              type="button"
+              onClick={() => setRevealed((v) => !v)}
+              aria-pressed={revealed}
+              title={revealed ? "Hide the key" : "Show the key"}
+              className="grid w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
+            >
+              {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px]">
         {missing ? (
           <span className="font-medium text-red-300">
-            No key yet — the map cannot draw until there is one.
+            No key yet — {vendor.label} cannot draw the map until there is one.
           </span>
         ) : changed ? (
           <span className="font-medium text-saffron-300">Not saved yet — Save Changes to use it.</span>
@@ -517,19 +563,45 @@ function MapKeyCard({
           </span>
         )}
         <a
-          href="https://myprojects.geoapify.com/"
+          href={vendor.keyUrl}
           target="_blank"
           rel="noreferrer"
           className="text-zinc-500 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white"
         >
-          Where to get a key
+          Where to get {vendor.id === "mapbox" ? "a token" : "a key"}
         </a>
       </div>
 
+      <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">{vendor.freeNote}</p>
+
+      {vendor.id !== "geoapify" && (
+        <div className="mt-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+          <label className={labelCls} htmlFor="places-key">
+            Geoapify key — place search
+          </label>
+          <input
+            id="places-key"
+            value={map.geoapifyKey}
+            onChange={(e) => onPlacesKey(e.target.value)}
+            type={revealed ? "text" : "password"}
+            placeholder="Paste your Geoapify key"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Geoapify key for place search"
+            className={cn(inputCls, "font-mono text-[12px]")}
+          />
+          <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
+            Looking a place up — the towns on a pasted route, a stop you search for, a member&rsquo;s
+            saved places — is Geoapify&rsquo;s, whatever draws the map. A site that only draws and
+            never searches can leave this blank.
+          </p>
+        </div>
+      )}
+
       <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 text-[10px] leading-relaxed text-zinc-500">
-        The key travels with each map request, so it can be read in the page — restrict it to this domain
-        in your Geoapify dashboard rather than treating it as a secret. It is saved with the site, so every
-        browser gets the same one, and changing it here changes the map everywhere.
+        The key travels with each map request, so it can be read in the page — restrict it to this
+        domain in your {vendor.label} dashboard rather than treating it as a secret. It is saved with
+        the site, so every browser gets the same one, and changing it here changes the map everywhere.
       </p>
     </div>
   );
@@ -569,8 +641,11 @@ export function MapPanel() {
     name: here?.name ?? "Nangal",
   };
 
-  const lookOf = (id: MapLookId) => MAP_LOOKS.find((l) => l.id === id);
-  const label = (id: MapLookId) => lookOf(id)?.label ?? id;
+  const vendor = vendorById(map.mapVendor);
+  // An id from another vendor is not a look this vendor can draw, so the label
+  // — like the drawing itself — falls back to the vendor's own default.
+  const label = (id: string, theme: MapTheme = activeTheme) =>
+    lookById(id, theme, vendor.id).label;
 
   const themes: { theme: MapTheme; label: string; icon: typeof Sun }[] = [
     { theme: "light", label: "Light", icon: Sun },
@@ -587,7 +662,26 @@ export function MapPanel() {
         <MapKeyCard
           map={map}
           saved={saved}
-          onChange={(value) => set("Changed the map API key", { geoapifyKey: value })}
+          onVendor={(id) =>
+            set("Changed the map vendor", {
+              mapVendor: id,
+              // The stored look ids belong to the vendor that was drawing until
+              // now, so the new vendor starts on its own defaults rather than on
+              // an id it has never heard of.
+              lightLook: vendorDefault(id, "light").id,
+              darkLook: vendorDefault(id, "dark").id,
+              // Back to Geoapify means back to the key the site already has for
+              // place lookups, so the map draws again without a second paste.
+              mapKey: id === "geoapify" ? map.geoapifyKey : map.mapKey,
+            })}
+          onKey={(value) =>
+            set(
+              "Changed the map API key",
+              // Geoapify draws and looks places up with the same key, so one
+              // paste sets both; any other vendor's key is the map's alone.
+              map.mapVendor === "geoapify" ? { mapKey: value, geoapifyKey: value } : { mapKey: value },
+            )}
+          onPlacesKey={(value) => set("Changed the Geoapify place-search key", { geoapifyKey: value })}
         />
 
         <section className="rounded-3xl glass p-4 sm:p-5">
@@ -644,10 +738,10 @@ export function MapPanel() {
           </p>
 
           <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            {activeTheme === "light" ? "Light drawings" : "Dark drawings"}
+            {activeTheme === "light" ? "Light drawings" : "Dark drawings"} · {vendor.label}
           </p>
           <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-            {looksFor(activeTheme).map((look) => (
+            {looksFor(activeTheme, vendor.id).map((look) => (
               <LookCard
                 key={look.id}
                 look={look}
@@ -674,15 +768,17 @@ export function MapPanel() {
               <>
                 Live site still shows{" "}
                 <span className="text-zinc-300">
-                  {label(saved.lightLook)} · {label(saved.darkLook)}
+                  {vendorById(saved.mapVendor).label} · {label(saved.lightLook, "light")} ·{" "}
+                  {label(saved.darkLook, "dark")}
                 </span>
                 . <span className="font-semibold text-saffron-400">Save Changes</span> publishes this.
               </>
             ) : (
               <>
-                Light: <span className="text-zinc-300">{label(map.lightLook)}</span> · Dark:{" "}
-                <span className="text-zinc-300">{label(map.darkLook)}</span> — every place name is
-                switched off in both.
+                {vendor.label} · Light:{" "}
+                <span className="text-zinc-300">{label(map.lightLook, "light")}</span> · Dark:{" "}
+                <span className="text-zinc-300">{label(map.darkLook, "dark")}</span> — every place
+                name is switched off in both.
               </>
             )}
           </p>
