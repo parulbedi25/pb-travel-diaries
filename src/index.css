@@ -991,17 +991,21 @@
   border-color: rgba(36, 32, 25, 0.14);
   color: #3a342b;
 }
+/* The map's credit, in one design for both themes.
+   The map itself is not painted with the site's palette — a light drawing and a
+   dark drawing sit under the same overlay — so a chip that changed colour with
+   the page would be unreadable on one of them. Dark chip, light text: it reads
+   on a pale drawing and on a black one. */
 .live-map-attribution {
-  background: rgba(17, 17, 18, 0.72);
-  color: #c8c8ce;
+  background: rgba(14, 14, 16, 0.78);
+  color: #e6e6ea;
   padding: 2px 6px;
   border-radius: 6px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
-:is([data-theme="light"], .member-theme-light) .live-map-attribution {
-  background: rgba(255, 253, 247, 0.86);
-  color: #4a4238;
+.live-map-attribution a {
+  color: inherit;
 }
 
 @media (prefers-reduced-motion: reduce) {

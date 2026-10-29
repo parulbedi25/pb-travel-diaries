@@ -36,15 +36,3 @@ export function styleChain(settings: MapSettings, theme: Theme): string[] {
   const url = styleUrlFor(look, settings.geoapifyKey);
   return url ? [url] : [];
 }
-
-/**
- * The Geoapify style name used for the raster tiles that stand in when the
- * vector map cannot draw — with no WebGL, or with no key to fetch a style with.
- * It follows the chosen drawing where it can, and falls back to that theme's
- * plainest drawing.
- */
-export function rasterStyleFor(settings: MapSettings, theme: Theme): string {
-  const look = chosenLook(settings, theme);
-  if (look.style) return look.style;
-  return theme === "light" ? "osm-bright" : "dark-matter";
-}

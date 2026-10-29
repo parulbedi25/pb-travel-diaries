@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Eye, EyeOff, KeyRound, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, Moon, Plus, RotateCcw, Sun, Trash2 } from "lucide-react";
 import {
   resolveHeaderButtons,
   resolveMapSettings,
@@ -382,7 +382,7 @@ function MapPreview({
         width={size.width}
         height={size.height}
         className="absolute inset-0"
-        attributionClassName="pointer-events-auto absolute bottom-2 right-2 max-w-[calc(100%-1rem)] text-right text-[9px] leading-snug text-white/60"
+        attributionClassName="absolute bottom-2 left-2"
       />
       {/* The place the look is being judged on, and nothing else — the real
           panel's route, pins and plates would only get in the way of seeing
@@ -533,7 +533,7 @@ function MapKeyCard({
 }
 
 export function MapPanel() {
-  const { draft, content, updateDraft, logAction, hasChanges } = useSite();
+  const { draft, content, updateDraft, logAction, hasChanges, theme: siteTheme } = useSite();
   const map = resolveMapSettings(draft.map);
   const saved = resolveMapSettings(content.map);
 
@@ -541,6 +541,17 @@ export function MapPanel() {
     logAction(action);
     updateDraft((c) => ({ ...c, map: { ...resolveMapSettings(c.map), ...patch } }));
   };
+
+  /**
+   * Which theme's drawings the panel is showing.
+   *
+   * One map, one list: the theme switch sits on the map itself, so choosing
+   * "Dark" redraws the preview in the night palette and swaps the cards below
+   * for the dark drawings. Picking a card then sets that theme's look — the
+   * light and dark choices stay separate, which is the whole point.
+   */
+  const [activeTheme, setActiveTheme] = useState<MapTheme>(siteTheme === "dark" ? "dark" : "light");
+  const currentLook = activeTheme === "light" ? map.lightLook : map.darkLook;
 
   // Where PB is now — the checkpoint marked "here now", else the first stop.
   // The same place the tracker centres on, so this is the ground the look will
@@ -556,111 +567,109 @@ export function MapPanel() {
   const lookOf = (id: MapLookId) => MAP_LOOKS.find((l) => l.id === id);
   const label = (id: MapLookId) => lookOf(id)?.label ?? id;
 
-  const themes: { theme: MapTheme; title: string; note: string }[] = [
-    { theme: "light", title: "Light theme", note: "What visitors see with the day palette" },
-    { theme: "dark", title: "Dark theme", note: "What visitors see with the night palette" },
+  const themes: { theme: MapTheme; label: string; icon: typeof Sun }[] = [
+    { theme: "light", label: "Light", icon: Sun },
+    { theme: "dark", label: "Dark", icon: Moon },
   ];
+
   return (
     <div>
       <RestoreBar scope="map" label="map look" />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
-        <div className="grid gap-5">
-          {themes.map(({ theme: t, title, note }) => (
-            <div key={t} className="rounded-3xl glass p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                  {title}
-                </p>
-                <p className="text-[11px] text-zinc-600">{note}</p>
-              </div>
-              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                {looksFor(t).map((look) => (
-                  <LookCard
-                    key={look.id}
-                    look={look}
-                    on={(t === "light" ? map.lightLook : map.darkLook) === look.id}
-                    onPick={() =>
-                      set(
-                        `${t === "light" ? "Light" : "Dark"} theme map look: ${look.label}`,
-                        t === "light" ? { lightLook: look.id } : { darkLook: look.id }
-                      )
-                    }
-                  />
-                ))}
-              </div>
+      <div className="grid gap-5">
+        <section className="rounded-3xl glass p-4 sm:p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Map look</p>
+            <p className="text-[11px] text-zinc-600">
+              {hasChanges ? "Draft — not published yet" : "This is what the site shows"}
+            </p>
+          </div>
+
+          <div className="relative mt-3">
+            <MapPreview settings={map} theme={activeTheme} place={place} />
+
+            {/* On the map, where the thing it changes lives. */}
+            <div
+              role="group"
+              aria-label="Which theme's map to show and choose"
+              className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full border border-white/15 bg-zinc-950/75 p-1 backdrop-blur"
+            >
+              {themes.map(({ theme: t, label: text, icon: Icon }) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setActiveTheme(t)}
+                  aria-pressed={activeTheme === t}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors",
+                    activeTheme === t
+                      ? "bg-saffron-400 text-on-gold"
+                      : "text-zinc-300 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {text}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
 
-          <MapKeyCard
-            map={map}
-            saved={saved}
-            onChange={(value) => set("Changed the map API key", { geoapifyKey: value })}
-          />
-        </div>
-
-        <div className="min-w-0 xl:sticky xl:top-28 xl:self-start">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Preview — both themes
+          <p className="mt-2.5 text-[11px] leading-relaxed text-zinc-500">
+            The map at the top is the {activeTheme} drawing —{" "}
+            <span className="font-semibold text-zinc-300">{label(currentLook)}</span>. Visitors see it
+            when the site is in {activeTheme} mode; the other theme has its own choice.
           </p>
-          <div className="grid gap-3 rounded-3xl border border-white/10 bg-ink-900 p-3">
-            {themes.map(({ theme: t, title }) => (
-              <div key={t}>
-                <p className="mb-1.5 flex items-center justify-between gap-2 px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-                  <span>{title}</span>
-                  <span className="font-mono text-[9px] normal-case tracking-normal text-zinc-600">
-                    {label(t === "light" ? map.lightLook : map.darkLook)}
-                  </span>
-                </p>
-                <MapPreview settings={map} theme={t} place={place} />
-              </div>
-            ))}
 
-            <div className="mt-1 flex items-start gap-2 px-1.5 pb-1.5">
-              <span
-                className={cn(
-                  "aspect-square mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
-                  hasChanges ? "bg-saffron-400" : "bg-emerald-400"
-                )}
-                aria-hidden="true"
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            {activeTheme === "light" ? "Light drawings" : "Dark drawings"}
+          </p>
+          <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            {looksFor(activeTheme).map((look) => (
+              <LookCard
+                key={look.id}
+                look={look}
+                on={currentLook === look.id}
+                onPick={() =>
+                  set(
+                    `${activeTheme === "light" ? "Light" : "Dark"} theme map look: ${look.label}`,
+                    activeTheme === "light" ? { lightLook: look.id } : { darkLook: look.id }
+                  )
+                }
               />
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                {hasChanges ? (
-                  <>
-                    These are the draft, drawn live —{" "}
-                    <span className="text-zinc-300">
-                      {label(saved.lightLook)} / {label(saved.darkLook)}
-                    </span>{" "}
-                    is still what the site shows.{" "}
-                    <span className="font-semibold text-saffron-400">Save Changes</span> publishes it.
-                  </>
-                ) : (
-                  <>This is what the site is showing. Pick another look and it changes here first.</>
-                )}
-              </p>
-            </div>
+            ))}
           </div>
 
-          <div className="mt-3 rounded-3xl border border-white/10 bg-ink-900 p-5">
-            <p className="text-sm leading-relaxed text-zinc-300">
-              The tracker map and the nearby page draw on{" "}
-              <span className="font-semibold text-white">{label(map.lightLook)}</span> in light mode and{" "}
-              <span className="font-semibold text-white">{label(map.darkLook)}</span> in dark mode, with
-              every place name switched off.
-            </p>
-            <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-              Every drawing is Geoapify&rsquo;s, so the single key above unlocks all of them. If a style cannot
-              load, the same drawing is drawn from Geoapify&rsquo;s raster tiles instead, so a bad connection
-              costs sharpness rather than the map. Both previews above are the same basemap the tracker
-              draws, centred on PB&rsquo;s current checkpoint.
-            </p>
-            <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2.5 font-mono text-[10px] leading-relaxed text-zinc-400">
-              {lookOf(map.lightLook)?.style
-                ? `maps.geoapify.com/v1/styles/${lookOf(map.lightLook)?.style}/style.json`
-                : "arcgisonline.com/…/World_Imagery/…"}
-            </p>
-          </div>
-        </div>
+          <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed text-zinc-500">
+            <span
+              className={cn(
+                "aspect-square h-1.5 w-1.5 shrink-0 rounded-full",
+                hasChanges ? "bg-saffron-400" : "bg-emerald-400"
+              )}
+              aria-hidden="true"
+            />
+            {hasChanges ? (
+              <>
+                Live site still shows{" "}
+                <span className="text-zinc-300">
+                  {label(saved.lightLook)} · {label(saved.darkLook)}
+                </span>
+                . <span className="font-semibold text-saffron-400">Save Changes</span> publishes this.
+              </>
+            ) : (
+              <>
+                Light: <span className="text-zinc-300">{label(map.lightLook)}</span> · Dark:{" "}
+                <span className="text-zinc-300">{label(map.darkLook)}</span> — every place name is
+                switched off in both.
+              </>
+            )}
+          </p>
+        </section>
+
+        <MapKeyCard
+          map={map}
+          saved={saved}
+          onChange={(value) => set("Changed the map API key", { geoapifyKey: value })}
+        />
       </div>
     </div>
   );

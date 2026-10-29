@@ -104,42 +104,17 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
 }
 
 /**
- * The raster tiles: Geoapify's picture of the same drawing, and Esri's imagery.
+ * The satellite tiles: a photograph of the ground.
  *
- * The vector map is the map the site actually draws — Geoapify's style
- * documents give it its tiles, fonts and colours. These raster tiles are for
- * the two cases where a style cannot be drawn: a browser with no WebGL, or a
- * site with no key to fetch the style with. Same provider, same drawing, so the
- * stand-in is the map rather than a different map.
+ * This is the only raster layer the site draws, and it is drawn for exactly one
+ * reason — imagery has no labels to hide, so it keeps the promise the vector
+ * map keeps. Every *drawn* map comes from Geoapify as a style that the vector
+ * renderer can switch names off in; a raster picture of a drawing cannot do
+ * that, so there is none here.
  *
- * Satellite is the one exception: Geoapify publishes no imagery, so wherever
- * the ground is wanted as a photograph instead of a diagram, the tiles are
- * Esri's World Imagery — keyless, CORS-open and photographic, which is why
- * there is no name printed anywhere on it.
+ * The tiles are Esri's World Imagery: keyless, CORS-open and photographic, with
+ * no name printed anywhere on it.
  */
-export type RasterSource = "geoapify" | "satellite";
-
-/**
- * A tile from whichever raster is drawing.
- *
- * `style` is the Geoapify drawing to render (`osm-bright`, `dark-matter`, …)
- * and `key` the site's Geoapify key — without it the tile host answers with a
- * refusal rather than a map, so the component skips the request when the key is
- * blank (see TileBasemap).
- */
-export function rasterTileUrl(
-  source: RasterSource,
-  style: string,
-  tileZoom: number,
-  tile: PlacedTile,
-  key?: string,
-): string {
-  if (source === "geoapify") {
-    const trimmed = (key ?? "").trim();
-    const base = `https://maps.geoapify.com/v1/tile/${style}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
-    return trimmed ? `${base}?apiKey=${encodeURIComponent(trimmed)}` : base;
-  }
-  // Esri's imagery is a photograph of the ground, so there is nothing to
-  // switch off: no names, no road shield, no label layer at all.
+export function imageryTileUrl(tileZoom: number, tile: PlacedTile): string {
   return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
 }

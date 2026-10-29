@@ -135,7 +135,7 @@ export default function RideMap({
         width={width}
         height={drawHeight}
         className="pointer-events-none absolute inset-0 h-full w-full"
-        attributionClassName="pointer-events-none absolute bottom-1 right-2 text-[9px] leading-none text-zinc-400/70"
+        attributionClassName="pointer-events-none absolute bottom-1 right-2"
         themeOverride={themeOverride}
       />
 

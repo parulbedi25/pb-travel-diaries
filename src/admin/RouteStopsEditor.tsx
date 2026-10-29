@@ -910,7 +910,7 @@ export default function RouteStopsEditor({
             width={size.width}
             height={size.height}
             className="pointer-events-none absolute inset-0 overflow-hidden"
-            attributionClassName="pointer-events-none absolute bottom-1 right-1.5 text-[8px] text-zinc-500"
+            attributionClassName="pointer-events-none absolute bottom-1 right-1.5"
           />
 
           <svg

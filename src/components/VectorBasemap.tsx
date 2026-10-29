@@ -15,23 +15,20 @@
  * One style document per look, fetched with the site's key; the style carries
  * its own tiles, fonts and sprites, so there is nothing else to configure and
  * no second host to fall back to. If the style never lands — no WebGL, no key,
- * a host having a bad day — the same drawing is shown as Geoapify raster tiles
- * underneath, and the panel says who drew it either way.
+ * a host having a bad day — the panel says the map is missing, because there is
+ * no second drawing to fall back to that would keep this promise.
  *
  * Every drawing is of OpenStreetMap's data rendered by OpenMapTiles, so both
  * credits are owed whichever one answers (see MapAttribution in TileBasemap).
  *
- * Patience is the whole difficulty. Too little and a nameless map gets thrown
- * away for being slow, which is how this ended up showing labelled tiles
- * instead. Too much and the panel sits empty while it waits. So:
- *
- *  - A candidate is only abandoned when it has *stalled*. Tiles that are still
- *    arriving, however slowly, mean it is working — and throwing that away
- *    costs more than waiting for it.
- *  - While the nameless map is on its way, the raster map is shown underneath
- *    and dropped the moment tiles land. A slow connection sees a map
- *    immediately and it goes nameless when the nameless one arrives, rather
- *    than an empty panel for as long as it takes.
+ * Patience is the whole difficulty. Too little and a working map gets thrown
+ * away for being slow; too much and the panel sits empty while it waits. So a
+ * map is only abandoned when it has *stalled*: tiles that are still arriving,
+ * however slowly, mean it is working — and throwing that away costs more than
+ * waiting for it. There is deliberately nothing drawing underneath while it
+ * loads: every raster basemap Geoapify serves has its place names painted into
+ * the picture, and a named map flashing up before the nameless one arrives is
+ * the same broken promise, just harder to notice.
  *
  * Two timings in here are deliberate and easy to get wrong:
  *
@@ -40,7 +37,7 @@
  *    already on screen.
  *  - Nothing is ever judged by map.isStyleLoaded(), which waits for tile data
  *    as well as the style and so reads "not loaded" on any ordinary slow
- *    connection — that is what threw away a working map and put labels back.
+ *    connection — that is what threw away working maps.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -61,9 +58,6 @@ const STYLE_TIMEOUT_MS = 15000;
 const PAINT_TIMEOUT_MS = 15000;
 /** Once tiles are arriving, how long they may stop arriving for. */
 const STALL_TIMEOUT_MS = 15000;
-/** How long to hold out before putting a map you can see on the screen. */
-const PLACEHOLDER_AFTER_MS = 3000;
-
 /**
  * Turn every label off.
  *
@@ -109,12 +103,6 @@ export default function VectorBasemap({
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
-  /**
-   * Showing the labelled raster map until the nameless one is ready. Cleared
-   * the moment tiles land, so it also stands in for "the nameless map is what
-   * you are looking at".
-   */
-  const [placeholder, setPlaceholder] = useState(false);
   const sized = width > 1 && height > 1;
 
   const mapSettings = settings ?? resolveMapSettings(content.map);
@@ -225,7 +213,6 @@ export default function VectorBasemap({
       strip();
       if (!created.areTilesLoaded()) return;
       paintedNow = true;
-      setPlaceholder(false);
     };
 
     const onError = () => {
@@ -245,13 +232,6 @@ export default function VectorBasemap({
     created.on("error", onError);
 
     timers.push(window.setTimeout(() => !styleIn && next(), STYLE_TIMEOUT_MS));
-    // Something to look at rather than an empty panel. It is replaced, not
-    // added to, the moment the nameless map puts its first tiles on screen.
-    timers.push(
-      window.setTimeout(() => {
-        if (!paintedNow) setPlaceholder(true);
-      }, PLACEHOLDER_AFTER_MS),
-    );
 
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
@@ -308,46 +288,35 @@ export default function VectorBasemap({
         height={height}
         className={className}
         attributionClassName={attributionClassName}
-        settings={settings}
-        themeOverride={themeOverride}
       />
     );
   }
 
-  const showingRaster = gaveUp || placeholder;
-  // Whichever raster ends up on screen credits itself.
-  const credit = attributionClassName && !showingRaster ? (
-    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
-  ) : null;
-
+  // The style would not draw — no WebGL, a revoked key, a host having a bad
+  // day. There is no labelled map behind this one any more: a place name on
+  // the map is exactly what the site promises not to show, so the panel says
+  // the map is missing instead of drawing a different one.
   if (gaveUp) {
     return (
-      <>
-        <TileBasemap
-          view={view}
-          width={width}
-          height={height}
-          className={className}
-          attributionClassName={attributionClassName}
-          settings={settings}
-        />
-      </>
+      <div
+        className={className}
+        role="img"
+        aria-label="The map could not be drawn"
+        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
+      >
+        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
+          The map could not be drawn just now. It will try again on the next visit.
+        </p>
+      </div>
     );
   }
 
+  const credit = attributionClassName ? (
+    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
+  ) : null;
+
   return (
     <>
-      {/* Underneath, so the nameless map covers it as soon as it arrives. */}
-      {placeholder && (
-        <TileBasemap
-          view={view}
-          width={width}
-          height={height}
-          className={className}
-          attributionClassName={attributionClassName}
-          settings={settings}
-        />
-      )}
       <div ref={host} className={className} aria-hidden="true" />
       {credit}
     </>

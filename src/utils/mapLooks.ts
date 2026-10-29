@@ -10,9 +10,14 @@
  * tiles with its place names printed into the picture).
  *
  * A look is chosen per theme in the dashboard, so a site can be `osm-bright` by
- * day and `dark-matter` by night. Satellite is the exception: it is a
- * photograph of the ground, not a style with layers to draw, Geoapify publishes
- * no imagery, so it stays Esri's and is drawn by the raster path.
+ * day and `dark-matter` by night. Every drawing here is a *vector* style, which
+ * matters: the map turns its place names off by hiding the style's text layers,
+ * and that only works on a drawing. Geoapify's `osm-carto` is left out for that
+ * reason — it arrives as raster tiles with the names printed into the picture.
+ *
+ * Satellite is the exception the other way: a photograph of the ground rather
+ * than a style with layers to hide, so it has no names to switch off in the
+ * first place. Geoapify publishes no imagery, so it stays Esri's.
  *
  * Nothing here is a hard dependency on the network at import time; the key is
  * passed in, and a missing key simply yields no style URL (the map then falls
@@ -26,7 +31,6 @@ export type MapLookId =
   | "osm-bright"
   | "osm-bright-grey"
   | "osm-bright-smooth"
-  | "osm-carto"
   | "klokantech-basic"
   | "maptiler-3d"
   | "osm-liberty"
@@ -84,14 +88,6 @@ export const MAP_LOOKS: MapLook[] = [
     themes: ["light"],
     maker: "Geoapify",
     style: "osm-bright-smooth",
-  },
-  {
-    id: "osm-carto",
-    label: "Mapnik",
-    hint: "The classic OpenStreetMap drawing — with its names printed on it",
-    themes: ["light"],
-    maker: "Geoapify",
-    style: "osm-carto",
   },
   {
     id: "klokantech-basic",
