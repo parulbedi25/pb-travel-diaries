@@ -57,11 +57,21 @@ import CountdownSection, {
 import { EASE } from "./components/ui/motion";
 import { useAnchorScroll } from "./hooks/useAnchorScroll";
 import { useRouteScroll } from "./hooks/useRouteScroll";
-import { ADMIN_PATHS, LIVE_MAP_PATH, MEMBERS_PATH, MEMBER_TRACKER_PATH, NEARBY_PATH, SHOP_PATH, useHashRoute } from "./utils/router";
+import {
+  ADMIN_PATHS,
+  LIVE_MAP_PATH,
+  MEMBERS_PATH,
+  MEMBER_TRACKER_PATH,
+  NEARBY_PATH,
+  SHOP_PATH,
+  memberPlaceIdFromRoute,
+  useHashRoute,
+} from "./utils/router";
 import ShopPage from "./components/ShopPage";
 import LockedSection from "./components/LockedSection";
 import MembersPage from "./members/MembersPage";
 import MemberTracker from "./members/MemberTracker";
+import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
 import { describeApiError } from "./api/client";
@@ -312,6 +322,11 @@ function Shell() {
   // site, is not in any nav, and reads nothing but that member's own records.
   if (route === MEMBER_TRACKER_PATH) {
     return <MemberTracker />;
+  }
+  // One saved place, opened from the garage and drawn on a map of its own.
+  const memberPlaceId = memberPlaceIdFromRoute(route);
+  if (memberPlaceId) {
+    return <MemberPlacePage placeId={memberPlaceId} />;
   }
   if (ADMIN_PATHS.has(route)) {
     return (

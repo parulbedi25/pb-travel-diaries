@@ -8,6 +8,19 @@ export const COMMAND_CENTER_PATH = "/commandcenter";
 export const MEMBERS_PATH = "/members";
 /** The signed-in member's own garage and ride builder. Never public. */
 export const MEMBER_TRACKER_PATH = "/ride";
+/**
+ * One saved place, on a page of its own: `#/ride/place/<id>`. The id is random
+ * and the place is kept in the member's own browser, so the page shows a place
+ * to the person who saved it and to nobody else.
+ */
+export const MEMBER_PLACE_PREFIX = `${MEMBER_TRACKER_PATH}/place/`;
+
+/** The id in `#/ride/place/<id>`, or null when this is not that route. */
+export function memberPlaceIdFromRoute(route: string): string | null {
+  if (!route.startsWith(MEMBER_PLACE_PREFIX)) return null;
+  const id = route.slice(MEMBER_PLACE_PREFIX.length).split(/[?#]/)[0];
+  return id ? decodeURIComponent(id) : null;
+}
 
 /**
  * Every route that opens PB Control. Maintenance mode replaces the whole site,

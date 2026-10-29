@@ -15,9 +15,11 @@
  *  2. **Adds more bikes** — a commuter and a weekend bike are the usual pair,
  *     and each keeps its own mileage, so their petrol figures stand ready side
  *     by side.
- *  3. **Builds a ride** — by clicking pins onto the map by hand, or by pasting
- *     a map link and having its stops read out (the same resolver the dashboard
- *     uses, short `maps.app.goo.gl` links included).
+ *  3. **Builds a ride** — by clicking pins onto the map by hand, by finding a
+ *     place by name, or by pasting a map link and having its stops read out
+ *     (the same resolver the dashboard uses, short `maps.app.goo.gl` links
+ *     included). Places found by name are kept in the member's own notebook on
+ *     this browser, each with a page of its own showing its pointer.
  *  4. **Reads the petrol** — litres for the one-way ride and for the round trip,
  *     for every bike in the garage, not just the one selected.
  *  5. **Writes it down** — a title, sticky-note notes, and photos in a gallery
@@ -25,6 +27,10 @@
  *
  * Everything is saved by pressing Save on the ride; nothing here publishes to
  * the site, and nothing here is visible to anyone else.
+ *
+ * The page also has a theme of its own (see `memberTheme`): a member reads it in
+ * the light or the dark whatever the site itself is wearing, and the map follows
+ * that choice too.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -40,10 +46,12 @@ import {
   LocateFixed,
   LogIn,
   MapPin,
+  Moon,
   Pencil,
   Plus,
   Route as RouteIcon,
   Save,
+  Sun,
   Trash2,
   X,
 } from "lucide-react";
@@ -62,6 +70,8 @@ import { useSite } from "../store/siteContent";
 import { parseRouteLink } from "../utils/mapLinks";
 import { cn } from "../utils/cn";
 import RideMap from "./RideMap";
+import PlaceFinder from "./PlaceFinder";
+import { memberThemeClass, memberThemeStyle, useMemberTheme } from "./memberTheme";
 import { SchemaPendingNotice, useUpgradeRetry } from "./SchemaPending";
 import { rideMaths } from "./rideMath";
 
@@ -466,7 +476,18 @@ function Gallery({
 /* ── the page ────────────────────────────────────────────────────────── */
 
 export default function MemberTracker() {
-  const { account, siteTitle } = useSite();
+  const { account, content, siteTitle, theme: siteTheme } = useSite();
+
+  /**
+   * The member's own theme.
+   *
+   * The site's theme belongs to the owner and is saved on the server, so a
+   * member switching it would repaint the site for every visitor. This one is
+   * theirs, kept in this browser, and painted on the garage's own wrapper: the
+   * garage can be cream while the site stays matte black, or the other way
+   * round.
+   */
+  const memberTheme = useMemberTheme(account?.id ?? null, siteTheme === "light" ? "light" : "dark");
 
   const [makers, setMakers] = useState<CatalogueMaker[]>([]);
   const [bikes, setBikes] = useState<MemberBike[]>([]);
@@ -824,7 +845,13 @@ export default function MemberTracker() {
   const totalKm = journeys.reduce((sum, journey) => sum + (journey.maths?.oneWayKm ?? 0), 0);
 
   return (
-    <div className="min-h-screen bg-ink-950 pb-20 text-white">
+    <div
+      className={cn(
+        "min-h-screen bg-ink-950 pb-20 text-white",
+        memberThemeClass(memberTheme.theme),
+      )}
+      style={memberThemeStyle(content.themeColors, memberTheme.theme)}
+    >
       <header className="border-b border-white/[0.07] bg-ink-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -861,15 +888,32 @@ export default function MemberTracker() {
               <dd className="font-display text-sm font-semibold">{totalKm.toFixed(1)} km</dd>
             </div>
           </dl>
-          <AlertBell
-            alerts={alerts.alerts}
-            unread={alerts.unread}
-            loading={alerts.loading}
-            canPost={alerts.canPost}
-            onMarkRead={alerts.markRead}
-            onPostNotice={alerts.postNotice}
-            onRemove={alerts.remove}
-          />
+          <div className="flex items-center gap-2">
+            {/* The member's own light/dark switch — theirs alone, not the site's. */}
+            <button
+              type="button"
+              onClick={memberTheme.toggle}
+              aria-pressed={memberTheme.theme === "light"}
+              title={`Switch your garage to ${memberTheme.theme === "light" ? "dark" : "light"}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-3 py-2 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.12] hover:text-white"
+            >
+              {memberTheme.theme === "light" ? (
+                <Moon className="h-3.5 w-3.5" />
+              ) : (
+                <Sun className="h-3.5 w-3.5" />
+              )}
+              {memberTheme.theme === "light" ? "Dark" : "Light"}
+            </button>
+            <AlertBell
+              alerts={alerts.alerts}
+              unread={alerts.unread}
+              loading={alerts.loading}
+              canPost={alerts.canPost}
+              onMarkRead={alerts.markRead}
+              onPostNotice={alerts.postNotice}
+              onRemove={alerts.remove}
+            />
+          </div>
         </div>
       </header>
 
@@ -966,7 +1010,8 @@ export default function MemberTracker() {
                 {editingRideId ? "Editing a ride" : "Plan a ride"}
               </h2>
               <p className="text-[11px] text-zinc-500">
-                Drop pins on the map by hand, or paste a map link and let its stops come in.
+                Drop pins on the map, find a place by name, or paste a map link and let its stops
+                come in.
               </p>
             </div>
             {editingRideId && (
@@ -980,7 +1025,7 @@ export default function MemberTracker() {
             )}
           </div>
 
-          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
             <div className="min-w-0">
               <RideMap
                 stops={stops}
@@ -995,8 +1040,13 @@ export default function MemberTracker() {
                     setStopLng(String(stop.lng));
                   }
                 }}
-                height={330}
+                height={520}
+                themeOverride={memberTheme.theme}
               />
+
+              {/* The place finder sits under the map, the way the dashboard's
+                  stop editor does: type a place, press Find, and it lands. */}
+              <PlaceFinder ownerId={account?.id ?? null} theme={memberTheme.theme} />
 
               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
