@@ -36,7 +36,7 @@
  */
 import express from "express";
 import { requireEditor } from "../lib/auth.js";
-import { proxyFor, request as egressRequest } from "../lib/egress.js";
+import { proxyFor, request as egressRequest, systemPac } from "../lib/egress.js";
 
 export const mapsRouter = express.Router();
 
@@ -572,21 +572,49 @@ mapsRouter.get("/maps/health", requireEditor, async (_req, res) => {
   const proxy = proxyFor("https://maps.app.goo.gl/");
   const result = await egressRequest("https://maps.app.goo.gl/", { timeoutMs: 4000 });
   const ms = Date.now() - startedAt;
+  // Named because the answer is different on every machine: a proxy from the
+  // environment, one from the Mac's own settings, or none at all.
+  const proxySource = !proxy
+    ? ""
+    : ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"].some(
+          (name) => process.env[name],
+        )
+      ? "environment"
+      : "system";
+  const detail = {
+    ms,
+    proxy: proxy?.host ?? "",
+    proxySource,
+    pac: systemPac(),
+    platform: process.platform,
+    node: process.version,
+    family: result.family ?? 0,
+  };
+
   if (result.error) {
     return res.json({
       reachable: false,
       code: result.error,
-      ms,
-      proxy: proxy?.host ?? "",
-      // The two things that actually fix it, in order of likelihood.
+      ...detail,
       hint: proxy
-        ? `The server tried the proxy ${proxy.host}. Check that it allows maps.app.goo.gl.`
+        ? `The server tried the proxy ${proxy.host} (${proxySource}). Check that it allows maps.app.goo.gl.`
         : HOPELESS.has(result.error)
           ? "This server has no route to Google. Ask the host to allow outbound HTTPS, or set HTTPS_PROXY."
-          : "The connection timed out. A proxy or a firewall is the usual cause.",
+          : "The connection timed out. A proxy, a VPN or a firewall is the usual cause.",
     });
   }
-  res.json({ reachable: true, code: "", ms, proxy: proxy?.host ?? "", hint: "" });
+  res.json({
+    reachable: true,
+    code: "",
+    ...detail,
+    // IPv4 is worth saying out loud: it is what a Mac on a half-broken IPv6
+    // network falls back to, and it explains why one machine works and another
+    // does not.
+    hint:
+      result.family === 4
+        ? "Reached Google over IPv4 after the default address family failed — this network's IPv6 is not carrying traffic."
+        : "",
+  });
 });
 
 /**

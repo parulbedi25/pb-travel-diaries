@@ -186,6 +186,14 @@ export const siteApi = {
     code: string;
     ms: number;
     proxy: string;
+    /** "environment" when the proxy came from a variable, "system" on a Mac. */
+    proxySource: string;
+    /** A PAC file the server can see but cannot follow. */
+    pac: string;
+    platform: string;
+    node: string;
+    /** 0 when the stack chose, 4 or 6 when one family was needed. */
+    family: number;
     hint: string;
   }> {
     return api.get("/api/maps/health");

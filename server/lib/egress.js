@@ -22,9 +22,11 @@
  * asks, and only up to a cap.
  */
 
+import { execFileSync } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import tls from "node:tls";
+import dns from "node:dns";
 
 /** The usual suspects, in the order curl and npm read them. */
 const PROXY_VARS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
@@ -55,10 +57,60 @@ function bypassed(host) {
 }
 
 /**
+ * The proxy macOS itself is using, read from the system settings.
+ *
+ * A Mac's proxy lives in System Settings, not in the environment, so a server
+ * started from a shell inherits nothing — and a machine that reaches the
+ * internet happily in Safari reaches it not at all from Node. `scutil --proxy`
+ * is the documented way to ask, it needs no privileges, and it costs one short
+ * subprocess. Read for a few seconds at most: settings do not change mid-route,
+ * and a request should never wait on a process spawn more than once.
+ */
+let systemCache = { at: 0, value: null };
+const SYSTEM_TTL_MS = 20_000;
+
+export function parseScutilProxy(text) {
+  const read = (key) => {
+    const match = text.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, "m"));
+    return match ? match[1].trim() : "";
+  };
+  const httpsOn = read("HTTPSEnable") === "1";
+  const httpOn = read("HTTPEnable") === "1";
+  const host = httpsOn ? read("HTTPSProxy") : httpOn ? read("HTTPProxy") : "";
+  const port = httpsOn ? read("HTTPSPort") : httpOn ? read("HTTPPort") : "";
+  if (!host) {
+    return {
+      proxy: null,
+      // A PAC file cannot be evaluated here, but saying so beats pretending the
+      // machine has no proxy at all.
+      pac: read("ProxyAutoConfigEnable") === "1" ? read("ProxyAutoConfigURLString") : "",
+      exceptions: [],
+    };
+  }
+  const exceptions = [...text.matchAll(/^\s*\d+\s*:\s*(.+)$/gm)].map((match) => match[1].trim());
+  return { proxy: `http://${host}${port ? `:${port}` : ""}`, pac: "", exceptions };
+}
+
+function systemProxy() {
+  if (process.platform !== "darwin") return { proxy: null, pac: "", exceptions: [] };
+  if (Date.now() - systemCache.at < SYSTEM_TTL_MS) return systemCache.value;
+  let parsed = { proxy: null, pac: "", exceptions: [] };
+  try {
+    parsed = parseScutilProxy(execFileSync("scutil", ["--proxy"], { timeout: 500, encoding: "utf8" }));
+  } catch {
+    /* no scutil, or it answered too slowly: carry on without it */
+  }
+  systemCache = { at: Date.now(), value: parsed };
+  return parsed;
+}
+
+/**
  * The proxy to use for a URL, or null when the host wants a direct connection.
  *
  * Read at call time rather than at import time: a host panel sets these on the
- * running process, and a cached `null` from boot would outlive the fix.
+ * running process, and a cached `null` from boot would outlive the fix. The
+ * environment wins; a Mac's system settings are the fallback, because that is
+ * where a Mac keeps the proxy the browser has been using all along.
  */
 export function proxyFor(url) {
   const host = hostOf(url);
@@ -75,11 +127,34 @@ export function proxyFor(url) {
       /* a malformed variable is not a proxy */
     }
   }
-  return null;
+  const system = systemProxy();
+  if (!system.proxy) return null;
+  // The Mac's own "bypass proxy for these hosts" list, honoured the same way.
+  const skipped = system.exceptions.some((entry) => {
+    const bare = entry.replace(/^\*?\./, "").replace(/\/.*$/, "").trim().toLowerCase();
+    return bare && (host === bare || host.endsWith(`.${bare}`));
+  });
+  if (skipped) return null;
+  try {
+    const parsed = new URL(system.proxy);
+    return parsed.hostname ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Whether this process was told about a proxy at all, for the dashboard. */
 export const proxyConfigured = () => Boolean(proxyFor("https://example.com/"));
+
+/**
+ * A Mac's PAC file, when it has one and we cannot follow it.
+ *
+ * The system's "automatic proxy configuration" is a JavaScript function that
+ * decides per URL. Evaluating it here would mean running somebody's script
+ * inside the server, so it is reported instead — a person can then either set
+ * `HTTPS_PROXY` by hand or switch the Mac to a fixed proxy.
+ */
+export const systemPac = () => (process.platform === "darwin" ? systemProxy().pac : "");
 
 const authHeader = (proxy) =>
   proxy.username
@@ -166,10 +241,12 @@ function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
     };
 
     let settled = false;
+    /** Which address family finally answered: 0 chosen by the stack, 4, or 6. */
+    let lastFamily = 0;
     const finish = (value) => {
       if (settled) return;
       settled = true;
-      resolve(value);
+      resolve({ family: lastFamily, ...value });
     };
     const fail = (error) => finish({ status: 0, headers: new Map(), text: "", error });
 
@@ -226,11 +303,17 @@ function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
     };
 
     if (!proxy) {
-      const socket = (secure
-        ? tls.connect({ host: target.hostname, port, servername: target.hostname })
-        : httpRequestSocket(target.hostname, port)
-      ).on("error", (error) => fail(error?.code || "ENETWORK"));
-      socket.once(secure ? "secureConnect" : "connect", () => exchange(socket));
+      void dial(target.hostname, Number(port), secure, timeoutMs).then(({ socket, error, family }) => {
+        if (!socket) {
+          fail(error);
+          return;
+        }
+        // Recorded so a hang can be explained later: "it answered over IPv4"
+        // is the sentence that ends a week of guessing.
+        lastFamily = family;
+        socket.on("error", (issue) => fail(issue?.code || "ENETWORK"));
+        exchange(socket);
+      });
       return;
     }
 
@@ -299,8 +382,74 @@ function once(url, { headers = {}, timeoutMs = 4000, bodyLimit = 0 } = {}) {
 }
 
 /** A bare TCP socket, so the two branches above read the same way. */
-function httpRequestSocket(host, port) {
-  return net.connect({ host, port });
+function httpRequestSocket(host, port, family = 0) {
+  return net.connect({ host, port, family, autoSelectFamily: family === 0 });
+}
+
+/**
+ * Failures that mean "try the other address family", not "give up".
+ *
+ * A Mac on a network that advertises IPv6 but cannot carry it prefers IPv6 and
+ * then hangs: the name resolves, the connection is attempted, and nothing comes
+ * back. Windows on the same network often has IPv6 switched off at the adapter
+ * and never notices. That is the whole of the "it worked on Windows" story —
+ * nothing to do with the operating system, everything to do with which address
+ * family the machine tries first. Asking again in IPv4 takes one line and turns
+ * a hang into a map.
+ */
+const RETRY_V4 = new Set(["ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "EAI_AGAIN", "ECONNRESET"]);
+
+/** Open a connection, with one IPv4-only attempt after a connectivity failure. */
+function dial(host, port, secure, timeoutMs) {
+  return new Promise((resolve) => {
+    const attempt = (family) => {
+      let settled = false;
+      const socketFor = (socket) => {
+        socket.setTimeout(timeoutMs, () => {
+          if (settled) return;
+          settled = true;
+          socket.destroy();
+          retryOrFail("ETIMEDOUT", family);
+        });
+        socket.once("error", (error) => {
+          if (settled) return;
+          settled = true;
+          retryOrFail(error?.code || "ENETWORK", family);
+        });
+      };
+      const retryOrFail = (code, tried) => {
+        if (tried !== 4 && RETRY_V4.has(code)) {
+          attempt(4);
+          return;
+        }
+        resolve({ socket: null, error: code, family: tried });
+      };
+
+      if (!secure) {
+        const socket = httpRequestSocket(host, port, family);
+        socketFor(socket);
+        socket.once("connect", () => {
+          if (settled) return;
+          settled = true;
+          socket.setTimeout(0);
+          socket.removeAllListeners("error");
+          resolve({ socket, error: "", family });
+        });
+        return;
+      }
+
+      const socket = tls.connect({ host, port, servername: host, family });
+      socketFor(socket);
+      socket.once("secureConnect", () => {
+        if (settled) return;
+        settled = true;
+        socket.setTimeout(0);
+        socket.removeAllListeners("error");
+        resolve({ socket, error: "", family });
+      });
+    };
+    attempt(0);
+  });
 }
 
 /**
