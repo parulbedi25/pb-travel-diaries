@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import { proxyFor, request } from "../lib/egress.js";
+import { parseScutilProxy, proxyFor, request } from "../lib/egress.js";
 
 /** An origin that answers 302 then 200, with a chunked body. */
 async function origin() {
@@ -113,4 +113,43 @@ test("a host with nothing listening fails fast with a code, not a message", asyn
   assert.equal(result.status, 0);
   assert.ok(typeof result.error === "string" && result.error.length > 0);
   assert.ok(Date.now() - startedAt < 2000, "a refusal must not wait for the timeout");
+});
+
+/* ── the Mac's own proxy settings ─────────────────────────────────────── */
+
+const SCUTIL = `<dictionary> {
+  ExceptionsList : <array> {
+    0 : *.local
+    1 : 169.254/16
+  }
+  HTTPEnable : 0
+  HTTPSEnable : 1
+  HTTPSPort : 8080
+  HTTPSProxy : proxy.corp.example
+  ProxyAutoConfigEnable : 0
+}`;
+
+test("a Mac's system proxy is read from scutil, with its bypass list", () => {
+  const parsed = parseScutilProxy(SCUTIL);
+  assert.equal(parsed.proxy, "http://proxy.corp.example:8080");
+  assert.deepEqual(parsed.exceptions, ["*.local", "169.254/16"]);
+});
+
+test("a Mac with no proxy says so, and a PAC file is reported rather than run", () => {
+  const off = parseScutilProxy("<dictionary> {\n  HTTPEnable : 0\n  HTTPSEnable : 0\n}");
+  assert.equal(off.proxy, null);
+  assert.equal(off.pac, "");
+  const pac = parseScutilProxy(
+    "<dictionary> {\n  ProxyAutoConfigEnable : 1\n  ProxyAutoConfigURLString : http://wpad/wpad.dat\n}",
+  );
+  assert.equal(pac.proxy, null);
+  assert.equal(pac.pac, "http://wpad/wpad.dat");
+});
+
+test("a reply carries the address family that answered", async (t) => {
+  const { server, base } = await origin();
+  t.after(() => server.close());
+  const result = await request(`${base}/short`);
+  // 0 means "the stack chose"; 4 means the IPv4 second chance was needed.
+  assert.ok([0, 4, 6].includes(result.family), `unexpected family ${result.family}`);
 });

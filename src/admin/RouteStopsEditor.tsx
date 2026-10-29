@@ -546,15 +546,22 @@ export default function RouteStopsEditor({
           setServerCheck({ state: "checking" });
           void siteApi
             .mapLinkHealth()
-            .then((health) =>
+            .then((health) => {
+              // Said out loud, because it is the difference between "fix the
+              // link" and "fix the machine this is running on" — and a proxy
+              // taken from the Mac's own settings is worth naming, since that
+              // is exactly what changed when the site moved machines.
+              const via = health.proxy
+                ? ` through ${health.proxySource === "system" ? "the system proxy" : "the proxy"} ${health.proxy}`
+                : "";
               setServerCheck({
                 state: "done",
                 reachable: health.reachable,
                 text: health.reachable
-                  ? `The server can reach the maps (${health.ms} ms), so this particular link is the problem.`
-                  : `${health.code ? `The server could not reach the maps (${health.code}). ` : ""}${health.hint}`,
-              }),
-            )
+                  ? `The server can reach the maps${via} (${health.ms} ms), so this particular link is the problem.${health.hint ? ` ${health.hint}` : ""}`
+                  : `${health.code ? `The server could not reach the maps${via} (${health.code}). ` : ""}${health.hint}`,
+              });
+            })
             .catch(() => setServerCheck({ state: "idle" }));
           // The server's own sentence already says what went wrong and what to
           // do about it — appending a second instruction only repeats it.
