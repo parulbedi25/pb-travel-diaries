@@ -314,7 +314,7 @@
 }
 
 /* ---------- Light theme — warm sand with the same Hanle gold accents ---------- */
-[data-theme="light"] {
+:is([data-theme="light"], .member-theme-light) {
   color-scheme: light;
   --color-white: #171513;
   --color-ink-950: #f7f4ed;
@@ -356,12 +356,12 @@
      same gold as dark, and the dashboard palette sets these variables at
      runtime. Only --gold-ink differs between modes, further down. */
 }
-[data-theme="light"] .glass {
+:is([data-theme="light"], .member-theme-light) .glass {
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(23, 21, 19, 0.1);
 }
 
-[data-theme="light"] .bg-grid {
+:is([data-theme="light"], .member-theme-light) .bg-grid {
   background-image:
     linear-gradient(rgba(23, 21, 19, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(23, 21, 19, 0.055) 1px, transparent 1px);
@@ -421,7 +421,7 @@
    photo's own dominant colour, which is a dark grey. The parts list carries
    its own panel background, border and shadow, so it stays legible with the
    wash gone. */
-[data-theme="light"] .machine-wash {
+:is([data-theme="light"], .member-theme-light) .machine-wash {
   background-color: transparent;
   background-image: none;
 }
@@ -459,7 +459,7 @@
       transparent 78%
     );
 }
-[data-theme="light"] .machine-image-area {
+:is([data-theme="light"], .member-theme-light) .machine-image-area {
   background-color: var(--color-ink-950);
   background-image: none;
 }
@@ -511,7 +511,7 @@
 :root {
   --gold-ink: #f5b301;
 }
-[data-theme="light"] {
+:is([data-theme="light"], .member-theme-light) {
   --gold-ink: #8f6700;
 }
 
@@ -522,24 +522,24 @@
 }
 
 /* Solid yellow accents in both modes — no graphite/brown substitution. */
-[data-theme="light"] .text-saffron-300,
-[data-theme="light"] .text-saffron-400 {
+:is([data-theme="light"], .member-theme-light) .text-saffron-300,
+:is([data-theme="light"], .member-theme-light) .text-saffron-400 {
   color: var(--gold-ink);
 }
 /* Dimmed variants of the shades above. Even on the corrected colour they stay
    washed out at 60-80% (2.9-4.5:1), so in light mode they are pinned to full
    strength — the de-emphasis they carried on dark is not affordable here. */
-[data-theme="light"] .text-amber-200\/80 {
+:is([data-theme="light"], .member-theme-light) .text-amber-200\/80 {
   color: #92400e;
 }
-[data-theme="light"] .text-emerald-200\/80,
-[data-theme="light"] .text-emerald-400\/60 {
+:is([data-theme="light"], .member-theme-light) .text-emerald-200\/80,
+:is([data-theme="light"], .member-theme-light) .text-emerald-400\/60 {
   color: #065f46;
 }
 /* This badge sits on top of a media thumbnail, so it keeps its dark chip in
    both themes — which means its label cannot follow the theme down to the dark
    gold without becoming dark-on-dark (1.8:1). Keep it light. */
-[data-theme="light"] .media-in-use {
+:is([data-theme="light"], .member-theme-light) .media-in-use {
   color: #fcd34d;
 }
 /* .text-gradient needs no light-mode override: it is already solid yellow
@@ -547,14 +547,14 @@
 
 /* Real borders sit inside each button, unlike an outer ring that may be
    clipped by the sidebar's overflow scroller. */
-[data-theme="light"] .dashboard-nav-option {
+:is([data-theme="light"], .member-theme-light) .dashboard-nav-option {
   border-color: rgba(23, 21, 19, 0.24);
   background-color: rgba(255, 255, 255, 0.55);
 }
-[data-theme="light"] .dashboard-nav-option:hover {
+:is([data-theme="light"], .member-theme-light) .dashboard-nav-option:hover {
   border-color: rgba(23, 21, 19, 0.42);
 }
-[data-theme="light"] .dashboard-nav-option[aria-pressed="true"] {
+:is([data-theme="light"], .member-theme-light) .dashboard-nav-option[aria-pressed="true"] {
   border-color: #f5b301;
   background-color: rgba(245, 179, 1, 0.14);
 }
@@ -566,7 +566,7 @@
     0 0 0 1px rgba(255, 255, 255, 0.06),
     0 0 48px -12px rgba(0, 0, 0, 0.55);
 }
-[data-theme="light"] .panel-shadow {
+:is([data-theme="light"], .member-theme-light) .panel-shadow {
   box-shadow:
     0 0 0 1px rgba(23, 21, 19, 0.07),
     0 0 48px -12px rgba(45, 36, 20, 0.18);
@@ -577,30 +577,30 @@
 .machine-dest-list {
   background: linear-gradient(160deg, rgba(7, 7, 7, 0.72), rgba(7, 7, 7, 0.52));
 }
-[data-theme="light"] .machine-dest-list {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list {
   background: linear-gradient(160deg, rgba(255, 252, 244, 0.86), rgba(255, 252, 244, 0.68));
   border-color: rgba(23, 21, 19, 0.14);
 }
-[data-theme="light"] .machine-dest-list .text-white {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .text-white {
   color: #201c15;
 }
-[data-theme="light"] .machine-dest-list .text-zinc-300 {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .text-zinc-300 {
   color: #3a342b;
 }
-[data-theme="light"] .machine-dest-list .text-zinc-500 {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .text-zinc-500 {
   color: #5a5245;
 }
-[data-theme="light"] .machine-dest-list .text-zinc-600 {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .text-zinc-600 {
   color: #776d5d;
 }
-[data-theme="light"] .machine-dest-list .bg-white\/6,
-[data-theme="light"] .machine-dest-list .bg-white\/\[0\.06\] {
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .bg-white\/6,
+:is([data-theme="light"], .member-theme-light) .machine-dest-list .bg-white\/\[0\.06\] {
   background-color: rgba(23, 21, 19, 0.07);
 }
 
 /* The parts list keeps a pale glass veil in light mode so dark labels stay
    readable over the colour wash. */
-[data-theme="light"] .machine-parts-panel {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel {
   border-color: rgba(50, 40, 20, 0.22) !important;
   background-color: rgba(247, 244, 237, 0.46) !important;
   /* Equal from every side, matching the rest of the resizable panels. */
@@ -609,37 +609,37 @@
     0 0 48px -12px rgba(45, 36, 20, 0.18) !important;
 }
 /* (Blurred-photo and dark-tint overrides removed — the wash is a colour field now.) */
-[data-theme="light"] .machine-parts-head {
+:is([data-theme="light"], .member-theme-light) .machine-parts-head {
   border-color: rgba(50, 40, 20, 0.16) !important;
 }
-[data-theme="light"] .machine-parts-panel .machine-parts-accent {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .machine-parts-accent {
   color: var(--gold-ink) !important;
 }
-[data-theme="light"] .machine-parts-panel .machine-parts-muted {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .machine-parts-muted {
   color: #514838 !important;
 }
-[data-theme="light"] .machine-parts-panel .text-white {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .text-white {
   color: #201c15 !important;
 }
-[data-theme="light"] .machine-parts-panel .text-zinc-300 {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .text-zinc-300 {
   color: #383126 !important;
 }
-[data-theme="light"] .machine-parts-panel .text-zinc-400 {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .text-zinc-400 {
   color: #514838 !important;
 }
-[data-theme="light"] .machine-parts-panel .text-saffron-300 {
+:is([data-theme="light"], .member-theme-light) .machine-parts-panel .text-saffron-300 {
   color: var(--gold-ink) !important;
 }
-[data-theme="light"] .machine-parts-row {
+:is([data-theme="light"], .member-theme-light) .machine-parts-row {
   border-color: rgba(50, 40, 20, 0.09);
   background: rgba(255, 252, 244, 0.52);
 }
-[data-theme="light"] .machine-parts-row:hover,
-[data-theme="light"] .machine-parts-row.border-saffron-400\/45 {
+:is([data-theme="light"], .member-theme-light) .machine-parts-row:hover,
+:is([data-theme="light"], .member-theme-light) .machine-parts-row.border-saffron-400\/45 {
   border-color: rgba(245, 179, 1, 0.8) !important;
   background: rgba(255, 249, 216, 0.9) !important;
 }
-[data-theme="light"] .machine-parts-product {
+:is([data-theme="light"], .member-theme-light) .machine-parts-product {
   color: #211b10 !important;
 }
 
@@ -665,7 +665,7 @@
 .photo-empty-mark {
   color: var(--color-saffron-300);
 }
-[data-theme="light"] .photo-empty-mark {
+:is([data-theme="light"], .member-theme-light) .photo-empty-mark {
   color: var(--color-zinc-500);
 }
 
@@ -673,7 +673,7 @@
    Red on the black page, and a deeper red on the cream one, where #ef4444 is
    too light to read. The beat itself is the `heartbeat` keyframe above; this
    only picks the shade. */
-[data-theme="light"] .credit-heart {
+:is([data-theme="light"], .member-theme-light) .credit-heart {
   color: var(--color-red-600);
 }
 
@@ -741,7 +741,7 @@
     0 8px 22px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-[data-theme="light"] .section-chrome-plate {
+:is([data-theme="light"], .member-theme-light) .section-chrome-plate {
   background-color: rgba(255, 255, 255, 0.94);
   border-color: rgba(245, 179, 1, 0.75);
   /* Same ink as .text-on-gold: the pale plate is a light surface. */
@@ -756,14 +756,14 @@
 .section-chrome-hover:focus-visible {
   background-color: rgba(255, 255, 255, 0.14);
 }
-[data-theme="light"] .section-chrome-hover:hover,
-[data-theme="light"] .section-chrome-hover:focus-visible {
+:is([data-theme="light"], .member-theme-light) .section-chrome-hover:hover,
+:is([data-theme="light"], .member-theme-light) .section-chrome-hover:focus-visible {
   background-color: rgba(0, 0, 0, 0.15);
 }
 .section-chrome-divider {
   background-color: rgba(255, 255, 255, 0.22);
 }
-[data-theme="light"] .section-chrome-divider {
+:is([data-theme="light"], .member-theme-light) .section-chrome-divider {
   background-color: rgba(0, 0, 0, 0.2);
 }
 .section-chrome-toolbar:hover,
@@ -784,7 +784,7 @@
 .map-paper {
   background-color: #0e1116;
 }
-[data-theme="light"] .map-paper {
+:is([data-theme="light"], .member-theme-light) .map-paper {
   background-color: #e8eaed;
 }
 /* ── Checkpoint names drawn over the map ────────────────────────────────────
@@ -814,7 +814,7 @@
   background: linear-gradient(to bottom, rgba(7, 7, 7, 0.55) 0%, rgba(7, 7, 7, 0) 22%),
     linear-gradient(to top, rgba(7, 7, 7, 0.62) 0%, rgba(7, 7, 7, 0) 30%);
 }
-[data-theme="light"] .tracker-map-veil {
+:is([data-theme="light"], .member-theme-light) .tracker-map-veil {
   background: linear-gradient(to bottom, rgba(247, 244, 237, 0.5) 0%, rgba(247, 244, 237, 0) 22%),
     linear-gradient(to top, rgba(247, 244, 237, 0.55) 0%, rgba(247, 244, 237, 0) 30%);
 }
@@ -858,12 +858,12 @@
   border-color: rgba(253, 230, 138, 0.7);
   box-shadow: 0 0 44px rgba(251, 191, 36, 0.4);
 }
-[data-theme="light"] .live-plate {
+:is([data-theme="light"], .member-theme-light) .live-plate {
   background: rgba(255, 255, 255, 0.88);
   border-color: rgba(245, 179, 1, 0.75);
   box-shadow: 0 8px 24px rgba(23, 21, 19, 0.14);
 }
-[data-theme="light"] .live-plate:hover {
+:is([data-theme="light"], .member-theme-light) .live-plate:hover {
   border-color: rgba(245, 179, 1, 0.95);
   box-shadow: 0 10px 30px rgba(23, 21, 19, 0.2);
 }
@@ -881,7 +881,7 @@
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.1);
 }
-[data-theme="light"] .cd-panel {
+:is([data-theme="light"], .member-theme-light) .cd-panel {
   background: rgba(255, 255, 255, 0.72);
   border-color: rgba(245, 179, 1, 0.55);
 }
@@ -893,7 +893,7 @@
     inset 0 -1px 0 rgba(255, 255, 255, 0.05),
     0 6px 20px rgba(0, 0, 0, 0.5);
 }
-[data-theme="light"] .cd-tile {
+:is([data-theme="light"], .member-theme-light) .cd-tile {
   background: #fdfaf3;
   border-color: rgba(245, 179, 1, 0.9);
   box-shadow: 0 6px 16px rgba(23, 21, 19, 0.1);
@@ -903,7 +903,7 @@
 .cd-split {
   background: rgba(255, 255, 255, 0.14);
 }
-[data-theme="light"] .cd-split {
+:is([data-theme="light"], .member-theme-light) .cd-split {
   background: rgba(23, 21, 19, 0.16);
 }
 
@@ -917,7 +917,7 @@
 .cd-digit {
   text-shadow: 0 0 18px rgba(245, 179, 1, 0.55);
 }
-[data-theme="light"] .cd-digit {
+:is([data-theme="light"], .member-theme-light) .cd-digit {
   text-shadow: none;
 }
 
@@ -926,7 +926,7 @@
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid transparent;
 }
-[data-theme="light"] .cd-chip {
+:is([data-theme="light"], .member-theme-light) .cd-chip {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(245, 179, 1, 0.85);
 }
@@ -961,7 +961,7 @@
 
 /* Light mode: cream card, warm ink. Amber and emerald already land on their
    readable light-theme shades, so only the surface and the accents move. */
-[data-theme="light"] .live-location-card {
+:is([data-theme="light"], .member-theme-light) .live-location-card {
   --location-text: #242019;
   --location-muted: #62594d;
   --location-accent: #806000;
@@ -971,12 +971,12 @@
   border-color: rgba(168, 121, 0, 0.55);
   box-shadow: 0 24px 60px rgba(23, 21, 19, 0.22);
 }
-[data-theme="light"] .live-location-card .text-saffron-300 {
+:is([data-theme="light"], .member-theme-light) .live-location-card .text-saffron-300 {
   color: var(--location-accent);
 }
-[data-theme="light"] .live-location-card .text-emerald-300 { color: #065f46; }
-[data-theme="light"] .live-location-card :is(.text-amber-200, .text-amber-300) { color: #854d0e; }
-[data-theme="light"] .live-location-card .text-sky-400 { color: #075985; }
+:is([data-theme="light"], .member-theme-light) .live-location-card .text-emerald-300 { color: #065f46; }
+:is([data-theme="light"], .member-theme-light) .live-location-card :is(.text-amber-200, .text-amber-300) { color: #854d0e; }
+:is([data-theme="light"], .member-theme-light) .live-location-card .text-sky-400 { color: #075985; }
 
 /* The rider badge and the map credit float on the tiles too. */
 .live-map-badge {
@@ -986,7 +986,7 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-[data-theme="light"] .live-map-badge {
+:is([data-theme="light"], .member-theme-light) .live-map-badge {
   background: rgba(255, 253, 247, 0.94);
   border-color: rgba(36, 32, 25, 0.14);
   color: #3a342b;
@@ -999,7 +999,7 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-[data-theme="light"] .live-map-attribution {
+:is([data-theme="light"], .member-theme-light) .live-map-attribution {
   background: rgba(255, 253, 247, 0.86);
   color: #4a4238;
 }
@@ -1025,4 +1025,82 @@
     opacity: 1 !important;
     filter: none !important;
   }
+}
+
+/* ── A member's own theme ─────────────────────────────────────────────────
+   The site's theme is the owner's, and it is saved server-side: switching it
+   in the dashboard changes what every visitor sees. A member's garage is not
+   the site, so it gets its own choice, kept in the member's browser — the two
+   do not touch each other, and a member can read their rides on cream while
+   the site stays matte black.
+
+   `.member-theme-light` is folded into every light-mode rule above through
+   `:is()`, so the whole light palette applies to that subtree wherever the
+   site's own theme is set.
+
+   `.member-theme-dark` has to restate the dark values, because a dark garage
+   can sit inside a light page: without this it would inherit the cream tokens
+   from `<html>` and paint a dark frame around light text. It is declared last
+   so it wins against the light rules that also match — same specificity, later
+   in the file. */
+/* Two shades the member's page writes in that the light block above leaves
+   alone, because the site itself only ever used them on black: near-white
+   gold on a chip, and cream body text in the notes box. Scoped to the member's
+   light garage so the rest of the site is untouched. */
+.member-theme-light {
+  --color-saffron-200: var(--gold-ink);
+  --color-amber-50: #78350f;
+}
+
+.member-theme-dark {
+  color-scheme: dark;
+  --color-white: #ffffff;
+  --color-ink-950: #070707;
+  --color-ink-900: #0d0d0d;
+  --color-ink-800: #151514;
+  --color-ink-700: #22211e;
+  --color-zinc-100: oklch(96.7% 0.001 286.375);
+  --color-zinc-200: oklch(92% 0.004 286.32);
+  --color-zinc-300: oklch(87.1% 0.006 286.286);
+  --color-zinc-400: oklch(70.5% 0.015 286.067);
+  --color-zinc-500: oklch(55.2% 0.016 285.938);
+  --color-zinc-600: oklch(44.2% 0.017 285.786);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-200: oklch(90.5% 0.093 164.15);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-400: oklch(76.5% 0.177 163.223);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --gold-ink: #f5b301;
+}
+.member-theme-dark .glass {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.member-theme-dark .bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.031) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.031) 1px, transparent 1px);
+}
+.member-theme-dark .text-saffron-300,
+.member-theme-dark .text-saffron-400 {
+  color: var(--color-saffron-300);
+}
+.member-theme-dark .text-amber-200\/80 {
+  color: rgb(253 230 138 / 0.8);
+}
+.member-theme-dark .text-emerald-200\/80,
+.member-theme-dark .text-emerald-400\/60 {
+  color: rgb(167 243 208 / 0.8);
+}
+.member-theme-dark .panel-shadow {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 48px -12px rgba(0, 0, 0, 0.55);
 }

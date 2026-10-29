@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapPin } from "lucide-react";
 import VectorBasemap from "../components/VectorBasemap";
+import type { Theme } from "../store/siteContent";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import { cn } from "../utils/cn";
 
@@ -35,6 +36,7 @@ export default function RideMap({
   onSelect,
   height = 320,
   className,
+  themeOverride,
 }: {
   stops: RidePoint[];
   /** Index of the stop being edited, drawn larger. */
@@ -45,6 +47,12 @@ export default function RideMap({
   onSelect?: (index: number) => void;
   height?: number;
   className?: string;
+  /**
+   * Draw the basemap as if the page were in this theme. The member's garage has
+   * a theme of its own, which may differ from the site's, and the map should
+   * match the room it is in.
+   */
+  themeOverride?: Theme;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height });
@@ -128,6 +136,7 @@ export default function RideMap({
         height={drawHeight}
         className="pointer-events-none absolute inset-0 h-full w-full"
         attributionClassName="pointer-events-none absolute bottom-1 right-2 text-[9px] leading-none text-zinc-400/70"
+        themeOverride={themeOverride}
       />
 
       <svg
