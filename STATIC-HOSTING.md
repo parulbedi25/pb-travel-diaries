@@ -30,6 +30,44 @@ release/static/
 About 16 MB in total. The page reads `content.json` when there is no API behind
 it, which is what makes the site work without a server.
 
+## Where the database went, and why there is no `.env`
+
+A static site cannot connect to a database. Not MySQL, not SQLite, not "just to
+read one table" — there is no server-side code in the folder, and a browser is
+not allowed to open a database connection; a password in the page would be
+readable by every visitor anyway.
+
+So the data was read **once, at export time**, and written into `content.json`.
+That file is the site's content from then on. Editing it by hand works (it is
+plain JSON), but the normal way to change it is to change the site with the
+dashboard on a machine running the server, and export again.
+
+**Do not upload `.env`, and do not look for one.** On a static host every file
+in the web root can be fetched by anyone, so `https://yourdomain.com/.env` would
+hand out your database password and session secret. It is also useless there:
+nothing in the folder reads it.
+
+Two more consequences, because they are the usual reason people reach for `.env`
+at this point:
+
+- **Your Mac's `localhost` database is unreachable from a web host.** It only
+  listens on your own machine, it sits behind your router, and exposing it to
+  the internet is not something to do for a travel diary. That is exactly why
+  the export exists: the database stays on your Mac, and the folder carries a
+  copy of what it holds.
+- **Uploaded photos are a snapshot too.** Files added to the site after the
+  export are not on the server until you export and upload again.
+
+If you want the live site to talk to a database — editing from any browser,
+photos added later, pasted map links expanding, members-only sections really
+locked — that is the **server** deployment, not this one: upload the app, create
+a MySQL database **in that host's cPanel**, and put those credentials in the
+panel's environment (or a `.env` **outside** `public_html`). See
+[NAMECHEAP.md](NAMECHEAP.md). The credential that matters there is the host's
+`localhost`, never your Mac's.
+
+---
+
 ## 2. Make the export
 
 Run this on the machine that has your saved site — the one where the dashboard
