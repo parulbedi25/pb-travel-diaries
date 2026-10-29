@@ -9,11 +9,12 @@
  *
  * So the search happens here, where it can be retried and fall back:
  *
- *  1. **Google Places**, when a key is configured — in the dashboard's
- *     Nearby settings, or `GOOGLE_PLACES_API_KEY` in the environment. It is
- *     tried first because it is the most complete answer, and it costs the
- *     owner money by the request. Google has no keyless API, so a site
- *     without a key simply does not have this step.
+ *  1. **Google**, asked the way a browser asks it — the Maps search page
+ *     itself, whose results are read out of the page Google sends back. No
+ *     API key, no billing account, nothing to configure: the same public
+ *     results anyone sees on maps.google.com, asked by category around the
+ *     point. It is tried first because it is the most complete answer, and a
+ *     rider looking for a bed wants Google's list.
  *  2. **Overpass**, across several mirrors in turn — the main instance, then
  *     two independent community servers. One `out center` query per question,
  *     with a User-Agent naming this site, as Overpass asks.
@@ -48,10 +49,23 @@ export const OVERPASS_MIRRORS = [
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const PHOTON_URL = "https://photon.komoot.io/api";
-const GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
+const GOOGLE_MAPS_URL = "https://www.google.com/maps/search";
 
 /** Overpass asks callers to identify themselves; this is who we are. */
 const USER_AGENT = "pb-travel-diaries/1.0 (nearby places; +https://pbfrompb.in)";
+
+/**
+ * Google is a different kind of server: ask it as a script does and it may
+ * hand back the cut-down page, which carries no results. So the Maps page is
+ * asked with an ordinary browser's headers, because that is the page with the
+ * data in it.
+ */
+const BROWSER_HEADERS = {
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-IN,en-GB;q=0.9,en;q=0.8",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+};
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 200;
@@ -77,6 +91,17 @@ export function overpassQuery(kind, lat, lng, radiusKm) {
     `nwr["name"~"Royal Enfield",i]${around};` +
     `);out center 140;`
   );
+}
+
+/**
+ * What Google is asked, one free-text search per category. These are the words
+ * a rider would type into Maps, not API type names, because the page is being
+ * asked rather than the API.
+ */
+export function googleTerms(kind) {
+  return kind === "stays"
+    ? ["hotels", "guest houses", "hostels"]
+    : ["petrol pumps", "hospitals", "motorcycle repair Royal Enfield"];
 }
 
 /** What Nominatim is asked, one free-text term per category. */
@@ -266,69 +291,231 @@ export function itemsFromNominatim(hits, origin) {
   return items;
 }
 
-/** Google Places results as items — used only when a key is configured. */
-export function itemsFromGoogle(results, origin) {
-  const items = [];
-  for (const place of Array.isArray(results) ? results : []) {
-    const lat = place.geometry?.location?.lat;
-    const lng = place.geometry?.location?.lng;
-    if (typeof lat !== "number" || typeof lng !== "number") continue;
-    const types = Array.isArray(place.types) ? place.types : [];
-    const name = String(place.name ?? "").trim();
-    const royalEnfield = RE_NAME.test(name);
-    let kind = null;
-    let detail = "";
-    let budget = false;
-    if (types.includes("lodging")) {
-      kind = "stay";
-      budget = /hostel|guest/i.test(name);
-      const stars = place.rating ? ` · ${place.rating}★` : "";
-      detail = `${budget ? "Guest house · budget" : "Hotel"}${stars}`;
-    } else if (types.includes("gas_station")) {
-      kind = "fuel";
-      detail = "Fuel station";
-    } else if (types.includes("hospital") || types.includes("doctor")) {
-      kind = "hospital";
-      detail = types.includes("hospital") ? "Hospital" : "Clinic";
-    } else if (types.includes("car_repair") || royalEnfield) {
-      kind = "service";
-      detail = royalEnfield ? "Royal Enfield · workshop" : "Motorcycle workshop";
-    }
-    if (!kind || !name) continue;
-    items.push({
-      id: `google/${place.place_id ?? `${lat},${lng}`}`,
-      kind,
-      title: name,
-      lat,
-      lng,
-      distanceKm: Number(kmBetween(origin, { lat, lng }).toFixed(2)),
-      detail,
-      ...(royalEnfield ? { royalEnfield: true } : {}),
-      ...(budget ? { budget: true } : {}),
-      ...(place.opening_hours?.open_now === undefined ? {} : { opening: place.opening_hours.open_now ? "open now" : "closed now" }),
-    });
+/* ------------------------------------------------------------------ *
+ * Google, asked as a page
+ * ------------------------------------------------------------------ */
+
+/** Words that mean a record is a bed, a pump, a hospital or a workshop. */
+const GOOGLE_TOKENS = {
+  stay: ["lodging", "hotel", "guest_house", "guest house", "hostel", "motel", "resort", "homestay", "bed and breakfast"],
+  fuel: ["gas_station", "gas station", "petrol", "fuel", "filling station", "petrol pump"],
+  hospital: ["hospital", "clinic", "doctor", "medical", "nursing home", "dispensary"],
+  service: ["car_repair", "motorcycle", "motor cycle", "bike repair", "two wheeler", "workshop", "royal enfield", "garage"],
+};
+
+/** A Google place id, e.g. `0x391ad0a2b:0x1f2ab3c` — never a name. */
+const HEX_ID = /^0x[0-9a-f]+:0x[0-9a-f]+$/i;
+const URLISH = /^(https?:\/\/|www\.|\/)/i;
+
+/**
+ * Every array in the page's data, visited once.
+ *
+ * Google's Maps page hands the browser one enormous state array; the places
+ * live in it as arrays of their own. Rather than depend on an index that
+ * changes between builds of their page, this walks the whole thing and lets
+ * the shape of a record identify itself.
+ */
+function eachArray(node, visit, depth = 0) {
+  if (depth > 24 || !node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    visit(node);
+    for (const child of node) eachArray(child, visit, depth + 1);
+    return;
   }
-  return items;
+  for (const child of Object.values(node)) eachArray(child, visit, depth + 1);
 }
 
 /**
- * Beds cheapest first, then nearest; everything else nearest, with the
- * workshop carrying the rider's own marque moved to the top of the service
- * entries. The same place tagged twice is one place.
+ * Every coordinate pair a record's children could be read as.
+ *
+ * `[lat, lng]` and `[null, null, lat, lng]` both appear in Google's data, and
+ * so do number pairs that are not coordinates at all — a rating and its review
+ * count look exactly like a latitude and a longitude. So the caller gets all of
+ * them and picks the one nearest the point being searched, which is the only
+ * one that could be the place.
+ */
+function coordinateCandidates(record) {
+  const out = [];
+  for (const child of record) {
+    if (!Array.isArray(child)) continue;
+    const numbers = child.filter((entry) => typeof entry === "number");
+    if (numbers.length < 2) continue;
+    const others = child.filter((entry) => entry !== null && entry !== undefined);
+    if (others.length !== numbers.length) continue;
+    // `[lat, lng]` or `[null, null, lat, lng]`, most specific last.
+    const [lat, lng] = numbers.length >= 4 ? numbers.slice(-2) : numbers;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
+    if (lat === 0 && lng === 0) continue;
+    out.push({ lat, lng });
+  }
+  return out;
+}
+
+/** All the words in a record's subtree, lowercased, for classification. */
+function wordsIn(node, out = [], depth = 0) {
+  if (depth > 6) return out;
+  if (typeof node === "string") {
+    out.push(node.toLowerCase());
+    return out;
+  }
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) {
+    for (const child of node) wordsIn(child, out, depth + 1);
+    return out;
+  }
+  for (const child of Object.values(node)) {
+    if (typeof child === "string") out.push(child.toLowerCase());
+    else wordsIn(child, out, depth + 1);
+  }
+  return out;
+}
+
+/** Every number in a record's subtree, skipping the ones used as coordinates. */
+function numbersIn(node, skip, out = [], depth = 0) {
+  if (depth > 5 || node === null || node === undefined) return out;
+  if (typeof node === "number") {
+    if (!skip.has(node)) out.push(node);
+    return out;
+  }
+  if (typeof node !== "object") return out;
+  const children = Array.isArray(node) ? node : Object.values(node);
+  for (const child of children) {
+    // A pair that was read as coordinates is not also a rating.
+    if (Array.isArray(child) && child.length <= 4 && coordinateCandidates([child]).length) {
+      for (const number of child) if (typeof number === "number") skip.add(number);
+      continue;
+    }
+    numbersIn(child, skip, out, depth + 1);
+  }
+  return out;
+}
+
+/** Which of the four things this record is, from the words around it. */
+export function googleKindOf(words, name = "") {
+  const haystack = [...words, name.toLowerCase()];
+  for (const kind of ["stay", "fuel", "hospital", "service"]) {
+    if (haystack.some((word) => GOOGLE_TOKENS[kind].some((token) => word.includes(token)))) return kind;
+  }
+  return null;
+}
+
+/**
+ * The data array out of a Google Maps page.
+ *
+ * The page ships as `window.APP_INITIALIZATION_STATE=[…];window.APP_FLAGS=…`.
+ * Only the first of those is wanted, and a build of their page that renames it
+ * simply yields nothing — which is why OpenStreetMap is still underneath.
+ */
+export function googleStateFrom(html) {
+  const match = String(html ?? "").match(/window\.APP_INITIALIZATION_STATE\s*=\s*(\[[\s\S]*?\]);\s*window\./);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Google's results as items.
+ *
+ * A record is recognised by what it has, not where it sits: a name that is a
+ * name, coordinates in the right ranges, and a word somewhere near it saying
+ * it is a hotel or a pump. The same place listed under two searches is one
+ * place.
+ */
+export function itemsFromGoogleState(state, origin) {
+  const items = [];
+  if (!state) return items;
+
+  eachArray(state, (record) => {
+    // A place record is flat and modest; the containers around it are not.
+    if (record.length > 220) return;
+    // Direct children only: a record is flat, and reading grandchildren would
+    // turn one place into several.
+    const strings = record.filter((child) => typeof child === "string" && child.trim());
+    const named = strings
+      .filter((text) => !HEX_ID.test(text) && !URLISH.test(text))
+      .filter((text) => text.trim().length >= 2 && text.trim().length <= 90)
+      .sort((a, b) => b.length - a.length);
+    if (!named.length) return;
+
+    const candidates = coordinateCandidates(record);
+    if (!candidates.length) return;
+    // The real coordinates are the ones near the point that was searched for.
+    const coords = candidates.reduce((best, next) =>
+      kmBetween(origin, next) < kmBetween(origin, best) ? next : best,
+    );
+
+    const name = named[0].trim();
+    // A category word on its own is not a place.
+    if (Object.values(GOOGLE_TOKENS).flat().includes(name.toLowerCase())) return;
+
+    const words = wordsIn(record);
+    const kind = googleKindOf(words, name);
+    if (!kind) return;
+
+    const royalEnfield = RE_NAME.test(name);
+    // Google's rating is a number between 1 and 5 with a decimal on it, kept
+    // somewhere in the record — and never one of the coordinates.
+    const rating = numbersIn(record, new Set()).find(
+      (value) => value >= 1 && value <= 5 && !Number.isInteger(value),
+    );
+    const budget = kind === "stay" && /hostel|guest|homestay|budget|oyo/i.test(name);
+
+    const detail =
+      kind === "stay"
+        ? `${budget ? "Guest house · budget" : "Hotel"}${rating ? ` · ${rating}★` : ""}`
+        : kind === "fuel"
+          ? "Fuel station"
+          : kind === "hospital"
+            ? "Hospital"
+            : royalEnfield
+              ? "Royal Enfield · workshop"
+              : "Motorcycle workshop";
+
+    items.push({
+      id: `google/${coords.lat.toFixed(5)},${coords.lng.toFixed(5)}`,
+      kind,
+      title: name,
+      lat: coords.lat,
+      lng: coords.lng,
+      distanceKm: Number(kmBetween(origin, coords).toFixed(2)),
+      detail,
+      ...(royalEnfield ? { royalEnfield: true } : {}),
+      ...(budget ? { budget: true } : {}),
+    });
+  });
+
+  return items;
+}
+
+/** A whole page as items — the state, or nothing. */
+export function itemsFromGoogleMapsHtml(html, origin) {
+  const items = itemsFromGoogleState(googleStateFrom(html), origin);
+  // The same place can be listed in two categories; keep the nearest copy.
+  const seen = new Map();
+  for (const item of items) {
+    const key = `${item.title.toLowerCase()}@${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
+    const kept = seen.get(key);
+    if (!kept || item.distanceKm < kept.distanceKm) seen.set(key, item);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Nearest first — one answer to "what is around here", whatever the tab.
+ *
+ * The list on the page and the pins on the map read in the same order, so the
+ * nearest bed or pump is always the first thing offered, and the same place
+ * tagged twice is one place.
  */
 export function rankItems(items, kind) {
   // Only what was asked for: a "stays" answer that came back with a fuel
   // station in it — a regex that matched more than it meant to — must not
   // quietly appear in the beds list.
   const wanted = items.filter((item) => (kind === "stays" ? item.kind === "stay" : item.kind !== "stay"));
-  const sorted = [...wanted].sort((a, b) => {
-    if (kind === "stays") {
-      if (Boolean(a.budget) !== Boolean(b.budget)) return a.budget ? -1 : 1;
-    } else if (Boolean(a.royalEnfield) !== Boolean(b.royalEnfield)) {
-      return a.royalEnfield ? -1 : 1;
-    }
-    return a.distanceKm - b.distanceKm;
-  });
+  const sorted = [...wanted].sort((a, b) => a.distanceKm - b.distanceKm);
   const seen = new Set();
   return sorted.filter((item) => {
     const key = `${item.title.toLowerCase()}@${item.lat.toFixed(3)},${item.lng.toFixed(3)}`;
@@ -413,38 +600,29 @@ async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
   return all;
 }
 
-/** Google Places, one call per category. */
-async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, key }) {
-  const types = kind === "stays" ? ["lodging"] : ["gas_station", "hospital"];
+/**
+ * Google, one search page per category.
+ *
+ * The page is asked exactly as a browser asks it — `/maps/search/<words>/@lat,
+ * lng,<zoom>z` — and the results are read out of the answer. The zoom is set
+ * from the radius so Google's own list is about as wide as the tab claims to
+ * be, and the radius is then applied here, because Google's idea of "near" is
+ * generous.
+ */
+async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
+  const zoom = Math.max(10, Math.min(15, Math.round(15 - Math.log2(Math.max(1, radiusKm / 2)))));
   const all = [];
-  for (const type of types) {
-    const params = new URLSearchParams({
-      location: `${lat},${lng}`,
-      radius: String(Math.round(radiusKm * 1000)),
-      type,
-      key,
-    });
-    const response = await fetchImpl(`${GOOGLE_PLACES_URL}?${params}`, {
-      headers: { Accept: "application/json" },
+  for (const term of googleTerms(kind)) {
+    const url = `${GOOGLE_MAPS_URL}/${encodeURIComponent(term)}/@${lat.toFixed(5)},${lng.toFixed(5)},${zoom}z?hl=en`;
+    const response = await fetchImpl(url, {
+      headers: BROWSER_HEADERS,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const json = await readJson(response, "Google Places");
-    all.push(...itemsFromGoogle(json.results, { lat, lng }));
-  }
-  if (kind === "essentials") {
-    // Motorcycle workshops are a keyword search in Places, not a type.
-    const params = new URLSearchParams({
-      location: `${lat},${lng}`,
-      radius: String(Math.round(radiusKm * 1000)),
-      keyword: "motorcycle repair Royal Enfield",
-      key,
-    });
-    const response = await fetchImpl(`${GOOGLE_PLACES_URL}?${params}`, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const json = await readJson(response, "Google Places");
-    all.push(...itemsFromGoogle(json.results, { lat, lng }));
+    if (!response.ok) throw new Error(`Google answered ${response.status}`);
+    const html = await response.text();
+    all.push(
+      ...itemsFromGoogleMapsHtml(html, { lat, lng }).filter((item) => item.distanceKm <= radiusKm),
+    );
   }
   return all;
 }
@@ -452,10 +630,10 @@ async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, key }
 /**
  * Search around a point, trying every source that can answer.
  *
- * The order is the answer to "which is most likely to work, and best": a
- * configured Google key first (it is the most complete, and the owner has
- * deliberately paid for it), then OpenStreetMap three ways — Overpass, its
- * mirrors, Photon, and Nominatim — and nothing at all as the last resort.
+ * The order is the answer to "which is most likely to work, and best": Google
+ * first (the most complete list, and free to ask), then OpenStreetMap three
+ * ways — Overpass, its mirrors, Photon, and Nominatim — and nothing at all as
+ * the last resort.
  *
  * Never throws for a busy service: the caller gets whatever the first
  * answering source found, and `source` says which one it was so the page can
@@ -469,7 +647,6 @@ export async function searchNearby({
   fetchImpl,
   mirrors = OVERPASS_MIRRORS,
   timeoutMs = 20_000,
-  googleKey = process.env.GOOGLE_PLACES_API_KEY,
 } = {}) {
   const radiusKm = KIND_RADIUS_KM[kind];
   if (!radiusKm) throw new Error(`Unknown nearby kind: ${kind}`);
@@ -484,17 +661,13 @@ export async function searchNearby({
     if (!tried.includes(label)) tried.push(label);
     if (note) notes.push(note);
   };
-  const key = String(googleKey ?? "").trim();
-
-  // A configured key is used first: richer results, and the owner opted in.
-  if (key) {
-    try {
-      const items = await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs, key });
-      if (items.length) return { source: "google", radiusKm, items: rankItems(items, kind), tried, notes };
-      mark("Google Places", "google: nothing nearby");
-    } catch (error) {
-      mark("Google Places", `google: ${error.message}`);
-    }
+  // Google first, and without a key: the page is asked as a browser asks it.
+  try {
+    const items = await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+    if (items.length) return { source: "google", radiusKm, items: rankItems(items, kind), tried, notes };
+    mark("Google", "google: nothing nearby");
+  } catch (error) {
+    mark("Google", `google: ${error.message}`);
   }
 
   for (const mirror of mirrors) {
@@ -527,7 +700,7 @@ export async function searchNearby({
     mark("Nominatim", `nominatim: ${error.message}`);
   }
 
-  return { source: "none", radiusKm, items: [], tried, notes, keyConfigured: Boolean(key) };
+  return { source: "none", radiusKm, items: [], tried, notes };
 }
 
 /** The cached answer for a point, or a fresh one. */

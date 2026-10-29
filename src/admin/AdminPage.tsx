@@ -7,7 +7,6 @@ import {
   ChevronUp,
   CalendarClock,
   ShieldCheck,
-  Compass,
   Copy,
   Download,
   Eye,
@@ -82,7 +81,6 @@ import {
   resolveLoaderAnimation,
 } from "../store/siteContent";
 import BrandLogo from "../components/BrandLogo";
-import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import { FooterView } from "../components/Footer";
 import { useCountdown, useCountdownFinished } from "../components/CountdownSection";
 import { cn } from "../utils/cn";
@@ -3785,7 +3783,6 @@ type SettingsSection =
   | "colours"
   | "map"
   | "loader"
-  | "nearby"
   | "account"
   | "backup"
   | "history";
@@ -3820,13 +3817,6 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string; hint: string; ico
     label: "Loader screen",
     hint: "The mark shown for the moment while the site loads.",
     icon: Play,
-  },
-  {
-    id: "nearby",
-    label: "Nearby places",
-    hint:
-      "The beds, fuel, workshops and hospitals the nearby page lists. OpenStreetMap needs no key; a Google Places key makes the list better and is used first.",
-    icon: Compass,
   },
   {
     id: "account",
@@ -3870,196 +3860,7 @@ function SectionNote({ children }: { children: React.ReactNode }) {
  * for anybody else, and the dashboard does not offer it either. Everybody can
  * still change their own password: that part of the account section stays.
  */
-const OWNER_ONLY_SECTIONS: SettingsSection[] = ["backup", "nearby"];
-
-/**
- * The nearby page's Google Places key.
- *
- * Google has no keyless API, so without a key the page falls back to
- * OpenStreetMap three ways — Overpass, its mirrors, Photon, Nominatim — and
- * that is enough most days. With a key the answer comes from Google first:
- * fuller, and with ratings.
- *
- * The key never reaches the browser. It is sent once, stored in the
- * deployment's settings, and used by the server; what comes back here is
- * whether one is set and its last four characters, so the owner can tell which
- * key is in place without it being readable on a shared screen.
- */
-function SettingsNearby() {
-  const [state, setState] = useState<{ configured: boolean; hint: string; source: string } | null>(null);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [test, setTest] = useState<string>("");
-  const [testing, setTesting] = useState(false);
-  // The first stop of the route, so "test" asks about somewhere real.
-  const { route } = useSiteLiveLocation();
-  const data = route as { stops?: { name: string; lat: number; lng: number }[] };
-
-  useEffect(() => {
-    let cancelled = false;
-    siteApi
-      .googleKey()
-      .then((answer) => {
-        if (!cancelled) setState(answer);
-      })
-      .catch(() => {
-        if (!cancelled) setState({ configured: false, hint: "", source: "none" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const save = async () => {
-    const key = draft.trim();
-    if (!key) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const answer = await siteApi.saveGoogleKey(key);
-      setState(answer);
-      setDraft("");
-      setMsg({ ok: true, text: `Saved. Google will be asked first; key ${answer.hint}.` });
-    } catch (error) {
-      setMsg({ ok: false, text: error instanceof Error ? error.message : "The key could not be saved." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const clear = async () => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const answer = await siteApi.clearGoogleKey();
-      setState(answer);
-      setMsg({ ok: true, text: "Key removed. The nearby page is back to OpenStreetMap only." });
-    } catch (error) {
-      setMsg({ ok: false, text: error instanceof Error ? error.message : "The key could not be removed." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /** One real search, so a key is proved rather than trusted. */
-  const runTest = async () => {
-    const stop = (data.stops ?? [])[0];
-    const lat = stop?.lat ?? 31.3832;
-    const lng = stop?.lng ?? 76.3766;
-    const where = stop?.name ?? "the start of the route";
-    setTesting(true);
-    setTest("");
-    try {
-      const answer = await siteApi.testNearby(lat, lng, "stays");
-      setTest(
-        `${answer.items.length} place${answer.items.length === 1 ? "" : "s"} found near ${where}, answered by ${
-          answer.source === "google"
-            ? "Google Places"
-            : answer.source === "overpass"
-              ? "OpenStreetMap (Overpass)"
-              : answer.source === "photon"
-                ? "OpenStreetMap (Photon)"
-                : answer.source === "nominatim"
-                  ? "OpenStreetMap (Nominatim)"
-                  : "nothing — every source was busy"
-        }.${answer.googleKey ? "" : " No Google key is set."}`,
-      );
-    } catch (error) {
-      setTest(error instanceof Error ? error.message : "The test search failed.");
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <section className="rounded-3xl glass p-6">
-        <h3 className="font-display text-base font-semibold text-white">Google Places key</h3>
-        <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-          Optional. Without it the nearby page uses OpenStreetMap — Overpass, its mirrors, Photon and
-          Nominatim — which is free and needs no account. With it, Google is asked first for hotels, petrol
-          pumps, workshops and hospitals.
-        </p>
-        <p className="mt-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[11px] leading-relaxed text-zinc-400">
-          {state === null
-            ? "Checking…"
-            : state.configured
-              ? `A key is set${state.hint ? ` (${state.hint})` : ""}${
-                  state.source === "environment" ? ", from the server's environment" : ""
-                }.`
-              : "No key is set — the page is using OpenStreetMap only."}
-        </p>
-
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="min-w-[16rem] flex-1">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Places API key
-            </span>
-            <input
-              type="password"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="AIza…"
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 font-mono text-xs text-white placeholder:text-zinc-600 focus:border-saffron-400/60 focus:outline-none focus:ring-2 focus:ring-saffron-400/20"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={busy || !draft.trim()}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-saffron-400 px-4 py-2.5 text-xs font-bold text-on-gold transition-all hover:brightness-110 disabled:opacity-40"
-          >
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save key
-          </button>
-          <button
-            type="button"
-            onClick={() => void clear()}
-            disabled={busy || !state?.configured || state.source === "environment"}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-red-400/40 hover:text-red-200 disabled:opacity-40"
-          >
-            Remove
-          </button>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void runTest()}
-            disabled={testing}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 px-4 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-white/35 hover:text-white disabled:opacity-50"
-          >
-            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
-            Test a search
-          </button>
-          {test && <p className="text-[11px] leading-relaxed text-zinc-400">{test}</p>}
-        </div>
-
-        {msg && (
-          <p
-            className={cn(
-              "mt-3 rounded-xl border px-3 py-2 text-[11px] font-medium",
-              msg.ok
-                ? "border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-200"
-                : "border-red-400/25 bg-red-500/[0.08] text-red-200",
-            )}
-          >
-            {msg.text}
-          </p>
-        )}
-
-        <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-          The key stays on the server: it is never sent to a browser, and it is not part of a backup's site
-          content. Turn on <span className="text-zinc-300">Places API</span> for it in the Google Cloud
-          console, and set a quota you are happy with — every search spends a little of it.
-        </p>
-      </section>
-    </div>
-  );
-}
+const OWNER_ONLY_SECTIONS: SettingsSection[] = ["backup"];
 
 function SettingsPanel() {
   const { account } = useSite();
@@ -4099,7 +3900,6 @@ function SettingsPanel() {
         {section === "colours" && <SettingsColours />}
         {section === "map" && <SettingsMap />}
         {section === "loader" && <SettingsLoader />}
-        {section === "nearby" && owner && <SettingsNearby />}
         {section === "account" && <SettingsAccount />}
         {section === "backup" && owner && <SettingsBackup />}
         {section === "history" && <SettingsHistory />}

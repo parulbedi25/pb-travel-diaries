@@ -144,15 +144,14 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
  * Beds first cheap, then near; everything else near first, with the workshops
  * that carry the rider's own marque moved to the top of the service entries.
  */
-export function rankAmenities(items: readonly Amenity[], group: AmenityGroup): Amenity[] {
-  const sorted = [...items].sort((a, b) => {
-    if (group === "stays") {
-      if (Boolean(a.budget) !== Boolean(b.budget)) return a.budget ? -1 : 1;
-    } else if (Boolean(a.royalEnfield) !== Boolean(b.royalEnfield)) {
-      return a.royalEnfield ? -1 : 1;
-    }
-    return a.distanceKm - b.distanceKm;
-  });
+/**
+ * Nearest first, in one order for both halves of the page.
+ *
+ * The list is rendered in this order and the pins are laid out in it too, so
+ * the first row is always the closest place and the map reads the same way.
+ */
+export function rankAmenities(items: readonly Amenity[], _group: AmenityGroup): Amenity[] {
+  const sorted = [...items].sort((a, b) => a.distanceKm - b.distanceKm);
   // The same place tagged twice — a node and its building way — is one place.
   const seen = new Set<string>();
   return sorted.filter((item) => {
@@ -193,8 +192,6 @@ export interface AmenityResult {
   error: string;
   /** What was tried, in order, when nothing came back. */
   tried: string[];
-  /** Whether the server has a Google Places key to spend. */
-  googleKey: boolean;
   /** Which service answered, or "" while nothing has. */
   source: AmenitySource;
   loadingSource: string;
@@ -212,7 +209,6 @@ export function useNearbyAmenities({
   const [error, setError] = useState("");
   const [source, setSource] = useState<AmenitySource>("");
   const [tried, setTried] = useState<string[]>([]);
-  const [googleKey, setGoogleKey] = useState(false);
   const [loadingSource, setLoadingSource] = useState("OpenStreetMap");
   const [attempt, setAttempt] = useState(0);
   const cache = useRef(new Map<string, Amenity[]>());
@@ -245,14 +241,13 @@ export function useNearbyAmenities({
         // The server answers across three mirrors and Nominatim; it is the
         // route that works when a browser-to-Overpass request would not.
         const viaServer = await api
-          .get<{ items: Amenity[]; source: AmenitySource; tried?: string[]; googleKey?: boolean }>(
+          .get<{ items: Amenity[]; source: AmenitySource; tried?: string[] }>(
             `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
           )
           .catch(() => null);
         if (cancelled || mine !== requestId.current) return;
 
         if (viaServer) {
-          setGoogleKey(Boolean(viaServer.googleKey));
           setTried(Array.isArray(viaServer.tried) ? viaServer.tried : []);
           if (viaServer.items.length || viaServer.source !== "none") {
             const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
@@ -303,7 +298,7 @@ export function useNearbyAmenities({
     };
   }, [lat, lng, group, enabled, attempt]);
 
-  return { items, loading, error, source, tried, googleKey, loadingSource, reload };
+  return { items, loading, error, source, tried, loadingSource, reload };
 }
 
 interface OverpassElement {
