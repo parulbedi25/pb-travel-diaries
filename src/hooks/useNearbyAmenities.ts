@@ -53,6 +53,19 @@ export interface Amenity {
 /** Which service answered, so the page can say where its list came from. */
 export type AmenitySource = "overpass" | "nominatim" | "google" | "none" | "";
 
+/**
+ * The ground a list covers.
+ *
+ * Normally the town's own boundary, looked up server-side from the stop's
+ * name — so "Leh" means the whole of Leh, however far the edges are. When that
+ * boundary cannot be found, `city` is false and a radius stood in for it.
+ */
+export interface AmenityArea {
+  label: string;
+  spanKm: number;
+  city: boolean;
+}
+
 /* ------------------------------------------------------------------ *
  * The browser's own attempt, for when the server cannot answer
  * ------------------------------------------------------------------ */
@@ -208,6 +221,8 @@ function firstNonEmpty<T>(work: Promise<T[]>[]): Promise<T[] | null> {
 export interface AmenityQuery {
   lat: number;
   lng: number;
+  /** The stop's name: what turns a circle around a pin into a town's area. */
+  place?: string;
   group: AmenityGroup;
   /** False until the tab that needs it is opened, so nothing is asked for twice over. */
   enabled?: boolean;
@@ -223,6 +238,8 @@ export interface AmenityResult {
   source: AmenitySource;
   /** False until the first attempt has finished — the tab waits for this. */
   settled: boolean;
+  /** The area the list covers, once an answer has arrived. */
+  area: AmenityArea | null;
   loadingSource: string;
   reload: () => void;
 }
@@ -230,6 +247,7 @@ export interface AmenityResult {
 export function useNearbyAmenities({
   lat,
   lng,
+  place = "",
   group,
   enabled = true,
 }: AmenityQuery): AmenityResult {
@@ -240,6 +258,7 @@ export function useNearbyAmenities({
   const [tried, setTried] = useState<string[]>([]);
   const [loadingSource, setLoadingSource] = useState("Google & OpenStreetMap");
   const [settled, setSettled] = useState(false);
+  const [area, setArea] = useState<AmenityArea | null>(null);
   const [attempt, setAttempt] = useState(0);
   const cache = useRef(new Map<string, Amenity[]>());
   const requestId = useRef(0);
@@ -248,7 +267,7 @@ export function useNearbyAmenities({
 
   useEffect(() => {
     if (!enabled) return;
-    const key = `${group}:${lat.toFixed(3)},${lng.toFixed(3)}`;
+    const key = `${group}:${lat.toFixed(3)},${lng.toFixed(3)}:${place.toLowerCase()}`;
 
     if (attempt === 0) {
       const cached = cache.current.get(key);
@@ -277,8 +296,15 @@ export function useNearbyAmenities({
         // has anything; this is the route that works, and the only one needed.
         const viaServer = await capped(
           api
-            .get<{ items: Amenity[]; source: AmenitySource; tried?: string[] }>(
-              `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
+            .get<{
+              items: Amenity[];
+              source: AmenitySource;
+              tried?: string[];
+              area?: AmenityArea | null;
+            }>(
+              `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}${
+                place ? `&place=${encodeURIComponent(place)}` : ""
+              }`,
             )
             .catch(() => null),
           12_000,
@@ -287,6 +313,7 @@ export function useNearbyAmenities({
 
         if (viaServer) {
           setTried(Array.isArray(viaServer.tried) ? viaServer.tried : []);
+          if (viaServer.area) setArea(viaServer.area);
           const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
           cache.current.set(key, ranked);
           setItems(ranked);
@@ -336,9 +363,9 @@ export function useNearbyAmenities({
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, group, enabled, attempt]);
+  }, [lat, lng, place, group, enabled, attempt]);
 
-  return { items, loading, error, source, tried, settled, loadingSource, reload };
+  return { items, loading, error, source, tried, settled, area, loadingSource, reload };
 }
 
 interface OverpassElement {
