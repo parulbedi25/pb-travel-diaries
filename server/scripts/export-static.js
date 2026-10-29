@@ -309,7 +309,9 @@ async function main() {
     await repo.ping();
   } catch (error) {
     const code = error?.code || "";
-    console.error(`[export] could not reach ${sourceLabel()}: ${error.message}`);
+    // mysql2 leaves `message` empty on a refused socket; the code is the fact.
+    const detail = error?.message || code || "connection failed";
+    console.error(`[export] could not reach ${sourceLabel()}: ${detail}`);
     if (code === "ER_ACCESS_DENIED_ERROR") {
       // A server answered and refused the user. On a laptop that is almost
       // always credentials copied from a hosting panel: that user exists on the
@@ -335,20 +337,36 @@ async function main() {
       );
     }
     await closeRepo();
-    process.exit(1);
+    // Still building, unless asked not to. The folder is wanted either way: it
+    // can be uploaded, looked at and compared, and the warning above already
+    // says that the dashboard's changes are not in it. `--strict` is for a
+    // pipeline that would rather stop than ship the wrong content.
+    if (hasFlag("strict")) {
+      console.error("[export] --strict: stopping instead of building without the database.");
+      process.exit(1);
+    }
+    console.warn("[export] building anyway, from the content in the code — the site will");
+    console.warn("[export] open and work, without the changes saved in the dashboard.");
+    exportBuiltin(path.resolve(argValue("out", path.join(config.root, "release", "static"))));
+    return;
   }
 
   let row = null;
   try {
     row = await repo.getContent();
   } catch (error) {
-    console.error(`[export] reached ${sourceLabel()} but could not read it: ${error.message}`);
+    console.error(
+      `[export] reached ${sourceLabel()} but could not read it: ${error?.message || error?.code || "no answer"}`,
+    );
     console.error(
       "[export] a reachable database with no site content table is the wrong database — " +
         "check --db-name, or set it up by opening the site once.",
     );
     await closeRepo();
-    process.exit(1);
+    if (hasFlag("strict")) process.exit(1);
+    console.warn("[export] building anyway, from the content in the code.");
+    exportBuiltin(path.resolve(argValue("out", path.join(config.root, "release", "static"))));
+    return;
   }
   const theme = parseJson(await repo.getSetting("theme"));
   const savedTitle = parseJson(await repo.getSetting("site_title"));

@@ -90,6 +90,27 @@ A different folder:
 npm run export:static -- --out ~/Desktop/pb-static
 ```
 
+### If the database cannot be reached, it still builds
+
+An unreachable database no longer stops the export. It prints what it tried,
+then writes the folder from the content in the code and exits `0`:
+
+```
+[export] reading from MySQL at localhost:3306/pb_travel as pb
+[export] could not reach MySQL at localhost:3306/pb_travel as pb: ECONNREFUSED
+[export] building anyway, from the content in the code — the site will
+[export] open and work, without the changes saved in the dashboard.
+[export] done — 44 files, 16.2 MB in …
+```
+
+So a build always produces something uploadable. What it does **not** silently
+do is pretend: the warning says the dashboard's changes are missing, and the
+folder's `README.txt` records that it came from the built-in content.
+
+`--strict` restores the old behaviour — stop instead of building without the
+database — for a script or pipeline that would rather fail than ship the wrong
+content.
+
 ### With no database at all
 
 Most of this site is written in code — every section, the trip, the gear, the
