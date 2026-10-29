@@ -10,19 +10,28 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MapLinkError, expandMapLink } from "../routes/maps.js";
 
-/** A fetch that answers with the chain of redirects it is given. */
-function fakeFetch(chain, { status = 307 } = {}) {
+/**
+ * A fetch that answers with the chain of redirects it is given.
+ *
+ * `pages` is for the other shape a shortener answers with: a 200 carrying the
+ * address in the page itself rather than in a `Location` header.
+ */
+function fakeFetch(chain, { status = 307, pages = {} } = {}) {
   const calls = [];
-  const fetchImpl = async (url) => {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
     calls.push(url);
+    seen.push(init?.headers ?? {});
     const location = chain[url];
+    const page = pages[url];
     return {
       status: location ? status : 200,
       headers: new Headers(location ? { location } : {}),
       body: null,
+      ...(page === undefined ? {} : { text: async () => page }),
     };
   };
-  return { fetchImpl, calls };
+  return { fetchImpl, calls, seen };
 }
 
 const SHORT = "https://maps.app.goo.gl/YJBuu2o9CKs3reLg9?g_st=aw";
@@ -100,6 +109,58 @@ test("a network that is down is a 502, a hang is a 504", async () => {
     () => expandMapLink(SHORT, hang),
     (error) => error instanceof MapLinkError && error.status === 504,
   );
+});
+
+test("a page that redirects in its own body is read, not returned", async () => {
+  // The other shape Google answers with: a 200 and a meta refresh.
+  const { fetchImpl } = fakeFetch(
+    {},
+    {
+      pages: {
+        [SHORT]: `<html><head><meta http-equiv="refresh" content="0; url=${LONG.replace(
+          /&/g,
+          "&amp;",
+        )}"></head></html>`,
+      },
+    },
+  );
+  assert.equal(await expandMapLink(SHORT, fetchImpl), LONG);
+});
+
+test("a page that redirects by script is read too", async () => {
+  const { fetchImpl } = fakeFetch(
+    {},
+    { pages: { [SHORT]: `<script>window.location.replace("${LONG}")</script>` } },
+  );
+  assert.equal(await expandMapLink(SHORT, fetchImpl), LONG);
+});
+
+test("a page with nothing to follow is handed back as itself", async () => {
+  // It used to be returned as though it were the answer, which parsed to no
+  // stops; now it is still the answer, but only because nothing better exists.
+  const { fetchImpl } = fakeFetch({}, { pages: { [SHORT]: "<html>hello</html>" } });
+  assert.equal(await expandMapLink(SHORT, fetchImpl), SHORT);
+});
+
+test("the consent wall is asked again with the cookie that declines it", async () => {
+  const consent = "https://consent.google.com/ml?continue=https://maps.app.goo.gl/x";
+  let asked = 0;
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    asked += 1;
+    seen.push({ url, cookie: init?.headers?.cookie ?? "" });
+    if (asked === 1) {
+      return { status: 302, headers: new Headers({ location: consent }), body: null };
+    }
+    return {
+      status: 302,
+      headers: new Headers({ location: LONG }),
+      body: null,
+    };
+  };
+  assert.equal(await expandMapLink(SHORT, fetchImpl), LONG);
+  // The second ask carries the cookie; the wall is never handed back.
+  assert.equal(seen[1].cookie, "CONSENT=YES+1");
 });
 
 test("nothing at all is a 400", async () => {

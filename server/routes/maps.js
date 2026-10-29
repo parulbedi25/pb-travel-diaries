@@ -14,10 +14,25 @@
  *    `g.co`). This is not a general proxy.
  *  - Every hop is checked against the map hosts before it is followed, so a
  *    redirect cannot walk off to an internal address — the classic SSRF shape.
- *  - At most four hops, eight seconds, and the body is thrown away unread: all
- *    that is wanted is the address it ends at.
+ *  - At most four hops, a deadline, and the body is read only when the answer
+ *    is a page rather than a redirect (see `targetInPage`).
  *  - The answer is a *link*, never the page. The dashboard then parses it with
  *    the same code that reads a long link pasted by hand.
+ *
+ * Three things make this survive a real network rather than an ideal one:
+ *
+ *  - **A retry per hop.** A shared host's egress stalls for a moment, and a
+ *    stall is not an answer: the first failure re-asks once on a fresh
+ *    connection before anything is reported.
+ *  - **Pages that redirect in their own body.** Google answers a share link
+ *    with a 302 most of the time, and with an HTML shim carrying a meta
+ *    refresh, or a `location.href = "…"` script, the rest of the time. The
+ *    shim used to be returned as if it were the answer, which is what produced
+ *    "the short link could not be read" on a link that was perfectly good.
+ *  - **The consent wall.** From some networks Google answers a share link by
+ *    sending the browser to `consent.google.com` first. That is not a map, so
+ *    it cannot be followed — instead the original link is asked again, this
+ *    time with the cookie that declines the wall.
  */
 import express from "express";
 import { requireEditor } from "../lib/auth.js";
@@ -38,8 +53,21 @@ const MAP_HOSTS = [
   "openstreetmap.org",
 ];
 
+/**
+ * Hosts that mean "answer this again differently", never "this is the map".
+ *
+ * `consent.google.com` sits under `google.com`, so it is allowed to be reached
+ * — but a page asking for consent is not an address to hand back.
+ */
+const CONSENT_HOSTS = ["consent.google.com", "consent.youtube.com"];
+
 const MAX_HOPS = 4;
-const TIMEOUT_MS = 8000;
+/** One attempt's budget. Two of these fit inside the overall deadline below. */
+const ATTEMPT_TIMEOUT_MS = 6000;
+/** The whole expansion, retries included, may not outlast this. */
+const DEADLINE_MS = 12500;
+/** Enough of a page to find its redirect in; a Google answer is far smaller. */
+const MAX_PAGE_BYTES = 300_000;
 
 const hostOf = (url) => {
   try {
@@ -54,12 +82,112 @@ const allowed = (host, list) => list.some((base) => host === base || host.endsWi
 
 const shortAllowed = (host) => SHORT_HOSTS.has(host) || allowed(host, [...MAP_HOSTS]);
 const mapAllowed = (host) => allowed(host, MAP_HOSTS);
+const consentHost = (host) => CONSENT_HOSTS.includes(host);
 
 export class MapLinkError extends Error {
   constructor(message, status = 422) {
     super(message);
     this.status = status;
   }
+}
+
+/**
+ * Answers already worked out, newest last.
+ *
+ * Pasting the same link twice — which is what happens when the first import is
+ * undone and tried again — should not be two round trips to Google, and the
+ * dashboard's own retry should be free. Only real fetches are cached: a test's
+ * fake network is never remembered, so one case cannot answer for another.
+ */
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_LIMIT = 64;
+const resolved = new Map();
+
+const cached = (key) => {
+  const hit = resolved.get(key);
+  if (!hit) return "";
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    resolved.delete(key);
+    return "";
+  }
+  return hit.url;
+};
+
+const remember = (key, url) => {
+  resolved.delete(key);
+  resolved.set(key, { url, at: Date.now() });
+  while (resolved.size > CACHE_LIMIT) resolved.delete(resolved.keys().next().value);
+};
+
+/** The address a page is going to send the browser to, if it says so. */
+const PAGED_REDIRECTS = [
+  // <meta http-equiv="refresh" content="0; url=https://…">
+  /<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["'][^"']*url=([^"'>\s]+)/i,
+  // location.replace("https://…") / location.href = "https://…"
+  /location(?:\.replace\s*\(|\.href\s*=|\.assign\s*\()\s*["']([^"']+)["']/i,
+  // <link rel="canonical" href="…"> — the address the page claims to be.
+  /<link[^>]+rel=["']?canonical["']?[^>]+href=["']([^"']+)["']/i,
+];
+
+/**
+ * The map inside a page that answered instead of redirecting.
+ *
+ * Google's share links answer with a 302 nearly always, but not always: a 200
+ * carrying a meta refresh or a one-line script is the other shape, and it used
+ * to be handed back as the answer — which then parsed to no stops at all. Only
+ * a candidate that is a map host is taken, so a page full of links cannot
+ * steer this anywhere else.
+ */
+export function targetInPage(href, html) {
+  if (!html) return "";
+  for (const pattern of PAGED_REDIRECTS) {
+    const found = html.match(pattern)?.[1];
+    if (!found) continue;
+    const cleaned = found.replace(/&amp;/g, "&").trim();
+    try {
+      const url = new URL(cleaned, href);
+      if (/^https?:$/.test(url.protocol) && mapAllowed(hostOf(url.toString())) && !consentHost(hostOf(url.toString()))) {
+        return url.toString();
+      }
+    } catch {
+      /* a broken candidate is just a candidate */
+    }
+  }
+  return "";
+}
+
+/** Fetch, with one retry, inside a deadline. Only the headers are wanted. */
+async function look(url, fetchImpl, deadline, cookie) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const left = deadline - Date.now();
+    if (left < 600) break;
+    const budget = Math.min(ATTEMPT_TIMEOUT_MS, left);
+    try {
+      const response = await fetchImpl(url, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          // Google answers a bare request with a consent wall; a plain browser
+          // user agent gets the redirect it would give a phone.
+          "user-agent":
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+          accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+          "accept-language": "en-IN,en;q=0.9",
+          ...(cookie ? { cookie } : {}),
+        },
+        signal: AbortSignal.timeout(budget),
+      });
+      return { response, error: null };
+    } catch (error) {
+      lastError = error;
+      const quick = error?.name === "TimeoutError" || error?.name === "AbortError";
+      // A stall is worth one more ask; a refused connection is not, unless
+      // there is time and it might have been a reset mid-handshake.
+      if (!quick && attempt === 1) break;
+    }
+  }
+  return { response: null, error: lastError };
 }
 
 /**
@@ -87,39 +215,66 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
     );
   }
 
+  // A fake network is never remembered, and never reads the shared cache: the
+  // tests ask the same short link to fail and to succeed in different cases.
+  const real = fetchImpl === globalThis.fetch;
+  const origin = current.toString();
+  if (real) {
+    const hit = cached(origin);
+    if (hit) return hit;
+  }
+
+  const deadline = Date.now() + DEADLINE_MS;
+  let cookie = "";
+  let lastTimeout = false;
+  let failed = false;
+
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
-    let response;
-    try {
-      response = await fetchImpl(current.toString(), {
-        method: "GET",
-        redirect: "manual",
-        headers: {
-          // Google answers a bare request with a consent wall; a plain browser
-          // user agent gets the redirect it would give a phone.
-          "user-agent": "Mozilla/5.0 (compatible; pb-travel-diaries/1.0)",
-          accept: "text/html,*/*",
-        },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (error) {
-      const timeout = error?.name === "TimeoutError" || error?.name === "AbortError";
-      throw new MapLinkError(
-        timeout ? "The map service took too long to answer." : "The map service could not be reached.",
-        timeout ? 504 : 502,
-      );
+    const { response, error } = await look(current.toString(), fetchImpl, deadline, cookie);
+
+    if (!response) {
+      lastTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+      failed = true;
+      break;
     }
 
-    // Only the address matters; the page itself is megabytes of map.
+    const location = response.headers.get("location");
+    const status = response.status;
+
+    // The address is what matters, so the body is dropped unread — except in
+    // the one case where the body *is* the address.
+    let page = "";
+    if (!location && status >= 200 && status < 300 && typeof response.text === "function") {
+      try {
+        page = await readLimited(response, MAX_PAGE_BYTES);
+      } catch {
+        page = "";
+      }
+    }
     try {
-      await response.body?.cancel();
+      await response.body?.cancel?.();
     } catch {
       /* already drained, or nothing to drain */
     }
 
-    const location = response.headers.get("location");
+    // Consent wall: not a map, and not an answer. Ask the same link again with
+    // the cookie that declines it, which is what a browser does when a person
+    // clicks past the wall.
+    if (location && consentHost(hostOf(new URL(location, current).toString()))) {
+      cookie = "CONSENT=YES+1";
+      continue;
+    }
+
     if (!location) {
-      // Not a redirect any more: this is where it ends.
-      return finish(current.toString());
+      const fromPage = targetInPage(current.toString(), page);
+      // A page that claims to be itself has nothing further to say.
+      if (fromPage && fromPage !== current.toString()) {
+        current = new URL(fromPage);
+        continue;
+      }
+      const answer = finish(current.toString());
+      if (real) remember(origin, answer);
+      return answer;
     }
 
     let next;
@@ -136,12 +291,54 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
     current = next;
   }
 
-  return finish(current.toString());
+  if (lastTimeout) {
+    throw new MapLinkError(
+      "The map service took too long to answer. Open the short link once in a browser, then paste the full address from its address bar.",
+      504,
+    );
+  }
+  if (failed) {
+    throw new MapLinkError(
+      "The map service could not be reached from this server. Open the short link in a browser and paste the full address instead.",
+      502,
+    );
+  }
+
+  const answer = finish(current.toString());
+  if (real && answer !== origin) remember(origin, answer);
+  return answer;
+}
+
+/** The most of a page that will be read, so one answer cannot cost a lot of memory. */
+async function readLimited(response, limit) {
+  if (!response.body?.getReader) return String(await response.text()).slice(0, limit);
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    chunks.push(value);
+    if (total >= limit) {
+      try {
+        await reader.cancel();
+      } catch {
+        /* nothing left */
+      }
+      break;
+    }
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8").slice(0, limit);
 }
 
 /** The end of the chain, as long as it really is a map. */
 function finish(url) {
-  if (!mapAllowed(hostOf(url))) {
+  const host = hostOf(url);
+  // A consent page sits under `google.com`, so it passes the host check — but
+  // it is a question, not a destination, and handing it back would parse to no
+  // stops at all.
+  if (!mapAllowed(host) || consentHost(host)) {
     throw new MapLinkError("That short link does not lead to a map.", 422);
   }
   return url;
