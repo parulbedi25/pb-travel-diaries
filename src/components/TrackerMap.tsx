@@ -392,7 +392,6 @@ export default function TrackerMap({
             width={width}
             height={height}
             className="absolute inset-0"
-            attributionClassName="pointer-events-auto absolute right-3 top-3"
           />
         ) : (
           <div className="grid h-full w-full place-items-center px-6 text-center text-xs text-zinc-500">
