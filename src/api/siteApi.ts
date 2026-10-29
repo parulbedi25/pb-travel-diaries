@@ -194,6 +194,10 @@ export const siteApi = {
     node: string;
     /** 0 when the stack chose, 4 or 6 when one family was needed. */
     family: number;
+    /** Which way out answered: "proxy" or "direct". */
+    route: string;
+    /** Every way out tried, in order, with the reason each one failed. */
+    routes: { route: string; error: string }[];
     hint: string;
   }> {
     return api.get("/api/maps/health");
