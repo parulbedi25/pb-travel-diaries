@@ -6,6 +6,11 @@
 > instructions below apply only when choosing provider mode. See [SQLITE.md](SQLITE.md).
 
 
+**Not every site needs this page.** If the site is finished and only needs to be
+online, it can be exported and uploaded as plain files with no Node app at all —
+see [STATIC-HOSTING.md](STATIC-HOSTING.md). Everything below is for the version
+that can still be edited from a browser.
+
 Namecheap shared hosting runs Node.js through **Phusion Passenger**, which
 cPanel exposes as **Software → Setup Node.js App**. Passenger starts your app,
 keeps it alive and puts it behind Apache on your domain's normal 80/443 — you

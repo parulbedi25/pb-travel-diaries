@@ -493,6 +493,40 @@ the uploads.
 
 ---
 
+## 12. Serving the site as plain files (no Node at all)
+
+The site can be exported into a folder of ordinary files and uploaded to any
+static host — Namecheap, Netlify, GitHub Pages, S3, a shared plan with no Node
+support.
+
+```bash
+node scripts/build.mjs        # writes dist/index.html
+npm run export:static         # writes release/static/
+npm run export:static -- --out /some/other/folder
+```
+
+Then upload **the contents of `release/static/` to the root** of the site. The
+root matters: the page refers to its art as `/media/…` and `/images/…`, so a
+subfolder will render without pictures.
+
+What the folder holds: the page, `content.json` (the published content, as a
+visitor sees it), the shipped art, any uploaded media, the stylesheet and the
+map worker. The page reads `content.json` when no API answers, so it shows the
+site you saved rather than the built-in defaults.
+
+**What a static export cannot do**, because there is no server behind it: the
+dashboard and signing in, editing, adding photos later, expanding pasted map
+links, nearby places, and the live tracker's shared position. Members-only
+sections are exported locked and empty — a file on a web server keeps no
+secrets.
+
+To change the site afterwards, edit it where the server runs (or locally) and
+export again. For the step-by-step version of this — cPanel/Namecheap, Netlify,
+Cloudflare Pages, GitHub Pages, S3, plus the two ways an upload goes wrong
+quietly — see [STATIC-HOSTING.md](STATIC-HOSTING.md).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |

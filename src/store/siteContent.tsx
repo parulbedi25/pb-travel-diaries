@@ -17,6 +17,7 @@ import { setAt } from "../utils/objectPath";
 import { cascadeChild, cascadeSection } from "../admin/cascade";
 import { hasCountdownExpired } from "../utils/countdownTiming";
 import { lookById, vendorById, type MapVendorId } from "../utils/mapLooks";
+import { loadBakedSite } from "../utils/staticSite";
 
 /* ═══════════════════════ Types ═══════════════════════ */
 
@@ -2527,8 +2528,27 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
       if (cancelled) return;
 
+      // An exported site has no API, so the content comes from `content.json`
+      // beside the page. Asked only when the API had nothing to say, which on a
+      // host running the server is never.
+      const baked =
+        contentResult.status === "fulfilled" && contentResult.value.content
+          ? null
+          : await loadBakedSite();
+      if (cancelled) return;
+
       if (contentResult.status === "fulfilled" && contentResult.value.content) {
         const restored = normaliseSavedContent(contentResult.value.content);
+        setContent(restored);
+        setDraft(structuredClone(restored));
+      } else if (baked) {
+        // The file was written from the published content, so it is the site —
+        // showing "could not load" over the top of it would be a lie.
+        // Typed as unknown in the reader, because a file on a web server is
+        // not to be trusted; `normaliseSavedContent` fills in every section a
+        // save might have lost, which is the same treatment the API's answer
+        // gets.
+        const restored = normaliseSavedContent(baked.content as SiteContent);
         setContent(restored);
         setDraft(structuredClone(restored));
       } else if (contentResult.status === "rejected") {
@@ -2537,6 +2557,8 @@ export function SiteProvider({ children }: { children: ReactNode }) {
 
       if (themeResult.status === "fulfilled") {
         setThemeState(themeResult.value === "light" ? "light" : "dark");
+      } else if (baked?.theme === "light" || baked?.theme === "dark") {
+        setThemeState(baked.theme);
       }
       if (statusResult.status === "fulfilled" && statusResult.value.user) {
         setAccountState(statusResult.value.user);
@@ -2551,6 +2573,9 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       if (settingsResult.status === "fulfilled" && settingsResult.value.title) {
         setSiteTitle(settingsResult.value.title);
         document.title = settingsResult.value.title;
+      } else if (baked?.title) {
+        setSiteTitle(baked.title);
+        document.title = baked.title;
       }
       setReady(true);
     })();
