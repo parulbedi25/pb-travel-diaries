@@ -3,6 +3,17 @@
  *
  *   npm run export:static
  *   npm run export:static -- --out /path/to/folder
+ *   npm run export:static -- --check
+ *   npm run export:static -- --db-host 203.0.113.9 --db-user pb_read --db-name pb_travel
+ *
+ * `--check` connects, says which database it reached, and stops: the question
+ * worth answering before a full run when the database is somewhere else.
+ *
+ * The database flags override `.env` for this one command, which is how an
+ * export is read from a site's database on a host while this machine keeps its
+ * own. They are used for the few seconds of the export and are never written
+ * into the folder — a static site cannot connect to a database, and credentials
+ * in a web root are credentials published.
  *
  * The site normally needs the Node process: the page asks `/api/content` for
  * what it should show, and that answer lives in the database. This copies that
@@ -30,9 +41,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { config } from "../config.js";
-import { closeRepo, getRepo } from "../db/index.js";
-import { visibleTo } from "../routes/content.js";
 
 const THEME_VALUES = new Set(["dark", "light"]);
 const SKIP_UPLOADS = new Set(["README.md", ".DS_Store", "Thumbs.db"]);
@@ -43,6 +51,51 @@ const argValue = (name, fallback) => {
   const value = process.argv[at + 1];
   return value && !value.startsWith("--") ? value : fallback;
 };
+
+const hasFlag = (name) => process.argv.includes(`--${name}`);
+
+/**
+ * Database settings given on this command, applied before anything reads them.
+ *
+ * An export can be read from a database that is not the one this machine uses
+ * day to day — the site's MySQL on a host, say — because the export is a moment,
+ * not a connection the site keeps. The credentials are used for these few
+ * seconds and are never written into the folder: what ships is `content.json`,
+ * and a static site cannot connect to a database at all. That is the whole
+ * reason these exist as flags rather than a `.env` in the upload.
+ *
+ * Set before the first import of `config.js`, which reads them once at load.
+ */
+const DB_FLAGS = {
+  DB_DRIVER: "db-driver",
+  DB_HOST: "db-host",
+  DB_PORT: "db-port",
+  DB_USER: "db-user",
+  DB_NAME: "db-name",
+  DB_SOCKET: "db-socket",
+  DB_PASSWORD: "db-password",
+};
+for (const [variable, flag] of Object.entries(DB_FLAGS)) {
+  const value = argValue(flag, undefined);
+  if (value !== undefined) process.env[variable] = value;
+}
+if (argValue("db-password", undefined) !== undefined) {
+  console.warn(
+    "[export] --db-password is visible in this shell's history; DB_PASSWORD=… on the command is safer.",
+  );
+}
+
+const { config } = await import("../config.js");
+const { closeRepo, getRepo } = await import("../db/index.js");
+const { visibleTo } = await import("../routes/content.js");
+
+/** Where the content is being read from, said without the password. */
+function sourceLabel() {
+  if (config.dbDriver === "sqlite") return "the local SQLite file (server/data/pbfrompb.sqlite)";
+  if (config.dbDriver === "memory") return "an in-memory database (nothing to export)";
+  const at = config.db.socketPath || `${config.db.host}:${config.db.port}`;
+  return `MySQL at ${at}/${config.db.database} as ${config.db.user}`;
+}
 
 const parseJson = (value) => {
   if (typeof value !== "string") return undefined;
@@ -91,8 +144,36 @@ async function main() {
     process.exit(1);
   }
 
+  console.log(`[export] reading from ${sourceLabel()}`);
+
   const repo = await getRepo();
-  const row = await repo.getContent();
+  try {
+    // Fail here rather than halfway through copying files, with the address in
+    // the message: a database on another machine is the likeliest thing to be
+    // wrong, and "it did not work" would send somebody to the wrong place.
+    await repo.ping();
+  } catch (error) {
+    console.error(`[export] could not reach ${sourceLabel()}: ${error.message}`);
+    console.error(
+      "[export] check the host, the user, the password and that the database allows " +
+        "connections from this machine. On shared hosting that is Remote MySQL in cPanel.",
+    );
+    await closeRepo();
+    process.exit(1);
+  }
+
+  let row = null;
+  try {
+    row = await repo.getContent();
+  } catch (error) {
+    console.error(`[export] reached ${sourceLabel()} but could not read it: ${error.message}`);
+    console.error(
+      "[export] a reachable database with no site content table is the wrong database — " +
+        "check --db-name, or set it up by opening the site once.",
+    );
+    await closeRepo();
+    process.exit(1);
+  }
   const theme = parseJson(await repo.getSetting("theme"));
   const savedTitle = parseJson(await repo.getSetting("site_title"));
 
@@ -106,6 +187,19 @@ async function main() {
     );
     await closeRepo();
     process.exit(1);
+  }
+
+  // `--check` answers the only question worth answering before a full run: can
+  // this machine read that database, and does it hold a published site?
+  if (hasFlag("check")) {
+    console.log(`[export] ${sourceLabel()} — reachable`);
+    console.log(
+      row?.content
+        ? "[export] it holds a published site; `npm run export:static` would export it."
+        : "[export] it holds no published site yet; nothing to export.",
+    );
+    await closeRepo();
+    return;
   }
 
   const out = path.resolve(argValue("out", path.join(config.root, "release", "static")));
@@ -148,7 +242,9 @@ async function main() {
     [
       "PB Travel Diaries — static export",
       "",
-      `Exported ${new Date().toISOString()} from ${config.hasDatabase ? config.dbDriver : "unknown"} database.`,
+      `Exported ${new Date().toISOString()} from ${
+        config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database"
+      }.`,
       "",
       "Upload the CONTENTS of this folder to the root of a website.",
       "",

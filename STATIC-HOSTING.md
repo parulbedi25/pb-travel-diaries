@@ -94,6 +94,49 @@ The export reads the database, so it stops with a message if no database is
 configured or if nothing has been published yet. That is deliberate: an export
 of an empty site looks like the real thing and would go unnoticed.
 
+### Reading a database that is not this machine's
+
+`.env` describes the database this machine uses. A single run can be pointed
+somewhere else — the site's MySQL on a host, for instance — without touching
+that file, because the export is a moment rather than a connection the site
+keeps:
+
+```bash
+npm run export:static -- --check \
+  --db-host 203.0.113.9 --db-user pb_read --db-name pb_travel
+
+npm run export:static \
+  --db-host 203.0.113.9 --db-user pb_read --db-name pb_travel
+```
+
+| Flag | Sets |
+| --- | --- |
+| `--db-driver` | `mysql`, `sqlite` (default: whatever `.env` says) |
+| `--db-host`, `--db-port` | where the database listens |
+| `--db-user`, `--db-name` | which user and database |
+| `--db-password` | the password — see below |
+| `--db-socket` | a Unix socket instead of host and port |
+| `--check` | connect, report where it got to, stop |
+| `--out` | where to write the folder (default `release/static`) |
+
+`--check` is worth running first: it says which database it reached and whether
+that database holds a published site, without writing anything.
+
+**The password is better in the environment than on the command line**, where it
+lands in your shell's history:
+
+```bash
+DB_PASSWORD='…' npm run export:static -- --db-host … --db-user … --db-name …
+```
+
+Give the export a **read-only** MySQL user (`SELECT` only). It never writes, and
+a read-only user cannot damage anything if the password leaks.
+
+Nothing about these credentials reaches the folder. What ships is `content.json`
+— the content as it stood at that moment. A static site cannot connect to a
+database, and a `.env` in a web root is a password in public. The flags exist so
+the *export* can reach a database, not the uploaded site.
+
 ## 3. Upload the **contents**, at the **root**
 
 Two rules, and both of them bite silently:
