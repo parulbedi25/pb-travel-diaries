@@ -142,6 +142,16 @@ npm run export:static \
 `--check` is worth running first: it says which database it reached and whether
 that database holds a published site, without writing anything.
 
+**`.env` is read by the export as well as by the server.** If this machine's
+`.env` already describes the database — `DB_HOST`, `DB_USER`, `DB_NAME`,
+`DB_PASSWORD` — then `npm run export:static` uses it with no flags at all, and
+`DB_DRIVER=sqlite` selects the local SQLite file. That is the convenient case
+and the one to use when the content is on this machine.
+
+The `.env` itself is **never copied into the folder**. It is read for the few
+seconds the export runs; what ships is `content.json`. Uploading a `.env` would
+publish the password and change nothing.
+
 **The password is better in the environment than on the command line**, where it
 lands in your shell's history:
 

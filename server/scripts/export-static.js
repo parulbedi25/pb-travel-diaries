@@ -241,6 +241,9 @@ async function main() {
     console.error("[export] If the content is in a MySQL database this machine can reach:");
     console.error(`[export]   DB_PASSWORD='…' npm run export:static -- ${flags}`);
     console.error("[export]   (add --db-port, --db-socket or --db-driver if they differ)");
+    console.error("[export] or put DB_HOST, DB_USER, DB_NAME and DB_PASSWORD in .env — this");
+    console.error("[export] command reads it too. The .env is not copied into the folder: what");
+    console.error("[export] ships is content.json, because a static site cannot hold a connection.");
     console.error("");
     console.error("[export] If the site has never been set up on this machine:");
     console.error("[export]   PORT=4000 node app.cjs   → finish the setup screen → Save → export again");
