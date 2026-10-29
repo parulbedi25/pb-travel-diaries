@@ -529,9 +529,11 @@ export default function RouteStopsEditor({
         .catch((error: unknown) => {
           if (cancelled) return;
           setResolving(false);
+          // The server's own sentence already says what went wrong and what to
+          // do about it — appending a second instruction only repeats it.
           setExpandError(
             error instanceof Error
-              ? `${error.message} Open the short link in a browser and paste the full address instead.`
+              ? error.message
               : "That short link could not be expanded. Open it and copy the address bar instead.",
           );
         })
