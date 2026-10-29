@@ -2,14 +2,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
+  BedDouble,
+  ChevronDown,
+  Fuel,
+  HeartPulse,
   ImageOff,
+  Landmark,
+  Loader2,
   MapPin,
   Navigation,
   RefreshCcw,
+  Wrench,
   X,
 } from "lucide-react";
 import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import { useNearbyPlaces, type NearbyPlace } from "../hooks/useNearbyPlaces";
+import {
+  ESSENTIALS_RADIUS_KM,
+  STAY_RADIUS_KM,
+  useNearbyAmenities,
+  type Amenity,
+} from "../hooks/useNearbyAmenities";
 import VectorBasemap from "./VectorBasemap";
 import ThemeToggle from "./ThemeToggle";
 import { Logo } from "./Navbar";
@@ -19,12 +32,22 @@ import { externalLinkProps } from "./ui/SocialIcons";
 import { cn } from "../utils/cn";
 
 /**
- * "Nearby places" — what there is to see around wherever PB is right now.
+ * "Nearby places" — what there is around a stop on the live route.
  *
- * A different question from the live map's, which answers only "where is he".
- * This page keeps that pinpoint on the map and hangs the country around it:
- * every geotagged Wikipedia article within a short ride, with its free photo
- * and a tap-through to Google Maps for the ones worth a detour.
+ * The tracker says where the ride is going; this page answers the three
+ * questions a rider actually asks when they stop:
+ *
+ *  1. **Places to visit** — what is worth a detour, from Wikipedia's geotagged
+ *     articles: notable by an editor's judgement rather than a paid listing.
+ *  2. **Hotels & rooms** — a bed, from OpenStreetMap, with guest houses and
+ *     hostels shown before hotels, because this is a motorcycle ride and not a
+ *     package holiday.
+ *  3. **Fuel · Service · Hospital** — petrol, Royal Enfield workshops and
+ *     motorcycle shops, and hospitals or clinics, all from the same map.
+ *
+ * Everything is asked around a **chosen stop**: the dropdown holds every name
+ * in the live tracker, so the page can answer for Nangal before the ride starts
+ * and for Leh three days in, without waiting for a GPS fix.
  *
  * The list lives *inside* the map panel, because the two are one thought —
  * "these places, there". That makes the panel a room with furniture in it, so
@@ -32,9 +55,9 @@ import { cn } from "../utils/cn";
  * zoomed into what the list leaves uncovered, never slide under it, and keep a
  * few pixels of air at every edge they can reach.
  *
- * Nothing here is stored in the site document. The places are fetched from
- * Wikipedia when the page opens, because a place worth visiting is not a thing
- * anybody should have to retype into a dashboard.
+ * Nothing here is stored in the site document. The places are fetched when the
+ * page opens, because a place worth visiting is not a thing anybody should have
+ * to retype into a dashboard.
  */
 
 /** Distance between a pin and its bubble, in pixels. */
@@ -51,15 +74,46 @@ type Insets = { top: number; right: number; bottom: number; left: number };
 /** Before the panel is measured: a little air on every side. */
 const DEFAULT_INSETS: Insets = { top: 34, right: 34, bottom: 54, left: 34 };
 
-function PlaceThumb({
-  place,
-  className,
-  sizes,
-}: {
-  place: NearbyPlace;
-  className?: string;
-  sizes?: string;
-}) {
+type TabId = "places" | "stays" | "essentials";
+
+/**
+ * The tabs, in the order a rider stops: where to go, where to sleep, what the
+ * bike needs. Each one owns the map while it is open — its own pins, its own
+ * distances, its own fit — so the left half always shows the list on the right.
+ */
+const TABS: { id: TabId; label: string; short: string; icon: typeof Landmark }[] = [
+  { id: "places", label: "Places to visit", short: "Places", icon: Landmark },
+  { id: "stays", label: "Hotels & rooms", short: "Stays", icon: BedDouble },
+  { id: "essentials", label: "Fuel · Service · Hospital", short: "Essentials", icon: Fuel },
+];
+
+/** One row of the list, whichever tab it came from. */
+interface PinItem {
+  key: string;
+  title: string;
+  lat: number;
+  lng: number;
+  distanceKm: number;
+  /** The line under the title: a Wikipedia extract, or what the place is. */
+  detail?: string;
+  /** A free photo, for the Wikipedia places. */
+  image?: string;
+  /** The article, when there is one. */
+  wikiUrl?: string;
+  /** A chip beside the title: "Royal Enfield", "Guest house · budget". */
+  badge?: string;
+  kind: "place" | "stay" | "fuel" | "hospital" | "service";
+}
+
+const PLACE_TONE: Record<PinItem["kind"], { pin: string; chip: string; icon: typeof Landmark }> = {
+  place: { pin: "bg-ink-950/85 text-white", chip: "bg-white/[0.06] text-zinc-300", icon: Landmark },
+  stay: { pin: "bg-emerald-500 text-ink-950", chip: "bg-emerald-500/15 text-emerald-200", icon: BedDouble },
+  fuel: { pin: "bg-amber-400 text-ink-950", chip: "bg-amber-400/15 text-amber-200", icon: Fuel },
+  hospital: { pin: "bg-red-500 text-white", chip: "bg-red-500/15 text-red-200", icon: HeartPulse },
+  service: { pin: "bg-sky-400 text-ink-950", chip: "bg-sky-400/15 text-sky-200", icon: Wrench },
+};
+
+function PlaceThumb({ place, className, sizes }: { place: NearbyPlace; className?: string; sizes?: string }) {
   const [failed, setFailed] = useState(false);
   if (!place.image || failed) {
     return (
@@ -86,6 +140,39 @@ function PlaceThumb({
   );
 }
 
+/** The little round icon a row and its pin share, for everything but places. */
+function KindBadge({ kind, className }: { kind: PinItem["kind"]; className?: string }) {
+  const Icon = PLACE_TONE[kind].icon;
+  return <Icon className={className} aria-hidden />;
+}
+
+function placesToItems(places: readonly NearbyPlace[]): PinItem[] {
+  return places.map((place) => ({
+    key: `wiki-${place.pageid}`,
+    title: place.title,
+    lat: place.lat,
+    lng: place.lng,
+    distanceKm: place.distanceKm,
+    detail: place.extract,
+    image: place.image,
+    wikiUrl: place.wikiUrl,
+    kind: "place",
+  }));
+}
+
+function amenitiesToItems(items: readonly Amenity[]): PinItem[] {
+  return items.map((item) => ({
+    key: item.id,
+    title: item.title,
+    lat: item.lat,
+    lng: item.lng,
+    distanceKm: item.distanceKm,
+    detail: item.opening ? `${item.detail} · ${item.opening}` : item.detail,
+    badge: item.royalEnfield ? "Royal Enfield" : item.budget ? "budget" : undefined,
+    kind: item.kind,
+  }));
+}
+
 export default function NearbyPlacesPage() {
   const { location, status, route } = useSiteLiveLocation();
   const settings = route.nearby;
@@ -93,21 +180,81 @@ export default function NearbyPlacesPage() {
   // detour, far enough that a small town still has something in it.
   const radiusKm = Math.max(1, Math.min(10, Math.round(settings?.radiusKm ?? 10)));
   const count = Math.max(5, Math.min(10, Math.round(settings?.count ?? 8)));
-  const { places, loading, error, reload } = useNearbyPlaces({
-    lat: location.lat,
-    lng: location.lng,
+
+  const stops = useMemo(() => route.stops ?? [], [route.stops]);
+
+  /**
+   * Every name in the live tracker, plus wherever PB actually is.
+   *
+   * The dropdown is the route itself, in order, so the page can be asked about
+   * a stop that is still ahead — which is when a rider most wants to know what
+   * is there.
+   */
+  const origins = useMemo(
+    () => [
+      {
+        key: "live",
+        name: location.name,
+        state: location.state,
+        lat: location.lat,
+        lng: location.lng,
+        live: true,
+      },
+      ...stops.map((stop, index) => ({
+        key: `stop-${index}`,
+        name: stop.name,
+        state: stop.state,
+        lat: stop.lat,
+        lng: stop.lng,
+        live: false,
+      })),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stops, location.name, location.state, location.lat, location.lng],
+  );
+
+  const [originKey, setOriginKey] = useState("live");
+  const origin = origins.find((entry) => entry.key === originKey) ?? origins[0];
+
+  const [tab, setTab] = useState<TabId>("places");
+  const [selected, setSelected] = useState<string | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [layout, setLayout] = useState({ width: 900, height: 520, insets: DEFAULT_INSETS });
+
+  // The three questions. Stays and essentials are only asked for once their tab
+  // has been opened: a rider looking for a temple should not wait on a fuel
+  // query, and Overpass should not be asked twice for nothing.
+  const placesQuery = useNearbyPlaces({
+    lat: origin.lat,
+    lng: origin.lng,
     radiusKm,
     count,
   });
-
-  const [selected, setSelected] = useState<number | null>(null);
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const [layout, setLayout] = useState({
-    width: 900,
-    height: 520,
-    insets: DEFAULT_INSETS,
+  const stays = useNearbyAmenities({
+    lat: origin.lat,
+    lng: origin.lng,
+    group: "stays",
+    enabled: tab === "stays",
   });
+  const essentials = useNearbyAmenities({
+    lat: origin.lat,
+    lng: origin.lng,
+    group: "essentials",
+    enabled: tab === "essentials",
+  });
+
+  const items = useMemo<PinItem[]>(() => {
+    if (tab === "places") return placesToItems(placesQuery.places);
+    if (tab === "stays") return amenitiesToItems(stays.items);
+    return amenitiesToItems(essentials.items);
+  }, [tab, placesQuery.places, stays.items, essentials.items]);
+
+  const loading = tab === "places" ? placesQuery.loading : tab === "stays" ? stays.loading : essentials.loading;
+  const error = tab === "places" ? placesQuery.error : tab === "stays" ? stays.error : essentials.error;
+  const reloadActive = tab === "places" ? placesQuery.reload : tab === "stays" ? stays.reload : essentials.reload;
+
+  const tabRadius = tab === "places" ? radiusKm : tab === "stays" ? STAY_RADIUS_KM : ESSENTIALS_RADIUS_KM;
 
   // The pins are laid over the tiles, so the panel is measured rather than
   // assumed — and so is the list, because whatever the list covers is not map
@@ -143,14 +290,11 @@ export default function NearbyPlacesPage() {
 
   const { width, height, insets } = layout;
 
-  // Every place plus the current position, fitted into the part of the map
-  // the list does not cover.
+  // Everything the active tab found, plus the stop it was all measured from,
+  // fitted into the part of the map the list does not cover.
   const points = useMemo(
-    () => [
-      { lat: location.lat, lng: location.lng },
-      ...places.map((p) => ({ lat: p.lat, lng: p.lng })),
-    ],
-    [location.lat, location.lng, places],
+    () => [{ lat: origin.lat, lng: origin.lng }, ...items.map((item) => ({ lat: item.lat, lng: item.lng }))],
+    [origin.lat, origin.lng, items],
   );
   const view = useMemo(
     () => fitViewInset(points, width, height, insets, { padX: PIN_PAD_X, padY: PIN_PAD_Y }),
@@ -163,16 +307,15 @@ export default function NearbyPlacesPage() {
     [view.lat, view.lng, view.zoom, width, height],
   );
   const here = projector.toXY({ lat: location.lat, lng: location.lng });
+  const originPoint = projector.toXY({ lat: origin.lat, lng: origin.lng });
 
-  // A place can be nearest-first from Wikipedia and still sit on the far side
-  // of the panel; the map is drawn for the whole set, the list keeps the order.
-  const selectedPlace = selected !== null ? places[selected] : undefined;
+  const selectedItem = selected ? items.find((item) => item.key === selected) : undefined;
 
   // Where the bubble goes: beside its pin, never over the list and never off
   // an edge. Above the pin when there is room, below it when there is not.
   const bubble = useMemo(() => {
-    if (!selectedPlace) return null;
-    const point = projector.toXY({ lat: selectedPlace.lat, lng: selectedPlace.lng });
+    if (!selectedItem) return null;
+    const point = projector.toXY({ lat: selectedItem.lat, lng: selectedItem.lng });
     const px = (point.x / 100) * width;
     const py = (point.y / 100) * height;
     const minX = insets.left + BUBBLE_WIDTH / 2 + 8;
@@ -182,28 +325,52 @@ export default function NearbyPlacesPage() {
     const roomBelow = height - insets.bottom - py - BUBBLE_OFFSET;
     const above = roomAbove > BUBBLE_HEIGHT || roomAbove > roomBelow;
     return { left, top: py, above };
-  }, [selectedPlace, projector, width, height, insets]);
+  }, [selectedItem, projector, width, height, insets]);
 
-  const mapsUrlFor = (place: NearbyPlace) =>
-    googleMapsPlaceUrl({ lat: place.lat, lng: place.lng });
+  const mapsUrlFor = (item: PinItem) => googleMapsPlaceUrl({ lat: item.lat, lng: item.lng });
+  const select = (key: string) => setSelected(selected === key ? null : key);
 
-  const select = (index: number) => setSelected(selected === index ? null : index);
+  /** Changing what the page is about always starts a clean view. */
+  const changeOrigin = (key: string) => {
+    setOriginKey(key);
+    setSelected(null);
+  };
+  const changeTab = (id: TabId) => {
+    setTab(id);
+    setSelected(null);
+  };
+
+  const emptyCopy =
+    tab === "places"
+      ? {
+          title: `Nothing geotagged within ${radiusKm} km`,
+          body: `Wikipedia has no articles pinned this close to ${origin.name}.`,
+        }
+      : tab === "stays"
+        ? {
+            title: `No beds tagged within ${STAY_RADIUS_KM} km`,
+            body: `OpenStreetMap has no hotel, guest house or hostel mapped this close to ${origin.name}. The next town along is the likeliest place for one.`,
+          }
+        : {
+            title: `Nothing tagged within ${ESSENTIALS_RADIUS_KM} km`,
+            body: `No fuel, workshop or hospital is mapped this close to ${origin.name}. Widen your search by picking a bigger town from the list above.`,
+          };
 
   const panelBody = (
     <>
       <div className="flex items-center justify-between gap-2 border-b border-white/[0.07] px-3.5 py-2.5">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Within {radiusKm} km
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            Within {tabRadius} km of {origin.name}
           </p>
           <p className="font-display text-sm font-semibold text-white">
-            {loading ? "Searching…" : `${places.length} places`}
+            {loading ? "Searching…" : `${items.length} ${items.length === 1 ? "place" : "places"}`}
           </p>
         </div>
         <button
           type="button"
-          onClick={reload}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
+          onClick={reloadActive}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-white/30 hover:text-white"
         >
           <RefreshCcw className={cn("h-3 w-3", loading && "animate-spin")} />
           Refresh
@@ -211,7 +378,7 @@ export default function NearbyPlacesPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
-        {loading && !places.length && (
+        {loading && !items.length && (
           <ul className="flex flex-col gap-1">
             {Array.from({ length: 6 }).map((_, i) => (
               <li key={i} className="flex gap-3 rounded-xl p-2">
@@ -231,7 +398,7 @@ export default function NearbyPlacesPage() {
             <p>{error}</p>
             <button
               type="button"
-              onClick={reload}
+              onClick={reloadActive}
               className="mt-2.5 rounded-full border border-amber-300/40 px-3 py-1 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/10"
             >
               Try again
@@ -239,24 +406,21 @@ export default function NearbyPlacesPage() {
           </div>
         )}
 
-        {!loading && !error && !places.length && (
+        {!loading && !error && !items.length && (
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[11px] leading-relaxed text-zinc-400">
-            <p className="font-display text-sm font-semibold text-white">
-              Nothing geotagged within {radiusKm} km
-            </p>
-            <p className="mt-1">
-              Wikipedia has no articles pinned this close to {location.name}.
-            </p>
+            <p className="font-display text-sm font-semibold text-white">{emptyCopy.title}</p>
+            <p className="mt-1">{emptyCopy.body}</p>
           </div>
         )}
 
-        {places.length > 0 && (
+        {items.length > 0 && (
           <ul className="flex flex-col gap-1">
-            {places.map((place, index) => {
-              const active = selected === index;
-              const mapsUrl = mapsUrlFor(place);
+            {items.map((item, index) => {
+              const active = selected === item.key;
+              const mapsUrl = mapsUrlFor(item);
+              const tone = PLACE_TONE[item.kind];
               return (
-                <li key={place.pageid}>
+                <li key={item.key}>
                   <div
                     className={cn(
                       "group flex items-start gap-2.5 rounded-xl p-2 transition-colors",
@@ -265,46 +429,58 @@ export default function NearbyPlacesPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => select(index)}
+                      onClick={() => select(item.key)}
                       aria-pressed={active}
-                      aria-label={`Show ${place.title} on the map`}
+                      aria-label={`Show ${item.title} on the map`}
                       className="relative h-14 w-16 shrink-0 overflow-hidden rounded-lg"
                     >
-                      <PlaceThumb
-                        place={place}
-                        className={cn(
-                          "h-full w-full transition-transform duration-500 group-hover:scale-105",
-                          active && "scale-105",
-                        )}
-                        sizes="64px"
-                      />
+                      {item.image ? (
+                        <PlaceThumb
+                          place={{ image: item.image, title: item.title } as NearbyPlace}
+                          className={cn(
+                            "h-full w-full transition-transform duration-500 group-hover:scale-105",
+                            active && "scale-105",
+                          )}
+                          sizes="64px"
+                        />
+                      ) : (
+                        <span className={cn("grid h-full w-full place-items-center", tone.chip)}>
+                          <KindBadge kind={item.kind} className="h-5 w-5" />
+                        </span>
+                      )}
                       <span className="shrink-0 aspect-square absolute left-1 top-1 grid h-4.5 w-4.5 min-h-[18px] min-w-[18px] place-items-center rounded-full bg-ink-950/85 text-[9px] font-bold text-white">
                         {index + 1}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => select(index)}
-                      className="min-w-0 flex-1 text-left"
-                    >
+                    <button type="button" onClick={() => select(item.key)} className="min-w-0 flex-1 text-left">
                       <span className="flex items-baseline justify-between gap-2">
                         <span className="truncate font-display text-[13px] font-semibold text-white">
-                          {place.title}
+                          {item.title}
                         </span>
                         <span className="shrink-0 font-mono text-[10px] text-saffron-300">
-                          {place.distanceKm.toFixed(1)} km
+                          {item.distanceKm.toFixed(1)} km
                         </span>
                       </span>
-                      {place.extract && (
+                      {item.badge && (
+                        <span
+                          className={cn(
+                            "mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em]",
+                            tone.chip,
+                          )}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                      {item.detail && (
                         <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-zinc-400">
-                          {place.extract}
+                          {item.detail}
                         </span>
                       )}
                     </button>
                     <a
                       href={mapsUrl}
                       {...externalLinkProps(mapsUrl)}
-                      aria-label={`Open ${place.title} in Google Maps`}
+                      aria-label={`Open ${item.title} in Google Maps`}
                       title="Open in Google Maps"
                       className="shrink-0 rounded-lg border border-white/10 p-1.5 text-zinc-400 transition-colors hover:border-white/25 hover:text-white"
                     >
@@ -319,7 +495,9 @@ export default function NearbyPlacesPage() {
       </div>
 
       <p className="border-t border-white/[0.07] px-3.5 py-2 text-[9.5px] leading-relaxed text-zinc-500">
-        Places &amp; photos: Wikipedia · Wikimedia Commons (CC BY-SA)
+        {tab === "places"
+          ? "Places & photos: Wikipedia · Wikimedia Commons (CC BY-SA)"
+          : "Beds, fuel, workshops & hospitals: © OpenStreetMap contributors (ODbL)"}
       </p>
     </>
   );
@@ -343,7 +521,7 @@ export default function NearbyPlacesPage() {
           </h1>
           <span className="inline-flex items-center gap-2 rounded-full border border-saffron-400/30 bg-saffron-400/10 px-3.5 py-1.5 text-[11px] font-bold tracking-[0.12em] text-saffron-300">
             <MapPin className="h-3 w-3" aria-hidden />
-            {location.name.toUpperCase()}
+            {origin.name.toUpperCase()}
           </span>
           <ThemeToggle className="ml-auto shrink-0" />
         </div>
@@ -353,16 +531,42 @@ export default function NearbyPlacesPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
-              Around {location.name}, {location.state}
+              Around {origin.name}
+              {origin.state ? `, ${origin.state}` : ""}
             </p>
             <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
               {settings?.heading?.trim() || "Nearby places"}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-zinc-400">
               {settings?.intro?.trim() ||
-                "Pulled live from Wikipedia around wherever PB is right now."}
+                "Places to visit, beds, fuel and hospitals around any stop on the ride."}
             </p>
           </div>
+
+          {/* Every stop in the live tracker, in order, plus where PB is now. */}
+          <label className="relative inline-flex flex-col gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Search around
+            </span>
+            <span className="relative">
+              <select
+                value={origin.key}
+                onChange={(event) => changeOrigin(event.target.value)}
+                aria-label="Choose the stop to search around"
+                className="w-full min-w-[15rem] appearance-none rounded-xl border border-white/12 bg-white/[0.05] py-2.5 pl-3.5 pr-10 text-sm font-semibold text-white transition-colors hover:border-white/25 focus:border-saffron-400/60 focus:outline-none focus:ring-2 focus:ring-saffron-400/20"
+              >
+                {origins.map((entry) => (
+                  <option key={entry.key} value={entry.key} className="bg-ink-900">
+                    {entry.live ? `Where PB is now — ${entry.name}` : entry.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                aria-hidden
+              />
+            </span>
+          </label>
         </div>
 
         {/* ---------- Map + the list that lives on it ---------- */}
@@ -396,20 +600,35 @@ export default function NearbyPlacesPage() {
             </span>
           </div>
 
-          {/* One pointer per place. Clicking it opens the bubble over the map. */}
-          {places.map((place, index) => {
-            const point = projector.toXY(place);
-            const active = selected === index;
+          {/* The stop being searched around, when it is not where PB is. */}
+          {origin.key !== "live" && (
+            <div
+              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${originPoint.x}%`, top: `${originPoint.y}%` }}
+            >
+              <span className="relative grid h-6 w-6 place-items-center rounded-full border-2 border-saffron-400 bg-ink-950 shadow-lg ring-1 ring-black/50">
+                <span className="h-2 w-2 rounded-full bg-saffron-400" />
+              </span>
+            </div>
+          )}
+
+          {/* One pointer per item, numbered to match the list. Colour says what
+              it is: saffron places, green beds, amber fuel, red hospitals, blue
+              workshops. */}
+          {items.map((item, index) => {
+            const point = projector.toXY(item);
+            const active = selected === item.key;
+            const tone = PLACE_TONE[item.kind];
             return (
               <button
-                key={place.pageid}
+                key={item.key}
                 type="button"
-                onClick={() => select(index)}
-                aria-label={`${place.title}, ${place.distanceKm.toFixed(1)} kilometres away`}
+                onClick={() => select(item.key)}
+                aria-label={`${item.title}, ${item.distanceKm.toFixed(1)} kilometres away`}
                 aria-pressed={active}
                 className={cn(
-                  "shrink-0 aspect-square group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 border-white text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
-                  active ? "bg-saffron-400 text-ink-950" : "bg-ink-950/85 text-white hover:bg-ink-800",
+                  "shrink-0 aspect-square group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
+                  active ? "border-saffron-400 bg-saffron-400 text-ink-950" : cn("border-white", tone.pin),
                 )}
                 style={{ left: `${point.x}%`, top: `${point.y}%` }}
               >
@@ -420,10 +639,10 @@ export default function NearbyPlacesPage() {
 
           {/* The bubble: beside its pin, above or below depending on the room,
               and slid inwards rather than allowed under the list. */}
-          {selectedPlace && bubble && (
+          {selectedItem && bubble && (
             <div
               role="dialog"
-              aria-label={selectedPlace.title}
+              aria-label={selectedItem.title}
               className="absolute z-30 w-[15.5rem] overflow-hidden rounded-2xl border border-white/10 bg-ink-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl"
               style={{
                 left: `${bubble.left}px`,
@@ -433,40 +652,73 @@ export default function NearbyPlacesPage() {
                 })`,
               }}
             >
-              <div className="relative">
-                <PlaceThumb place={selectedPlace} className="h-32 w-full" sizes="15.5rem" />
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  aria-label="Close"
-                  className="shrink-0 aspect-square absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-white transition-colors hover:bg-ink-950"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {selectedItem.image ? (
+                <div className="relative">
+                  <PlaceThumb
+                    place={{ image: selectedItem.image, title: selectedItem.title } as NearbyPlace}
+                    className="h-32 w-full"
+                    sizes="15.5rem"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    aria-label="Close"
+                    className="shrink-0 aspect-square absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-white transition-colors hover:bg-ink-950"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2 border-b border-white/[0.07] px-3.5 py-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em]",
+                      PLACE_TONE[selectedItem.kind].chip,
+                    )}
+                  >
+                    <KindBadge kind={selectedItem.kind} className="h-3 w-3" />
+                    {selectedItem.kind === "place" ? "place" : selectedItem.kind}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    aria-label="Close"
+                    className="shrink-0 aspect-square grid h-6 w-6 place-items-center rounded-full bg-ink-950/80 text-white transition-colors hover:bg-ink-950"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
               <div className="p-3.5">
                 <p className="font-display text-sm font-semibold leading-tight text-white">
-                  {selectedPlace.title}
+                  {selectedItem.title}
                 </p>
                 <p className="mt-1 font-mono text-[10px] text-saffron-300">
-                  {selectedPlace.distanceKm.toFixed(1)} km away
+                  {selectedItem.distanceKm.toFixed(1)} km away
                 </p>
+                {selectedItem.detail && (
+                  <p className="mt-1.5 line-clamp-3 text-[11px] leading-relaxed text-zinc-400">
+                    {selectedItem.detail}
+                  </p>
+                )}
                 <a
-                  href={mapsUrlFor(selectedPlace)}
-                  {...externalLinkProps(mapsUrlFor(selectedPlace))}
+                  href={mapsUrlFor(selectedItem)}
+                  {...externalLinkProps(mapsUrlFor(selectedItem))}
                   className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-white px-3 py-2 text-[11px] font-semibold text-ink-950 transition-colors hover:bg-saffron-300"
                 >
                   <Navigation className="h-3 w-3" />
                   Open in Google Maps
                 </a>
-                <a
-                  href={selectedPlace.wikiUrl}
-                  {...externalLinkProps(selectedPlace.wikiUrl)}
-                  className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:text-white"
-                >
-                  Read on Wikipedia
-                  <ArrowUpRight className="h-3 w-3" />
-                </a>
+                {selectedItem.wikiUrl && (
+                  <a
+                    href={selectedItem.wikiUrl}
+                    {...externalLinkProps(selectedItem.wikiUrl)}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:text-white"
+                  >
+                    Read on Wikipedia
+                    <ArrowUpRight className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             </div>
           )}
@@ -477,12 +729,54 @@ export default function NearbyPlacesPage() {
             ref={panelRef}
             className="absolute inset-x-3 bottom-3 z-20 flex h-[46%] flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/60 backdrop-blur-xl lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:h-auto lg:w-[350px] xl:w-[380px]"
           >
-            {panelBody}
+            {/* The tabs: one question at a time, each with its own pins. */}
+            <div
+              role="tablist"
+              aria-label="What to show nearby"
+              className="flex shrink-0 gap-1 border-b border-white/[0.07] bg-white/[0.02] p-1.5"
+            >
+              {TABS.map((entry) => {
+                const Icon = entry.icon;
+                const active = tab === entry.id;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls="nearby-panel"
+                    onClick={() => changeTab(entry.id)}
+                    title={entry.label}
+                    className={cn(
+                      "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-semibold transition-colors",
+                      active
+                        ? "bg-saffron-400 text-on-gold shadow-sm"
+                        : "text-zinc-400 hover:bg-white/[0.06] hover:text-white",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="truncate">{entry.short}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div id="nearby-panel" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
+              {panelBody}
+            </div>
           </div>
+
+          {/* The very first ask of an unopened tab is the slow one; say so on
+              the map rather than leaving a blank half-panel. */}
+          {loading && !items.length && (
+            <div className="pointer-events-none absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-ink-950/85 px-3.5 py-1.5 text-[11px] font-semibold text-zinc-300 backdrop-blur">
+              <Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />
+              Looking around {origin.name}…
+            </div>
+          )}
         </div>
 
         <p className="mt-5 text-[11px] leading-relaxed text-zinc-500">
-          Top places within {radiusKm} km of {location.name}, fetched live from{" "}
+          Places and photos from{" "}
           <a
             href="https://www.wikipedia.org"
             {...externalLinkProps("https://www.wikipedia.org")}
@@ -490,7 +784,7 @@ export default function NearbyPlacesPage() {
           >
             Wikipedia
           </a>{" "}
-          with photos from{" "}
+          and{" "}
           <a
             href="https://commons.wikimedia.org"
             {...externalLinkProps("https://commons.wikimedia.org")}
@@ -498,7 +792,17 @@ export default function NearbyPlacesPage() {
           >
             Wikimedia Commons
           </a>{" "}
-          (CC BY-SA). Maps © OpenStreetMap contributors.
+          (CC BY-SA). Beds, fuel, workshops and hospitals from{" "}
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            {...externalLinkProps("https://www.openstreetmap.org/copyright")}
+            className="underline decoration-dotted underline-offset-2 hover:text-zinc-300"
+          >
+            OpenStreetMap
+          </a>{" "}
+          (ODbL). Maps © OpenStreetMap contributors. Prices and opening hours are not published on the
+          map, so a bed is called budget only when the map says it is a guest house or a hostel — check
+          before you ride to it.
         </p>
       </main>
     </div>
