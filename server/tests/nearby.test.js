@@ -127,13 +127,24 @@ test("each question is one Overpass query, over a box rather than a circle", () 
 
   const essentials = overpassQuery("essentials", bounds);
   assert.match(essentials, /\(34\.0000,77\.4000,34\.3000,77\.8000\)/);
-  for (const tag of ["fuel", "hospital", "shop\"=\"motorcycle", "Royal Enfield"]) {
+  for (const tag of ["fuel", "hospital", "motorcycle", "car_repair", "Royal Enfield"]) {
     assert.ok(essentials.includes(tag), `${tag} is part of the question`);
   }
 
+  // A bed search also finds the lodge and the homestay, which OSM does not
+  // always tag as `tourism=hotel`.
+  assert.match(stays, /lodge|homestay/i);
+
+  const food = overpassQuery("food", bounds);
+  assert.match(food, /\(34\.0000,77\.4000,34\.3000,77\.8000\)/);
+  for (const tag of ["restaurant", "cafe", "fast_food", "dhaba"]) {
+    assert.ok(food.toLowerCase().includes(tag.toLowerCase()), `${tag} is part of the food question`);
+  }
+  assert.ok(!food.includes("hotel"), "a food search does not ask for beds");
+
   // The radius survives only as the fallback for a town whose boundary could
   // not be named.
-  assert.deepEqual(KIND_RADIUS_KM, { stays: 15, essentials: 25 });
+  assert.deepEqual(KIND_RADIUS_KM, { stays: 15, food: 12, essentials: 25 });
 });
 
 test("a town's own boundary is looked up once, and covers the whole town", async () => {
@@ -195,10 +206,16 @@ test("a boundary that cannot be found falls back to a circle, and says so", asyn
 });
 
 test("the question carries a box and terms for the fallback geocoder", () => {
-  assert.deepEqual(nominatimTerms("stays"), ["hotel", "guest house"]);
+  assert.deepEqual(nominatimTerms("stays"), ["hotel", "guest house", "lodge"]);
   assert.equal(viewboxOf(34.1526, 77.5771, 15).split(",").length, 4);
-  assert.deepEqual(googleTerms("stays"), ["hotels", "guest houses", "hostels"]);
+  assert.ok(googleTerms("stays").includes("lodges"), "a lodge is asked for by name");
+  assert.ok(googleTerms("stays").includes("homestays"), "and so is a homestay");
+  assert.ok(googleTerms("stays").includes("motels"));
   assert.ok(googleTerms("essentials").some((term) => /royal enfield/i.test(term)));
+  assert.ok(googleTerms("essentials").some((term) => /service cent/i.test(term)), "the auto service centre is asked for");
+  assert.ok(googleTerms("food").some((term) => /dhaba/i.test(term)), "a dhaba is asked for");
+  assert.ok(googleTerms("food").includes("best restaurants"), "and the best-rated places are asked for too");
+  assert.ok(photonTerms("food").includes("cafe"));
 });
 
 test("an OpenStreetMap element is read for what it actually is", () => {
@@ -211,13 +228,40 @@ test("an OpenStreetMap element is read for what it actually is", () => {
   assert.equal(stay.budget, true, "a guest house is the cheap one");
 
   assert.equal(itemFromTags({ tourism: "hotel" }, "node/3", 34.16, 77.58, leh), null, "a nameless bed is no bed");
-  assert.equal(itemFromTags({ amenity: "cafe", name: "Cafe" }, "node/4", 34.16, 77.58, leh), null);
   assert.equal(itemFromTags({ tourism: "hotel", name: "X" }, "node/5", "34.1", "77.5", leh), null, "no coordinates, no pin");
+
+  // A lodge and a homestay are beds even without `tourism=hotel`.
+  const lodge = itemFromTags({ tourism: "guest_house", name: "Pahalgam Lodge" }, "node/6", 34.16, 77.58, leh);
+  assert.equal(lodge.kind, "stay");
+  assert.equal(lodge.detail.startsWith("Lodge"), true, "the sign says lodge, so the row does too");
+
+  const homestay = itemFromTags({ name: "Wangnoo Homestay", shop: "yes" }, "node/7", 34.16, 77.58, leh);
+  assert.equal(homestay?.kind, "stay");
+
+  // Food is its own kind: the cafe, the dhaba, the fast-food counter.
+  const cafe = itemFromTags({ amenity: "cafe", name: "Cafe Jeevan" }, "node/8", 34.16, 77.58, leh);
+  assert.equal(cafe?.kind, "eat");
+  assert.equal(cafe?.detail, "Cafe");
+
+  const dhaba = itemFromTags({ amenity: "restaurant", name: "Sher-e-Punjab Dhaba", cuisine: "indian" }, "node/9", 34.16, 77.58, leh);
+  assert.equal(dhaba?.kind, "eat");
+  assert.equal(dhaba?.detail, "Dhaba · indian");
+
+  const fast = itemFromTags({ amenity: "fast_food", name: "" }, "node/10", 34.16, 77.58, leh);
+  assert.equal(fast?.title, "Fast food", "an unnamed counter still names what it is");
+
+  // A car workshop is a service centre, not a motorcycle-only idea.
+  const garage = itemFromTags({ shop: "car_repair", name: "Sharma Motors" }, "node/11", 34.16, 77.58, leh);
+  assert.equal(garage?.kind, "service");
+  assert.equal(garage?.detail, "Automobile workshop");
+
+  const enfield = itemFromTags({ shop: "motorcycle", name: "Royal Enfield Leh" }, "node/12", 34.16, 77.58, leh);
+  assert.equal(enfield?.detail, "Royal Enfield · service centre");
 });
 
 test("a whole Overpass answer becomes a list, distances and all", () => {
   const items = itemsFromOverpass(overpassBody, leh);
-  assert.equal(items.length, 6, "the nameless hotel and the cafe are dropped");
+  assert.equal(items.length, 7, "the nameless hotel is dropped, the cafe is a place to eat");
   assert.equal(items.find((i) => i.title === "Army Clinic").kind, "hospital", "a clinic is a hospital for the list");
   assert.equal(items.find((i) => i.title === "Royal Enfield Leh").royalEnfield, true);
 });
@@ -232,6 +276,10 @@ test("both lists are nearest first — one order for the list and the map", () =
   const distances = essentials.map((i) => i.distanceKm);
   assert.deepEqual(distances, [...distances].sort((a, b) => a - b), "ascending, all the way down");
   assert.ok(!essentials.some((i) => i.kind === "stay"), "a bed does not appear in the essentials list");
+  assert.ok(!essentials.some((i) => i.kind === "eat"), "nor does a cafe");
+
+  const food = rankItems(items, "food");
+  assert.deepEqual(food.map((i) => i.kind), ["eat"], "the food list is food only");
 });
 
 test("the same place tagged twice is listed once", () => {
@@ -242,14 +290,55 @@ test("the same place tagged twice is listed once", () => {
   assert.equal(rankItems(twice, "essentials").length, 1);
 });
 
-test("Google's page is read: beds with their rating, and nothing that is not a place", () => {
+test("Google's page is read: beds and eateries, each with its rating", () => {
   const items = itemsFromGoogleState(googleState, leh);
-  assert.deepEqual(items.map((i) => i.title), ["The Grand Dragon Ladakh", "Leh Backpacker Hostel"]);
-  assert.equal(items[0].kind, "stay");
-  assert.match(items[0].detail, /4\.6★/);
-  assert.equal(items[1].budget, true, "a hostel is the cheap one");
-  assert.ok(items.every((item) => item.distanceKm < 1), "both are within a kilometre of Leh");
-  assert.ok(!items.some((i) => i.title === "Tenzin Cafe"), "a restaurant is not a bed");
+  assert.deepEqual(
+    items.map((i) => i.kind).sort(),
+    ["eat", "stay", "stay"],
+    "two beds and one place to eat — the id-only record is not a place",
+  );
+  const beds = items.filter((i) => i.kind === "stay");
+  assert.deepEqual(beds.map((i) => i.title), ["The Grand Dragon Ladakh", "Leh Backpacker Hostel"]);
+  assert.match(beds[0].detail, /4\.6★/);
+  assert.equal(beds[1].budget, true, "a hostel is the cheap one");
+  assert.ok(items.every((item) => item.distanceKm < 1), "all are within a kilometre of Leh");
+
+  const cafe = items.find((i) => i.title === "Tenzin Cafe");
+  assert.equal(cafe?.kind, "eat", "a restaurant is food, not a bed");
+  assert.equal(cafe?.rating, 4.4, "its rating travels with it");
+  assert.match(cafe?.detail ?? "", /4\.4★/);
+
+  // The tabs keep to themselves: beds in the beds list, food in the food list.
+  assert.deepEqual(rankItems(items, "stays").map((i) => i.title).sort(), [
+    "Leh Backpacker Hostel",
+    "The Grand Dragon Ladakh",
+  ]);
+  assert.deepEqual(rankItems(items, "food").map((i) => i.title), ["Tenzin Cafe"]);
+  assert.deepEqual(rankItems(items, "essentials"), [], "neither a bed nor a meal is a hospital");
+});
+
+test("a restaurant called a hotel is still a restaurant", () => {
+  // Plenty of Indian eateries are named "Hotel …"; what the record *is* has to
+  // win over what it is called, or the beds list fills with kitchens.
+  const state = [
+    placeRecord({ name: "Hotel Saravana Bhavan", lat: 34.16, lng: 77.58, rating: 4.5, types: ["restaurant"] }),
+    placeRecord({ name: "Hotel Grand Dragon", lat: 34.16, lng: 77.58, rating: 4.2, types: ["lodging"], id: "0x1:0x2" }),
+  ];
+  const items = itemsFromGoogleState(state, leh);
+  assert.equal(items.find((i) => i.title === "Hotel Saravana Bhavan")?.kind, "eat");
+  assert.equal(items.find((i) => i.title === "Hotel Grand Dragon")?.kind, "stay");
+});
+
+test("a homestay, a lodge and a motel are all beds", () => {
+  const state = [
+    placeRecord({ name: "Wangnoo Homestay", lat: 34.16, lng: 77.58, rating: 4.7, types: ["lodging"], id: "0x1:0xa" }),
+    placeRecord({ name: "Pahalgam Lodge", lat: 34.16, lng: 77.58, rating: 4.1, types: ["lodging"], id: "0x1:0xb" }),
+    placeRecord({ name: "Highway Motel", lat: 34.16, lng: 77.58, rating: 3.9, types: ["lodging"], id: "0x1:0xc" }),
+  ];
+  const beds = rankItems(itemsFromGoogleState(state, leh), "stays");
+  assert.equal(beds.length, 3);
+  assert.ok(beds.some((i) => /lodge/i.test(i.detail)), "a lodge says so on its row");
+  assert.ok(beds.every((i) => i.rating > 0), "every bed carries its rating");
 });
 
 test("a rating pair is not mistaken for a place's coordinates", () => {
@@ -284,10 +373,10 @@ test("a page with no data, or no page at all, is an empty answer and not a crash
   assert.equal(googleStateFrom("<html><body>no data here</body></html>"), null);
   assert.equal(googleStateFrom(undefined), null);
   assert.deepEqual(itemsFromGoogleMapsHtml("<html></html>", leh), []);
-  assert.deepEqual(itemsFromGoogleMapsHtml(googlePage(googleState), leh).length, 2);
+  assert.equal(itemsFromGoogleMapsHtml(googlePage(googleState), leh).length, 3, "two beds and a cafe");
   // The same place under two searches is one pin.
   const twice = googlePage([[...googleState[1], ...googleState[1]]]);
-  assert.equal(itemsFromGoogleMapsHtml(twice, leh).length, 2);
+  assert.equal(itemsFromGoogleMapsHtml(twice, leh).length, 3);
 });
 
 test("Google is asked without a key, and its answer is the one that is used", async () => {
@@ -497,6 +586,12 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
 
     const essentials = await (await fetch(`${base}/api/nearby?kind=essentials&lat=34.1526&lng=77.5771`)).json();
     assert.ok(essentials.area.spanKm >= 25, "the fallback for essentials is the wider one");
+
+    // Food is its own question, and its own answer: the cafe, not the beds.
+    const food = await (await fetch(`${base}/api/nearby?kind=food&lat=34.1526&lng=77.5771`)).json();
+    assert.equal(food.source, "overpass");
+    assert.deepEqual(food.items.map((item) => item.kind), ["eat"]);
+    assert.equal(food.items[0].title, "A cafe");
     assert.equal(essentials.items[0].title, "Indian Oil Leh");
 
     // A second ask is served from the cache: one more outbound call would show
@@ -557,7 +652,7 @@ test("photon is asked by term, and its features read like any other map item", a
   assert.equal(result.items[0].opening, "24/7");
   const photonCalls = fetchImpl.calls.filter((call) => call.url.includes("photon.komoot.io"));
   assert.ok(photonCalls.every((call) => call.url.includes("lat=34.1526")), "the point biases every term");
-  assert.deepEqual(photonTerms("stays"), ["hotel", "guest house", "hostel"]);
+  assert.deepEqual(photonTerms("stays"), ["hotel", "guest house", "hostel", "motel", "lodge", "homestay"]);
 
   assert.deepEqual(tagsFromPhoton({ osm_key: "amenity", osm_value: "fuel", name: "Pump" }), { amenity: "fuel", name: "Pump" });
   assert.deepEqual(tagsFromPhoton({ osm_key: "tourism", osm_value: "hostel", name: "H" }), { tourism: "hostel", name: "H" });
