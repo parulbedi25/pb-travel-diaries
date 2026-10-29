@@ -104,17 +104,28 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
 }
 
 /**
- * The satellite tiles: a photograph of the ground.
+ * The rasters the site will draw: imagery, and the two canvases.
  *
- * This is the only raster layer the site draws, and it is drawn for exactly one
- * reason — imagery has no labels to hide, so it keeps the promise the vector
- * map keeps. Every *drawn* map comes from Geoapify as a style that the vector
- * renderer can switch names off in; a raster picture of a drawing cannot do
- * that, so there is none here.
+ * All three are drawn for the same reason — none of them has a place name
+ * printed on it, so each keeps the promise the vector map keeps. Every *drawn*
+ * map comes from Geoapify as a style the vector renderer can switch names off
+ * in; a raster picture of a drawing cannot do that, so there is none here.
  *
- * The tiles are Esri's World Imagery: keyless, CORS-open and photographic, with
- * no name printed anywhere on it.
+ * The canvases are what sits under a drawing until it arrives, and what stays
+ * if it never does: a light one for a light theme, a dark one for a dark theme,
+ * both readable, both nameless, both needing no key and no WebGL.
+ *
+ * All three are Esri's: keyless, CORS-open, and ready without anything being
+ * agreed with anyone.
  */
-export function imageryTileUrl(tileZoom: number, tile: PlacedTile): string {
-  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
+export type MapBase = "imagery" | "light" | "dark";
+
+const BASE_SERVICES: Record<MapBase, string> = {
+  imagery: "World_Imagery",
+  light: "Canvas/World_Light_Gray_Base",
+  dark: "Canvas/World_Dark_Gray_Base",
+};
+
+export function baseTileUrl(base: MapBase, tileZoom: number, tile: PlacedTile): string {
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/${BASE_SERVICES[base]}/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
 }

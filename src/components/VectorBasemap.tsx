@@ -18,10 +18,12 @@
  * Drawing needs MapLibre's worker, and a bundled page has to be told where that
  * worker is — see installMapWorker, without which nothing is drawn at all.
  *
- * If the drawing still never lands — no WebGL, a revoked key, a host having a
- * bad day — the panel ends up showing satellite imagery rather than nothing.
- * It is the one map that is already keyless and label-free, so it keeps both
- * promises the drawings keep: somewhere to look, and no place names on it.
+ * A drawing can still fail — no WebGL, a revoked key, a host having a bad day —
+ * so it is never the only thing on the panel. Underneath it sits a light or a
+ * dark Esri canvas: keyless, nameless, drawn with plain tiles, and visible until
+ * the drawing has actually painted something. If the drawing never arrives that
+ * canvas *is* the map, which is why a panel is never empty and never has to be
+ * apologised for.
  *
  * Every drawing is of OpenStreetMap's data rendered by OpenMapTiles, so both
  * credits are owed whichever one answers (see MapAttribution in TileBasemap).
@@ -55,13 +57,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
-import { BASEMAP_MAKER, styleChain } from "../utils/basemapStyles";
+import type { MapBase } from "../utils/tiles";
+import { styleChain } from "../utils/basemapStyles";
 import { lookById, type Theme } from "../utils/mapLooks";
 import { installMapWorker } from "../utils/mapWorker";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
-const STYLE_TIMEOUT_MS = 15000;
-const PAINT_TIMEOUT_MS = 15000;
+const STYLE_TIMEOUT_MS = 8000;
+const PAINT_TIMEOUT_MS = 8000;
 /** Once tiles are arriving, how long they may stop arriving for. */
 const STALL_TIMEOUT_MS = 15000;
 /**
@@ -71,6 +74,29 @@ const STALL_TIMEOUT_MS = 15000;
  * must not be allowed to take a perfectly good map off the screen.
  */
 const ERROR_LIMIT = 12;
+/**
+ * A failure that takes longer than this is not a hiccup worth retrying: the
+ * second attempt would cost the same wait again, and the base map is already
+ * on screen. Only a request that failed *quickly* gets a second go.
+ */
+const RETRY_WITHIN_MS = 4000;
+/**
+ * Whether this browser can draw a vector map at all.
+ *
+ * Asked before MapLibre is given a container, because the answer decides
+ * whether there is anything to wait for. A browser without WebGL renders the
+ * base map and nothing else — and there is no point making it sit through two
+ * timeouts to find that out.
+ */
+function webglAvailable(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Turn every label off.
  *
@@ -93,6 +119,7 @@ export default function VectorBasemap({
   attributionClassName,
   settings,
   themeOverride,
+  onFailure,
 }: {
   view: TileView;
   width: number;
@@ -110,13 +137,21 @@ export default function VectorBasemap({
    * dashboard previews the light and dark looks side by side.
    */
   themeOverride?: Theme;
+  /**
+   * Told why the drawing gave up. The dashboard shows it; the site does not,
+   * because a visitor is owed a map, not our diagnostics.
+   */
+  onFailure?: (reason: string) => void;
 }) {
   const { theme: siteTheme, content } = useSite();
   const theme: Theme = themeOverride ?? (siteTheme === "light" ? "light" : "dark");
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
+  /** True once the drawing has put tiles on screen — until then, the base shows. */
+  const [painted, setPainted] = useState(false);
   const sized = width > 1 && height > 1;
+  const base: MapBase = theme === "light" ? "light" : "dark";
 
   const mapSettings = settings ?? resolveMapSettings(content.map);
   const look = lookById(theme === "light" ? mapSettings.lightLook : mapSettings.darkLook, theme);
@@ -139,9 +174,19 @@ export default function VectorBasemap({
     if (look.imagery) return;
     if (!host.current || !sized || gaveUp) return;
 
+    // Nothing can be drawn without WebGL, and waiting for it would only put a
+    // blank panel on screen for the length of two timeouts.
+    if (!webglAvailable()) {
+      setCandidate(chain.length);
+      onFailure?.("This browser has no WebGL, so the drawn map cannot start.");
+      return;
+    }
+
     // Without this the map asks for a worker file the build does not have and
     // draws nothing at all.
     installMapWorker();
+
+    setPainted(false);
 
     let created: MapLibreMap;
     try {
@@ -178,7 +223,24 @@ export default function VectorBasemap({
     const sweeps: number[] = [];
     const timers: number[] = [];
     const strip = () => hideLabels(created);
-    const next = () => setCandidate((index) => index + 1);
+    /** The last thing that went wrong, for the dashboard to repeat back. */
+    let lastError = "";
+    let reported = false;
+    const startedAt = Date.now();
+    const next = () => {
+      const quick = Date.now() - startedAt < RETRY_WITHIN_MS;
+      // The end of the line: nothing left to try, so say why — once, however
+      // many errors arrive afterwards.
+      if (!quick || candidate + 1 >= chain.length) {
+        if (!reported) {
+          reported = true;
+          onFailure?.(lastError || "The map style did not arrive.");
+        }
+        setCandidate(chain.length);
+        return;
+      }
+      setCandidate((index) => index + 1);
+    };
 
     // Some styles arrive asking for a globe. Our pins are placed with mercator
     // maths, so the two would disagree the moment the map curved.
@@ -230,11 +292,13 @@ export default function VectorBasemap({
       strip();
       if (!created.areTilesLoaded()) return;
       paintedNow = true;
+      setPainted(true);
     };
 
-    const onError = () => {
+    const onError = (event: { error?: { message?: string } }) => {
       if (paintedNow) return;
       errors += 1;
+      if (event?.error?.message) lastError = event.error.message;
       // Before the style lands, the error is the style itself — someone has to
       // answer for it. After it, errors are scattered (a sprite, a glyph range,
       // the odd tile) and only a flood of them means the host is not answering.
@@ -278,21 +342,26 @@ export default function VectorBasemap({
     map.current?.resize();
   }, [width, height]);
 
-  // No key, no map: say so where the map would be, with the one instruction
-  // that fixes it. A blank panel looks like a bug; this is a task.
+  // No key, no drawing — but still a map: the base underneath, with the one
+  // instruction that fixes it written over the top. A blank panel looks like a
+  // bug; this is a task.
   if (!mapSettings.geoapifyKey.trim() && !look.imagery) {
     return (
-      <div
-        className={className}
-        role="img"
-        aria-label="The map needs a Geoapify key"
-        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
-      >
-        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
-          The map needs a key — paste one in the dashboard under{" "}
-          <span className="text-zinc-300">Settings → Map → Map API key</span>.
-        </p>
-      </div>
+      <>
+        <TileBasemap view={view} width={width} height={height} className={className} base={base} />
+        <div
+          className={className}
+          role="img"
+          aria-label="The map needs a Geoapify key"
+          style={{ display: "grid", placeItems: "center", background: "rgba(9,9,11,0.7)" }}
+        >
+          <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-300">
+            The drawn map needs a key — paste one in the dashboard under{" "}
+            <span className="font-semibold text-white">Settings → Map → Map API key</span>. Until
+            then the site shows the plain base map.
+          </p>
+        </div>
+      </>
     );
   }
 
@@ -306,38 +375,31 @@ export default function VectorBasemap({
         height={height}
         className={className}
         attributionClassName={attributionClassName}
+        base="imagery"
       />
     );
   }
 
-  // The drawing would not arrive — no WebGL, a revoked key, a host having a bad
-  // day. An empty panel reads as a broken page, and the raster drawings that
-  // used to stand in here carry place names printed into the picture, which is
-  // the one thing the map must not show. Satellite is neither: keyless, drawn
-  // from Esri's imagery, and with no names on it at all, so it is what the
-  // panel falls back to.
-  if (gaveUp) {
-    return (
-      <TileBasemap
-        view={view}
-        width={width}
-        height={height}
-        className={className}
-        attributionClassName={attributionClassName}
-      />
-    );
-  }
-
-  const credit = attributionClassName ? (
-    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
-  ) : null;
+  const drawn = painted ? className : `${className ?? ""} opacity-0`;
 
   return (
     <>
-      <div ref={host} className={className} aria-hidden="true" />
-      {credit}
+      {/* The floor of every panel: a light or dark canvas that needs no key, no
+          worker and no WebGL. It shows until a drawing has painted over it, and
+          it stays if the drawing never arrives — so this is never an empty
+          box, and it never has a place name on it either. */}
+      <TileBasemap view={view} width={width} height={height} className={className} base={base} />
+
+      {/* MapLibre's own canvas, kept invisible (but laid out, and rendering)
+          until it has something to show. */}
+      <div ref={host} className={drawn} aria-hidden="true" />
+
+      {attributionClassName && (
+        <MapAttribution
+          className={attributionClassName}
+          map={painted ? "drawing" : "canvas"}
+        />
+      )}
     </>
   );
 }
-
-export { MapAttribution };

@@ -26,6 +26,9 @@ hosting/.cache
 /dist/images/
 /dist/media/
 /dist/mobile-layout.css
+# Copied in from public/ by the build; the server serves public/ directly, so
+# only the single-file page needs to be tracked.
+/dist/maplibre-gl-worker.mjs
 
 # Logs
 *.log
@@ -74,4 +77,5 @@ media/*
 # Persistent embedded SQLite storage
 /server/data/
 /build.html
-/vite.config.mjs
+# vite.config.mjs is committed on purpose: a build without the Tailwind plugin
+# in it produces a site with all its markup and almost none of its styling.

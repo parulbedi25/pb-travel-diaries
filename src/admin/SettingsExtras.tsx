@@ -345,10 +345,13 @@ function MapPreview({
   settings,
   theme,
   place,
+  onFailure,
 }: {
   settings: MapSettings;
   theme: MapTheme;
   place: { lat: number; lng: number; name: string };
+  /** Why the drawing gave up, so the panel can say it rather than look blank. */
+  onFailure?: (reason: string) => void;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -383,6 +386,7 @@ function MapPreview({
         height={size.height}
         className="absolute inset-0"
         attributionClassName="absolute bottom-2 left-2"
+        onFailure={onFailure}
       />
       {/* The place the look is being judged on, and nothing else — the real
           panel's route, pins and plates would only get in the way of seeing
@@ -551,6 +555,8 @@ export function MapPanel() {
    * light and dark choices stay separate, which is the whole point.
    */
   const [activeTheme, setActiveTheme] = useState<MapTheme>(siteTheme === "dark" ? "dark" : "light");
+  /** Why the drawing failed, if it did — set by the preview, shown below it. */
+  const [mapReason, setMapReason] = useState("");
   const currentLook = activeTheme === "light" ? map.lightLook : map.darkLook;
 
   // Where PB is now — the checkpoint marked "here now", else the first stop.
@@ -577,6 +583,14 @@ export function MapPanel() {
       <RestoreBar scope="map" label="map look" />
 
       <div className="grid gap-5">
+        {/* First, because nothing below it draws without it: no key means no
+            drawing, no tiles and no place lookups. */}
+        <MapKeyCard
+          map={map}
+          saved={saved}
+          onChange={(value) => set("Changed the map API key", { geoapifyKey: value })}
+        />
+
         <section className="rounded-3xl glass p-4 sm:p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Map look</p>
@@ -586,7 +600,7 @@ export function MapPanel() {
           </div>
 
           <div className="relative mt-3">
-            <MapPreview settings={map} theme={activeTheme} place={place} />
+            <MapPreview settings={map} theme={activeTheme} place={place} onFailure={setMapReason} />
 
             {/* On the map, where the thing it changes lives. */}
             <div
@@ -613,6 +627,16 @@ export function MapPanel() {
               ))}
             </div>
           </div>
+
+          {mapReason && (
+            <p className="mt-2.5 flex items-start gap-2 text-[11px] leading-relaxed text-amber-300/90">
+              <span className="mt-1 aspect-square h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+              <span>
+                The {activeTheme} drawing is not arriving — {mapReason} The map shows the plain
+                base underneath until it does.
+              </span>
+            </p>
+          )}
 
           <p className="mt-2.5 text-[11px] leading-relaxed text-zinc-500">
             The map at the top is the {activeTheme} drawing —{" "}
@@ -665,11 +689,6 @@ export function MapPanel() {
           </p>
         </section>
 
-        <MapKeyCard
-          map={map}
-          saved={saved}
-          onChange={(value) => set("Changed the map API key", { geoapifyKey: value })}
-        />
       </div>
     </div>
   );
