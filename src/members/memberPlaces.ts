@@ -7,11 +7,10 @@
  * it can be opened on a page of its own (`#/ride/place/<id>`) with its pointer
  * drawn on a map.
  *
- * The lookup itself is the same pair the dashboard's stop editor uses —
- * Nominatim first, because it knows landmarks as well as towns, then
- * Open-Meteo's geocoder, which is smaller but fast and not rate-limited per
- * second. Both need the network, so a failure is reported plainly and the
- * member can still keep a place by its coordinates.
+ * The lookup is the dashboard's stop editor's own: Geoapify's forward
+ * geocoder, with the key the map is drawn with. It needs the network, so a
+ * failure is reported plainly and the member can still keep a place by its
+ * coordinates.
  */
 
 export interface SavedPlace {
@@ -121,65 +120,54 @@ export interface PlaceLookup {
 
 const round5 = (value: number) => Math.round(value * 1e5) / 1e5;
 
-/** Nominatim gives the name as the first part of its long display name. */
-function tidyAddress(displayName: string | undefined): string | undefined {
-  if (!displayName) return undefined;
-  const parts = displayName
+/** A Geoapify result trimmed to the two lines a card can hold. */
+function tidyAddress(formatted: string | undefined, country: string | undefined): string | undefined {
+  if (!formatted) return undefined;
+  const parts = formatted
     .split(",")
     .map((part) => part.trim())
-    .filter(Boolean);
-  // Drop the postal code and the country: "India, 175131" is noise on a card.
-  const kept = parts.filter((part, index) => index < parts.length - 1 || !/^\d{5,6}$/.test(part));
-  const address = kept.slice(0, 4).join(", ");
+    .filter(Boolean)
+    // The country is on every row and says nothing; a bare postcode is noise.
+    .filter((part) => part !== country && !/^\d{5,6}$/.test(part));
+  const address = parts.slice(0, 3).join(", ");
   return address || undefined;
 }
 
-async function lookupNominatim(query: string): Promise<PlaceLookup | null> {
-  const url =
-    "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&q=" +
-    encodeURIComponent(query);
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+async function lookupGeoapify(query: string, key: string): Promise<PlaceLookup | null> {
+  const apiKey = key.trim();
+  if (!apiKey) return null;
+  const params = new URLSearchParams({
+    text: query,
+    lang: "en",
+    limit: "1",
+    format: "json",
+    apiKey,
+  });
+  const response = await fetch(`https://api.geoapify.com/v1/geocode/search?${params.toString()}`, {
+    headers: { Accept: "application/json" },
+  });
   if (!response.ok) return null;
-  const rows = (await response.json()) as {
-    lat?: string;
-    lon?: string;
-    display_name?: string;
-  }[];
-  const first = Array.isArray(rows) ? rows[0] : undefined;
+  const json = (await response.json()) as {
+    results?: {
+      lat?: number;
+      lon?: number;
+      formatted?: string;
+      country?: string;
+      city?: string;
+      state?: string;
+    }[];
+  };
+  const first = json.results?.[0];
   const lat = Number(first?.lat);
   const lng = Number(first?.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return {
     name: query,
-    address: tidyAddress(first?.display_name),
+    address:
+      tidyAddress(first?.formatted, first?.country) ??
+      ([first?.city, first?.state].filter(Boolean).join(", ") || undefined),
     lat: round5(lat),
     lng: round5(lng),
-  };
-}
-
-async function lookupOpenMeteo(query: string): Promise<PlaceLookup | null> {
-  const url =
-    "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=" +
-    encodeURIComponent(query);
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) return null;
-  const json = (await response.json()) as {
-    results?: {
-      name?: string;
-      latitude?: number;
-      longitude?: number;
-      admin1?: string;
-      country?: string;
-    }[];
-  };
-  const first = json.results?.[0];
-  if (typeof first?.latitude !== "number" || typeof first?.longitude !== "number") return null;
-  const place = [first.admin1, first.country].filter(Boolean).join(", ");
-  return {
-    name: query,
-    address: place || undefined,
-    lat: round5(first.latitude),
-    lng: round5(first.longitude),
   };
 }
 
@@ -187,17 +175,11 @@ async function lookupOpenMeteo(query: string): Promise<PlaceLookup | null> {
  * Find the place a member typed. The name saved is the name they typed — the
  * lookup answers "where", not "what to call it".
  */
-export async function findPlaceByName(query: string): Promise<PlaceLookup | null> {
+export async function findPlaceByName(query: string, key: string): Promise<PlaceLookup | null> {
   const trimmed = query.trim();
   if (!trimmed) return null;
   try {
-    const found = await lookupNominatim(trimmed);
-    if (found) return found;
-  } catch {
-    // Fall through to the second service.
-  }
-  try {
-    return await lookupOpenMeteo(trimmed);
+    return await lookupGeoapify(trimmed, key);
   } catch {
     return null;
   }

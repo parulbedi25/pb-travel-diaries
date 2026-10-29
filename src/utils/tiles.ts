@@ -104,58 +104,42 @@ export function tilesForView(view: TileView, width: number, height: number): Pla
 }
 
 /**
- * The raster basemaps, best first.
+ * The raster tiles: Geoapify's picture of the same drawing, and Esri's imagery.
  *
- * CARTO's `*_nolabels` rasters are the point of this list: they are drawn from
- * OpenStreetMap's data with every place name left out, which is the same thing
- * the vector styles are asked for by switching their symbol layers off. They
- * come in a light and a dark drawing, so each theme gets the map it asks for.
+ * The vector map is the map the site actually draws — Geoapify's style
+ * documents give it its tiles, fonts and colours. These raster tiles are for
+ * the two cases where a style cannot be drawn: a browser with no WebGL, or a
+ * site with no key to fetch the style with. Same provider, same drawing, so the
+ * stand-in is the map rather than a different map.
  *
- * They are **not** keyless, whatever the URL suggests. Asked without a key the
- * tile answers 200 with a placeholder stamped "API KEY REQUIRED" — a 2 KB grey
- * square where the map should be. Measured, not assumed: the same tile is
- * 13.7 KB with the key and 2 KB without. So the key travels in the URL, and
- * with no key the CARTO raster is skipped rather than drawn as a grey hole
- * (see TileBasemap).
- *
- * Where the ground is a landscape rather than a diagram, the satellite tiles
- * are Esri's World Imagery — keyless, CORS-open, and photographic, so there is
- * no name printed anywhere on them. They are the "Satellite" layout in the
- * dashboard, and they suit the Himalaya better than any Street drawing does.
- *
- * OpenStreetMap's own tiles stay at the end as a genuine last resort — keyless
- * too, but *labelled*, because a raster tile has its names painted into the
- * picture and there is no way to ask for it without. If they ever end up on
- * screen the credit says so (see MapAttribution), because a labelled map where
- * a nameless one belongs should not pass as a success.
+ * Satellite is the one exception: Geoapify publishes no imagery, so wherever
+ * the ground is wanted as a photograph instead of a diagram, the tiles are
+ * Esri's World Imagery — keyless, CORS-open and photographic, which is why
+ * there is no name printed anywhere on it.
  */
-export type RasterSource = "carto" | "satellite" | "osm";
+export type RasterSource = "geoapify" | "satellite";
 
 /**
- * Each raster's own drawing, so the map follows the site's theme.
+ * A tile from whichever raster is drawing.
  *
- * `key` is the CARTO basemap key, and a CARTO tile needs it to be a map at all:
- * without it the tile is a grey "API KEY REQUIRED" placeholder that still
- * answers 200 — the kind of failure that looks like a working map until you
- * actually look at it.
+ * `style` is the Geoapify drawing to render (`osm-bright`, `dark-matter`, …)
+ * and `key` the site's Geoapify key — without it the tile host answers with a
+ * refusal rather than a map, so the component skips the request when the key is
+ * blank (see TileBasemap).
  */
 export function rasterTileUrl(
   source: RasterSource,
-  theme: "light" | "dark",
+  style: string,
   tileZoom: number,
   tile: PlacedTile,
   key?: string,
 ): string {
-  if (source === "carto") {
-    const drawing = theme === "light" ? "light_nolabels" : "dark_nolabels";
-    const base = `https://a.basemaps.cartocdn.com/${drawing}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+  if (source === "geoapify") {
     const trimmed = (key ?? "").trim();
-    return trimmed ? `${base}?key=${encodeURIComponent(trimmed)}` : base;
+    const base = `https://maps.geoapify.com/v1/tile/${style}/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+    return trimmed ? `${base}?apiKey=${encodeURIComponent(trimmed)}` : base;
   }
-  if (source === "satellite") {
-    // Esri's imagery is a photograph of the ground, so there is nothing to
-    // switch off: no names, no road shield, no label layer at all.
-    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
-  }
-  return `https://tile.openstreetmap.org/${tileZoom}/${tile.wrapped}/${tile.ty}.png`;
+  // Esri's imagery is a photograph of the ground, so there is nothing to
+  // switch off: no names, no road shield, no label layer at all.
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tileZoom}/${tile.ty}/${tile.wrapped}`;
 }

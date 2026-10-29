@@ -1,9 +1,8 @@
 /**
  * A vector basemap with the labels turned off.
  *
- * Raster tiles have their place names painted into the picture, which is why
- * the only way to get rid of them was to find a map that ships without them —
- * and why CARTO's raster tiles needing a key took the nameless map with them.
+ * Raster tiles have their place names painted into the picture, so a vector
+ * map is the only way to get rid of them honestly.
  *
  * Vector tiles are different. The map arrives as data plus a style that says
  * how to draw it, and every text label lives in a "symbol" layer. Switching
@@ -11,19 +10,16 @@
  * drawn, nothing is blurred, covered or watermarked, and the map underneath is
  * untouched.
  *
- * Which styles are tried, and in what order, is the dashboard's "Map look"
- * setting (see MapSettings in store/siteContent):
+ * The style comes from the dashboard's "Map look" setting — one Geoapify
+ * drawing per theme (see MapSettings in store/siteContent and utils/mapLooks).
+ * One style document per look, fetched with the site's key; the style carries
+ * its own tiles, fonts and sprites, so there is nothing else to configure and
+ * no second host to fall back to. If the style never lands — no WebGL, no key,
+ * a host having a bad day — the same drawing is shown as Geoapify raster tiles
+ * underneath, and the panel says who drew it either way.
  *
- *  - CARTO's vector basemaps, with the site's own key. They are the default.
- *  - The keyless styles the site used before CARTO — OpenFreeMap, then
- *    VersaTiles — which are also what CARTO falls back to if its key is ever
- *    refused. That way the map is never lost to a revoked or exhausted key.
- *
- * All of them draw OpenStreetMap's data, so its credit is owed whichever one
- * answers (see MapAttribution in TileBasemap). Tried in order: a provider
- * having a slow day costs a few seconds rather than the map. (Maptoolkit would
- * be another, and is not here on purpose: its styles are proprietary and may
- * only be used with its own tile server.)
+ * Every drawing is of OpenStreetMap's data rendered by OpenMapTiles, so both
+ * credits are owed whichever one answers (see MapAttribution in TileBasemap).
  *
  * Patience is the whole difficulty. Too little and a nameless map gets thrown
  * away for being slow, which is how this ended up showing labelled tiles
@@ -57,7 +53,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
-import { providerLabel, styleChain } from "../utils/basemapStyles";
+import { BASEMAP_MAKER, styleChain } from "../utils/basemapStyles";
 import { lookById, type Theme } from "../utils/mapLooks";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
@@ -133,7 +129,7 @@ export default function VectorBasemap({
     theme,
     mapSettings.lightLook,
     mapSettings.darkLook,
-    mapSettings.cartoKey,
+    mapSettings.geoapifyKey,
   ]);
 
   useEffect(() => {
@@ -284,6 +280,24 @@ export default function VectorBasemap({
     map.current?.resize();
   }, [width, height]);
 
+  // No key, no map: say so where the map would be, with the one instruction
+  // that fixes it. A blank panel looks like a bug; this is a task.
+  if (!mapSettings.geoapifyKey.trim() && !look.imagery) {
+    return (
+      <div
+        className={className}
+        role="img"
+        aria-label="The map needs a Geoapify key"
+        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
+      >
+        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
+          The map needs a key — paste one in the dashboard under{" "}
+          <span className="text-zinc-300">Settings → Map → Map API key</span>.
+        </p>
+      </div>
+    );
+  }
+
   // Satellite is a photograph of the ground, not a style with layers to draw,
   // so there is nothing for MapLibre to do: the tiles are the whole map.
   if (look.imagery) {
@@ -301,10 +315,9 @@ export default function VectorBasemap({
   }
 
   const showingRaster = gaveUp || placeholder;
-  // Whichever raster ends up on screen credits itself, because only it knows
-  // whether it settled on the nameless drawing or the labelled last resort.
+  // Whichever raster ends up on screen credits itself.
   const credit = attributionClassName && !showingRaster ? (
-    <MapAttribution className={attributionClassName} source={providerLabel(styleUrl)} />
+    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
   ) : null;
 
   if (gaveUp) {
