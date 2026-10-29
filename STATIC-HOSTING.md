@@ -30,6 +30,44 @@ release/static/
 About 16 MB in total. The page reads `content.json` when there is no API behind
 it, which is what makes the site work without a server.
 
+## Where the database went, and why there is no `.env`
+
+A static site cannot connect to a database. Not MySQL, not SQLite, not "just to
+read one table" — there is no server-side code in the folder, and a browser is
+not allowed to open a database connection; a password in the page would be
+readable by every visitor anyway.
+
+So the data was read **once, at export time**, and written into `content.json`.
+That file is the site's content from then on. Editing it by hand works (it is
+plain JSON), but the normal way to change it is to change the site with the
+dashboard on a machine running the server, and export again.
+
+**Do not upload `.env`, and do not look for one.** On a static host every file
+in the web root can be fetched by anyone, so `https://yourdomain.com/.env` would
+hand out your database password and session secret. It is also useless there:
+nothing in the folder reads it.
+
+Two more consequences, because they are the usual reason people reach for `.env`
+at this point:
+
+- **Your Mac's `localhost` database is unreachable from a web host.** It only
+  listens on your own machine, it sits behind your router, and exposing it to
+  the internet is not something to do for a travel diary. That is exactly why
+  the export exists: the database stays on your Mac, and the folder carries a
+  copy of what it holds.
+- **Uploaded photos are a snapshot too.** Files added to the site after the
+  export are not on the server until you export and upload again.
+
+If you want the live site to talk to a database — editing from any browser,
+photos added later, pasted map links expanding, members-only sections really
+locked — that is the **server** deployment, not this one: upload the app, create
+a MySQL database **in that host's cPanel**, and put those credentials in the
+panel's environment (or a `.env` **outside** `public_html`). See
+[NAMECHEAP.md](NAMECHEAP.md). The credential that matters there is the host's
+`localhost`, never your Mac's.
+
+---
+
 ## 2. Make the export
 
 Run this on the machine that has your saved site — the one where the dashboard
@@ -55,6 +93,49 @@ npm run export:static -- --out ~/Desktop/pb-static
 The export reads the database, so it stops with a message if no database is
 configured or if nothing has been published yet. That is deliberate: an export
 of an empty site looks like the real thing and would go unnoticed.
+
+### Reading a database that is not this machine's
+
+`.env` describes the database this machine uses. A single run can be pointed
+somewhere else — the site's MySQL on a host, for instance — without touching
+that file, because the export is a moment rather than a connection the site
+keeps:
+
+```bash
+npm run export:static -- --check \
+  --db-host 203.0.113.9 --db-user pb_read --db-name pb_travel
+
+npm run export:static \
+  --db-host 203.0.113.9 --db-user pb_read --db-name pb_travel
+```
+
+| Flag | Sets |
+| --- | --- |
+| `--db-driver` | `mysql`, `sqlite` (default: whatever `.env` says) |
+| `--db-host`, `--db-port` | where the database listens |
+| `--db-user`, `--db-name` | which user and database |
+| `--db-password` | the password — see below |
+| `--db-socket` | a Unix socket instead of host and port |
+| `--check` | connect, report where it got to, stop |
+| `--out` | where to write the folder (default `release/static`) |
+
+`--check` is worth running first: it says which database it reached and whether
+that database holds a published site, without writing anything.
+
+**The password is better in the environment than on the command line**, where it
+lands in your shell's history:
+
+```bash
+DB_PASSWORD='…' npm run export:static -- --db-host … --db-user … --db-name …
+```
+
+Give the export a **read-only** MySQL user (`SELECT` only). It never writes, and
+a read-only user cannot damage anything if the password leaks.
+
+Nothing about these credentials reaches the folder. What ships is `content.json`
+— the content as it stood at that moment. A static site cannot connect to a
+database, and a `.env` in a web root is a password in public. The flags exist so
+the *export* can reach a database, not the uploaded site.
 
 ## 3. Upload the **contents**, at the **root**
 
