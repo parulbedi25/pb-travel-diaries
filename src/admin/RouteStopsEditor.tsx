@@ -248,6 +248,18 @@ export default function RouteStopsEditor({
     null,
   );
   const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
+  /**
+   * What the server said when asked whether it can reach the maps at all.
+   *
+   * Only asked for when an expansion has already failed: the answer exists to
+   * separate "the link is bad" from "this server has no way out to Google",
+   * and those two need different things done about them.
+   */
+  const [serverCheck, setServerCheck] = useState<{
+    state: "idle" | "checking" | "done";
+    reachable?: boolean;
+    text?: string;
+  }>({ state: "idle" });
   /** The replace button, so arming it is not undone by its own click. */
   const replaceRef = useRef<HTMLButtonElement | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -529,6 +541,21 @@ export default function RouteStopsEditor({
         .catch((error: unknown) => {
           if (cancelled) return;
           setResolving(false);
+          // Ask the server why, once, so the panel can say whether this is a
+          // bad link or a host with no road out.
+          setServerCheck({ state: "checking" });
+          void siteApi
+            .mapLinkHealth()
+            .then((health) =>
+              setServerCheck({
+                state: "done",
+                reachable: health.reachable,
+                text: health.reachable
+                  ? `The server can reach the maps (${health.ms} ms), so this particular link is the problem.`
+                  : `${health.code ? `The server could not reach the maps (${health.code}). ` : ""}${health.hint}`,
+              }),
+            )
+            .catch(() => setServerCheck({ state: "idle" }));
           // The server's own sentence already says what went wrong and what to
           // do about it — appending a second instruction only repeats it.
           setExpandError(
@@ -1236,6 +1263,36 @@ export default function RouteStopsEditor({
           <p className="mt-2 text-[11px] text-amber-200">{importBlockedReason}</p>
         )}
         {importError && <p className="mt-2 text-[11px] text-amber-200">{importError}</p>}
+        {serverCheck.state !== "idle" && (
+          <p
+            className={cn(
+              "mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed",
+              serverCheck.state === "checking"
+                ? "text-zinc-500"
+                : serverCheck.reachable
+                  ? "text-zinc-400"
+                  : "text-amber-200",
+            )}
+          >
+            {serverCheck.state === "checking" ? (
+              <>
+                <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />
+                Asking this server whether it can reach the maps…
+              </>
+            ) : (
+              <>
+                <span
+                  className={cn(
+                    "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                    serverCheck.reachable ? "bg-emerald-400" : "bg-amber-400",
+                  )}
+                  aria-hidden="true"
+                />
+                {serverCheck.text}
+              </>
+            )}
+          </p>
+        )}
         {importNote && <p className="mt-2 text-[11px] text-emerald-300">{importNote}</p>}
 
         {/* Named, not counted: a red line through every stop this paste threw

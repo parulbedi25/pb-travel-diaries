@@ -174,6 +174,23 @@ export const siteApi = {
     return expanded;
   },
 
+  /**
+   * Whether this server can reach the map services at all.
+   *
+   * A short link can only be expanded where the server has a way out to
+   * Google; when it does not, no amount of retrying will help and the answer
+   * needs to be "the server cannot reach Google", not "the link is bad".
+   */
+  async mapLinkHealth(): Promise<{
+    reachable: boolean;
+    code: string;
+    ms: number;
+    proxy: string;
+    hint: string;
+  }> {
+    return api.get("/api/maps/health");
+  },
+
   /* ── settings ────────────────────────────────────────────────────────── */
 
   async getTheme(): Promise<"dark" | "light"> {

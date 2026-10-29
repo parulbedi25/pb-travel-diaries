@@ -36,6 +36,7 @@
  */
 import express from "express";
 import { requireEditor } from "../lib/auth.js";
+import { proxyFor, request as egressRequest } from "../lib/egress.js";
 
 export const mapsRouter = express.Router();
 
@@ -63,9 +64,31 @@ const CONSENT_HOSTS = ["consent.google.com", "consent.youtube.com"];
 
 const MAX_HOPS = 4;
 /** One attempt's budget. Two of these fit inside the overall deadline below. */
-const ATTEMPT_TIMEOUT_MS = 6000;
+const ATTEMPT_TIMEOUT_MS = 4000;
 /** The whole expansion, retries included, may not outlast this. */
-const DEADLINE_MS = 12500;
+const DEADLINE_MS = 7000;
+
+/**
+ * Failures that no amount of retrying can improve.
+ *
+ * `ENOTFOUND` is "that name does not resolve here", `ECONNREFUSED` and
+ * `ECONNRESET` are "nothing is listening" or "something cut us off", and the
+ * `EPROXY*` codes are the proxy itself refusing. Each one is worth reporting in
+ * the first 50 milliseconds rather than spending seven seconds to say the same
+ * thing — which is what "without taking much time" actually means when the
+ * network is the thing that is wrong.
+ */
+const HOPELESS = new Set([
+  "ENOTFOUND",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EAI_AGAIN",
+  "EPROXY",
+  "EPROXYAUTH",
+  "ETLS",
+]);
 /** Enough of a page to find its redirect in; a Google answer is far smaller. */
 const MAX_PAGE_BYTES = 300_000;
 
@@ -157,8 +180,41 @@ export function targetInPage(href, html) {
   return "";
 }
 
+/**
+ * The network, shaped like `fetch`.
+ *
+ * The resolver below was written against `fetch`, and its tests hand in their
+ * own. This adapter keeps that shape while actually going through
+ * `lib/egress`, which honours the proxy variables Node's `fetch` ignores — so
+ * one change makes every existing branch run on a proxied host.
+ */
+const egressFetch = async (url, init = {}) => {
+  const headers = {};
+  for (const [name, value] of Object.entries(init.headers ?? {})) headers[name] = value;
+  const result = await egressRequest(url, {
+    headers,
+    timeoutMs: ATTEMPT_TIMEOUT_MS,
+    follow: init.redirect === "follow",
+    bodyLimit: init.readBody ? 120_000 : 0,
+  });
+  if (result.error) {
+    const error = new Error(result.error);
+    // Carried on `code` as well as `cause`, because both spellings are common.
+    error.code = result.error;
+    error.cause = { code: result.error };
+    throw error;
+  }
+  return {
+    status: result.status,
+    url: result.url,
+    headers: new Headers([...result.headers.entries()]),
+    body: null,
+    text: async () => result.text,
+  };
+};
+
 /** Fetch, with one retry, inside a deadline. Only the headers are wanted. */
-async function look(url, fetchImpl, deadline, cookie) {
+async function look(url, fetchImpl, deadline, cookie, { readBody = false } = {}) {
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const left = deadline - Date.now();
@@ -168,6 +224,7 @@ async function look(url, fetchImpl, deadline, cookie) {
       const response = await fetchImpl(url, {
         method: "GET",
         redirect: "manual",
+        readBody,
         headers: {
           // Google answers a bare request with a consent wall; a plain browser
           // user agent gets the redirect it would give a phone.
@@ -182,9 +239,10 @@ async function look(url, fetchImpl, deadline, cookie) {
       return { response, error: null };
     } catch (error) {
       lastError = error;
+      const code = error?.cause?.code || error?.code || "";
+      // A stall is worth one more ask. A refusal is the answer.
+      if (HOPELESS.has(code)) break;
       const quick = error?.name === "TimeoutError" || error?.name === "AbortError";
-      // A stall is worth one more ask; a refused connection is not, unless
-      // there is time and it might have been a reset mid-handshake.
       if (!quick && attempt === 1) break;
     }
   }
@@ -273,7 +331,7 @@ const looksLikeMapAddress = (url) => {
  * says why it could not. `fetchImpl` is there so the tests can hand in a fake
  * network instead of talking to Google.
  */
-export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
+export async function expandMapLink(raw, fetchImpl = egressFetch) {
   const text = String(raw ?? "").trim();
   if (!text) throw new MapLinkError("Paste a link to expand.", 400);
 
@@ -295,7 +353,7 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
 
   // A fake network is never remembered, and never reads the shared cache: the
   // tests ask the same short link to fail and to succeed in different cases.
-  const real = fetchImpl === globalThis.fetch;
+  const real = fetchImpl === egressFetch || fetchImpl === globalThis.fetch;
   const origin = current.toString();
   if (real) {
     const hit = cached(origin);
@@ -311,7 +369,10 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
 
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
     const here = current.toString();
-    const { response, error } = await look(here, fetchImpl, deadline, cookie);
+    // The body is wanted only when the answer is a page rather than a 302, but
+    // that is not known until the headers arrive — so it is asked for, capped,
+    // and read only in that one case.
+    const { response, error } = await look(here, fetchImpl, deadline, cookie, { readBody: true });
 
     let location = "";
     let page = "";
@@ -441,19 +502,19 @@ export async function expandMapLink(raw, fetchImpl = globalThis.fetch) {
     // reason decides whether a second try is worth anything. `ENOTFOUND` and
     // `ECONNREFUSED` mean the server has no way out to Google at all; a wall or
     // a page with no redirect means Google answered but said nothing useful.
+    const proxy = proxyFor("https://maps.app.goo.gl/");
     const why = failureCode
       ? `the network answered ${failureCode}`
       : cookie
         ? "Google answered with a consent wall"
         : "Google answered without a redirect";
-    const proxy =
-      process.env.HTTPS_PROXY || process.env.https_proxy
-        ? " This server is configured to use an outbound proxy — Node's fetch does not follow it unless the server is started with NODE_USE_ENV_PROXY=1."
-        : "";
+    const proxyNote = proxy
+      ? ` It was tried through the proxy ${proxy.host}, so check that the proxy allows maps.app.goo.gl.`
+      : "";
     // In the hosting log as well, because the operator reads that too.
-    console.warn(`[maps] could not expand ${origin}: ${why}${proxy}`);
+    console.warn(`[maps] could not expand ${origin}: ${why}${proxyNote}`);
     throw new MapLinkError(
-      `The short link did not give up its address from this server (${why}).${proxy} Open the short link in a browser, copy the address from the address bar and paste that here — a full directions link is read without asking any server.`,
+      `The short link did not give up its address from this server (${why}).${proxyNote} Open the short link in a browser, copy the address from the address bar and paste that here — a full directions link is read without asking any server.`,
       502,
     );
   }
@@ -497,6 +558,36 @@ function finish(url) {
   }
   return url;
 }
+
+/**
+ * `GET /api/maps/health` → can this server reach the maps at all?
+ *
+ * Added because "the short link could not be read" is a sentence about the
+ * server, not about the link, and there was no way to tell the difference from
+ * the dashboard. One request with a short budget answers it: reachable, and how
+ * long it took — or the exact reason it is not, proxy included.
+ */
+mapsRouter.get("/maps/health", requireEditor, async (_req, res) => {
+  const startedAt = Date.now();
+  const proxy = proxyFor("https://maps.app.goo.gl/");
+  const result = await egressRequest("https://maps.app.goo.gl/", { timeoutMs: 4000 });
+  const ms = Date.now() - startedAt;
+  if (result.error) {
+    return res.json({
+      reachable: false,
+      code: result.error,
+      ms,
+      proxy: proxy?.host ?? "",
+      // The two things that actually fix it, in order of likelihood.
+      hint: proxy
+        ? `The server tried the proxy ${proxy.host}. Check that it allows maps.app.goo.gl.`
+        : HOPELESS.has(result.error)
+          ? "This server has no route to Google. Ask the host to allow outbound HTTPS, or set HTTPS_PROXY."
+          : "The connection timed out. A proxy or a firewall is the usual cause.",
+    });
+  }
+  res.json({ reachable: true, code: "", ms, proxy: proxy?.host ?? "", hint: "" });
+});
 
 /**
  * `POST /api/maps/resolve { url }` → `{ url }`.
