@@ -148,6 +148,25 @@ that database holds a published site, without writing anything.
 `DB_DRIVER=sqlite` selects the local SQLite file. That is the convenient case
 and the one to use when the content is on this machine.
 
+The export says which file it read and which variables it took, never the
+values:
+
+```
+[export] environment: .env
+[export] database settings from the environment: DB_HOST, DB_USER, DB_NAME, DB_PASSWORD
+[export] reading from MySQL at localhost:3306/pb_travel as pb
+```
+
+A file used only for exporting is kept separate by naming it:
+
+```bash
+npm run export:static -- --env .env.static
+ENV_FILE=.env.static npm run export:static
+```
+
+Variables in the named file win over `.env`; anything it does not set still
+comes from `.env`, so the two are read as one set with the named file in front.
+
 The `.env` itself is **never copied into the folder**. It is read for the few
 seconds the export runs; what ships is `content.json`. Uploading a `.env` would
 publish the password and change nothing.

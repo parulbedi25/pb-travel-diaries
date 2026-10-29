@@ -85,6 +85,42 @@ if (argValue("db-password", undefined) !== undefined) {
   );
 }
 
+/**
+ * The environment file this export reads.
+ *
+ * `.env` is the default — the same file the server reads, so one place holds
+ * the database details and both the dashboard and the export agree. `--env`
+ * (or `ENV_FILE`) points one run at a different file, which is how a set of
+ * credentials used only for an export can be kept out of the everyday ones.
+ *
+ * Loaded here, before `config.js` is first imported, because `config.js` reads
+ * its values once. A variable already set in the real environment wins over the
+ * file, which is the same rule the server follows.
+ */
+// `--env`, not `--env-file`: Node claims that spelling for itself and would
+// swallow it before this script ever ran.
+const envFile = argValue("env", process.env.ENV_FILE || "");
+const envPath = envFile ? path.resolve(envFile) : "";
+if (envPath) {
+  if (!fs.existsSync(envPath)) {
+    console.error(`[export] --env ${envPath} does not exist.`);
+    process.exit(1);
+  }
+  // dotenv does not overwrite what is already set, which is what we want.
+  const { default: dotenv } = await import("dotenv");
+  dotenv.config({ path: envPath });
+  console.log(`[export] environment: ${envPath}`);
+} else {
+  const defaultEnv = path.resolve(import.meta.dirname, "../../.env");
+  if (fs.existsSync(defaultEnv)) console.log("[export] environment: .env");
+}
+
+/** Which of the database variables the environment actually supplied. */
+function envKeysUsed() {
+  const names = ["DB_DRIVER", "DB_HOST", "DB_PORT", "DB_USER", "DB_NAME", "DB_SOCKET", "DB_PASSWORD"];
+  return names.filter((name) => process.env[name] !== undefined);
+}
+
 const { config } = await import("../config.js");
 const { closeRepo, getRepo } = await import("../db/index.js");
 const { visibleTo } = await import("../routes/content.js");
@@ -255,6 +291,14 @@ async function main() {
     process.exit(1);
   }
 
+  // Named, never printed: knowing that DB_HOST came from `.env` is the useful
+  // half; knowing the password is not, and a log is a file people paste.
+  const used = envKeysUsed();
+  console.log(
+    used.length
+      ? `[export] database settings from the environment: ${used.join(", ")}`
+      : "[export] database settings: none in the environment — using the saved install file",
+  );
   console.log(`[export] reading from ${sourceLabel()}`);
 
   const repo = await getRepo();
