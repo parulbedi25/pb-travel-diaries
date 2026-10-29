@@ -78,6 +78,15 @@ export interface TrackerMapProps {
    * is the number the legs are scaled to.
    */
   routeDistanceKm?: number;
+  /**
+   * The checkpoint whose weather is being read below the map.
+   *
+   * Selecting a pin is how the panel beside this one is told whose forecast to
+   * lift to the top of its list, so the pin that is chosen has to look chosen.
+   */
+  selectedIndex?: number | null;
+  /** A checkpoint was tapped — pin, name or the weather over it. */
+  onSelectStop?: (index: number) => void;
 }
 
 /**
@@ -150,6 +159,8 @@ export default function TrackerMap({
   weather = true,
   routeDistanceKm = 0,
   topInset,
+  selectedIndex = null,
+  onSelectStop,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   /** The route strip along the bottom — measured, so the route stops just above it. */
@@ -496,14 +507,20 @@ export default function TrackerMap({
                   <span className="shrink-0 aspect-square absolute h-6 w-6 rounded-full bg-saffron-400/30 animate-ping" aria-hidden="true" />
                 </>
               )}
-              <span
-                role={isLive ? "status" : undefined}
+              <button
+                type="button"
                 title={`${isStart ? "Start" : isEnd ? "Destination" : "Checkpoint"} · ${stop.name}${
                   stop.note ? ` — ${stop.note}` : ""
                 }`}
-                aria-label={isLive ? `PB's location: ${liveLabel}` : undefined}
+                aria-label={
+                  isLive
+                    ? `PB's location: ${liveLabel}`
+                    : `Weather at ${stop.name}: bring it to the top of the list`
+                }
+                aria-pressed={selectedIndex === index}
+                onClick={() => onSelectStop?.(index)}
                 className={cn(
-                  "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50",
+                  "relative grid place-items-center rounded-full border-2 border-white shadow-lg ring-1 ring-black/50 transition-transform duration-200 hover:scale-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300",
                   isStart
                     ? "h-5 w-5 bg-emerald-500 shadow-emerald-500/50"
                     : isEnd
@@ -513,6 +530,12 @@ export default function TrackerMap({
                         : stop.status === "done"
                           ? "h-4 w-4 bg-ridden"
                           : "h-4 w-4 bg-saffron-400",
+                  // The chosen checkpoint wears a ring of light, so the pin and
+                  // the row at the top of the list below are visibly the same
+                  // place.
+                  selectedIndex === index
+                    ? "scale-125 shadow-[0_0_0_3px_rgba(245,179,1,0.45),0_0_22px_rgba(245,179,1,0.55)]"
+                    : "",
                 )}
               >
                 {stop.status === "done" && !isStart && !isEnd ? (
@@ -521,7 +544,7 @@ export default function TrackerMap({
                   !isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white" />
                 )}
                 {isLive && <span className="shrink-0 aspect-square h-1.5 w-1.5 rounded-full bg-white animate-blink" />}
-              </span>
+              </button>
               {weather && conditions?.[index] && (
                 // Above the pin, centred on it — the name hangs below, the
                 // temperature sits on top, and the two never argue for the
@@ -533,6 +556,7 @@ export default function TrackerMap({
                       data-weather-temp=""
                       onClick={(event) => {
                         event.stopPropagation();
+                        onSelectStop?.(index);
                         setOpenStop((current) => (current === index ? null : index));
                       }}
                       aria-expanded={openStop === index}
@@ -646,7 +670,19 @@ export default function TrackerMap({
                   const isLive = stop.status === "live";
                   const isDone = stop.status === "done";
                   return (
-                    <li key={`${stop.name}-${index}`} className="flex min-w-0 flex-col items-center">
+                    <li key={`${stop.name}-${index}`} className="min-w-0">
+                      {/* The dot under the map is a pointer too: tapping it
+                          picks the same checkpoint the pin above does. */}
+                      <button
+                        type="button"
+                        onClick={() => onSelectStop?.(index)}
+                        aria-pressed={selectedIndex === index}
+                        aria-label={`Show the weather at ${stop.name}`}
+                        className={cn(
+                          "flex w-full min-w-0 flex-col items-center rounded-lg px-0.5 py-0.5 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300",
+                          selectedIndex === index ? "bg-saffron-400/15" : "hover:bg-white/[0.05]",
+                        )}
+                      >
                       <span
                         className="relative grid h-3 w-3 place-items-center"
                         role={isLive ? "status" : undefined}
@@ -696,11 +732,12 @@ export default function TrackerMap({
                       >
                         {stop.name}
                       </span>
-                      <span className="text-[9px] leading-tight text-zinc-600">
-                        {isLive && status === "live" && index > 0
-                          ? "here now"
-                          : formatKm(totals[index] ?? 0)}
-                      </span>
+                        <span className="text-[9px] leading-tight text-zinc-600">
+                          {isLive && status === "live" && index > 0
+                            ? "here now"
+                            : formatKm(totals[index] ?? 0)}
+                        </span>
+                      </button>
                     </li>
                   );
                 })}

@@ -25,7 +25,7 @@ import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { useRouteGeometry } from "../hooks/useRoadGeometry";
 import { storedRoadFits } from "../utils/liveRoute";
 import { useRouteWeather } from "../hooks/useRouteWeather";
-import { WeatherBadge } from "./WeatherBadge";
+import { WeatherBadge, WeatherIcon } from "./WeatherBadge";
 import { WeatherCard } from "./WeatherBubble";
 import { useWeatherDetails } from "../hooks/useWeatherDetails";
 
@@ -145,6 +145,15 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   /** Half the floating card's width, for keeping it inside the viewport. */
   const PEEK_HALF_WIDTH = 168;
 
+  /**
+   * The checkpoint last tapped on the map.
+   *
+   * Its row is lifted to the top of "Weather along the route", so tapping a pin
+   * and looking to the right answers the same question — what is it like there
+   * — without hunting down a list in route order.
+   */
+  const [selectedStop, setSelectedStop] = useState<number | null>(null);
+
   // The plate across the top of the map is drawn here, so how far down it
   // reaches is measured here and handed to the map. The route then starts just
   // under it instead of a guessed distance below it.
@@ -201,6 +210,21 @@ export default function LiveTracker({ data }: { data: LiveData }) {
       document.removeEventListener("mousedown", onDown);
     };
   }, [peek]);
+  // The chosen checkpoint first, everything else in route order.
+  const weatherOrder = useMemo(() => {
+    const route = stops.map((stop, index) => ({ stop, index }));
+    if (selectedStop === null) return route;
+    const at = route.findIndex((entry) => entry.index === selectedStop);
+    if (at <= 0) return route;
+    return [route[at], ...route.slice(0, at), ...route.slice(at + 1)];
+  }, [stops, selectedStop]);
+
+  // A route edited down to fewer stops cannot keep a selection that no longer
+  // names anything.
+  useEffect(() => {
+    setSelectedStop((current) => (current === null || current < stops.length ? current : null));
+  }, [stops.length]);
+
   const totalKm = totals[totals.length - 1] ?? 0;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
@@ -267,6 +291,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 status={status}
                 pingLabel={pingLabel}
                 topInset={topInset}
+                selectedIndex={selectedStop}
+                onSelectStop={(index) =>
+                  setSelectedStop((current) => (current === index ? null : index))
+                }
               />
 
               <div
@@ -460,24 +488,31 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                   <p className="mt-2 text-[11px] text-zinc-500">{note}</p>
                 </div>
 
-                {/* Weather at each checkpoint, start to finish. The map marks
-                    them too; this is the version you can read without
-                    squinting at a dot. */}
+                {/* Weather at each checkpoint, read like a forecast rather
+                    than a row of chips: one card, one row per place, the
+                    temperature big on the right and the week's high and low
+                    beside the condition. A pin tapped on the map puts its own
+                    row at the top. */}
                 {conditions && (
-                  <div className="mt-4 rounded-2xl bg-white/[0.03] p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                      Weather along the route
-                    </p>
-                    <ul className="mt-3 flex flex-wrap gap-2">
-                      {stops.map((stop, index) => (
-                        <li key={`${stop.name}-${index}`}>
-                          <span className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] py-1 pl-2.5 pr-3">
-                            <span className="max-w-[9rem] truncate text-[11px] font-medium text-zinc-300">
-                              {stop.name}
-                            </span>
-                            {/* Every temperature opens its own forecast: what it
-                                is doing there, the next three hours and the
-                                week, with the place's name on the card. */}
+                  <div className="mt-4">
+                    <div className="flex items-baseline justify-between gap-3 px-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                        Weather along the route
+                      </p>
+                      <p className="text-[10px] text-zinc-600">
+                        {stops.length} {stops.length === 1 ? "stop" : "stops"}
+                      </p>
+                    </div>
+                    <ul className="mt-2 overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+                      {weatherOrder.map(({ stop, index }) => {
+                        const now = conditions[index];
+                        const detail = details?.[index];
+                        const today = detail?.days?.[0];
+                        const high = today?.maxC ?? null;
+                        const low = today?.minC ?? null;
+                        const selected = selectedStop === index;
+                        return (
+                          <li key={`${stop.name}-${index}`} className="border-b border-white/[0.05] last:border-0">
                             <button
                               type="button"
                               data-weather-temp=""
@@ -489,16 +524,53 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                               aria-expanded={peek?.index === index}
                               aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
                               className={cn(
-                                "-my-1 -mr-1.5 rounded-full p-1 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
-                                peek?.index === index ? "scale-110" : "",
+                                "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-200",
+                                selected ? "bg-saffron-400/[0.07]" : "hover:bg-white/[0.04]",
                               )}
                             >
-                              <WeatherBadge conditions={conditions[index]} />
+                              <WeatherIcon
+                                kind={now?.kind ?? "clear"}
+                                className={cn("h-5 w-5 shrink-0", selected ? "" : "opacity-90")}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="truncate text-[13px] font-semibold text-white">
+                                    {stop.name}
+                                  </span>
+                                  {selected && (
+                                    <span className="shrink-0 rounded-full bg-saffron-400/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-saffron-200">
+                                      On the map
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="mt-0.5 flex items-baseline gap-2 text-[11px] text-zinc-400">
+                                  <span className="truncate">{now?.label ?? "No reading"}</span>
+                                  {(high !== null || low !== null) && (
+                                    <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                                      H {high === null ? "—" : `${Math.round(high)}°`} · L{" "}
+                                      {low === null ? "—" : `${Math.round(low)}°`}
+                                    </span>
+                                  )}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-right">
+                                <span className="block font-display text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
+                                  {now?.tempC === null || now?.tempC === undefined
+                                    ? "—"
+                                    : `${Math.round(now.tempC)}°`}
+                                </span>
+                                <span className="mt-1 block font-mono text-[10px] leading-none text-zinc-600">
+                                  {formatKm(totals[index] ?? 0)}
+                                </span>
+                              </span>
                             </button>
-                          </span>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
+                    <p className="mt-2 px-1 text-[10px] leading-relaxed text-zinc-600">
+                      Tap a checkpoint on the map to lift its weather to the top.
+                    </p>
                   </div>
                 )}
 
