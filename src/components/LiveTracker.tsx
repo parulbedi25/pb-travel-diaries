@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapPin,
   MapPinned,
@@ -130,33 +130,77 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // and the coming week behind every temperature on this card. One request for
   // the route, cached, so opening one is a local action.
   const details = useWeatherDetails(stops);
-  /** Which temperature in the list is open — one at a time, by stop index. */
-  const [routePeek, setRoutePeek] = useState<number | null>(null);
-  const [nextPeek, setNextPeek] = useState<number | null>(null);
+  /**
+   * Which temperature is open, and where to put its card.
+   *
+   * A floating card, deliberately: this used to open *inside* the list it was
+   * tapped from, which grew that card, which grew the column, which resized the
+   * map beside it every time somebody looked at a forecast. Nothing here may
+   * move the page — the forecast hovers over it and goes away again.
+   */
+  const [peek, setPeek] = useState<{ index: number; x: number; y: number; above: boolean } | null>(
+    null,
+  );
 
-  /** The card behind a tapping temperature: the place it belongs to, and its week. */
-  const forecastFor = (index: number) => {
-    const stop = stops[index];
+  /** Half the floating card's width, for keeping it inside the viewport. */
+  const PEEK_HALF_WIDTH = 168;
+
+  // The plate across the top of the map is drawn here, so how far down it
+  // reaches is measured here and handed to the map. The route then starts just
+  // under it instead of a guessed distance below it.
+  const mapBoxRef = useRef<HTMLDivElement | null>(null);
+  const topPlateRef = useRef<HTMLDivElement | null>(null);
+  const [topInset, setTopInset] = useState(96);
+  useEffect(() => {
+    const box = mapBoxRef.current;
+    const plate = topPlateRef.current;
+    if (!box || !plate) return;
+    const measure = () => {
+      const gap = Math.round(plate.getBoundingClientRect().bottom - box.getBoundingClientRect().top) + 10;
+      if (gap > 40) setTopInset(gap);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(plate);
+    return () => observer.disconnect();
+  }, []);
+
+  const openPeek = (button: HTMLElement, index: number) => {
     const detail = details?.[index];
-    if (!stop || !detail) return null;
-    const role = index === 0 ? "Start" : index === stops.length - 1 ? "Destination" : "On the way";
-    return (
-      <div className="mt-3 w-full">
-        <WeatherCard
-          eyebrow={`${role} · ${formatKm(totals[index] ?? 0)}`}
-          title={stop.name}
-          subtitle={detail.now.label}
-          detail={detail}
-          width="100%"
-          style={{ position: "relative" }}
-          onClose={() => {
-            setRoutePeek(null);
-            setNextPeek(null);
-          }}
-        />
-      </div>
-    );
+    if (!detail) return;
+    const rect = button.getBoundingClientRect();
+    setPeek((current) => {
+      if (current?.index === index) return null;
+      const centre = rect.left + rect.width / 2;
+      const x = Math.min(
+        Math.max(centre, PEEK_HALF_WIDTH + 12),
+        Math.max(PEEK_HALF_WIDTH + 12, window.innerWidth - PEEK_HALF_WIDTH - 12),
+      );
+      // Above the badge when there is room above it, below it when there is not.
+      const above = rect.top > 320;
+      return { index, x, y: above ? rect.top - 10 : rect.bottom + 10, above };
+    });
   };
+
+  // Outside click and Escape both put it away.
+  useEffect(() => {
+    if (!peek) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPeek(null);
+    };
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("[data-temp-peek]")) return;
+      setPeek(null);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [peek]);
   const totalKm = totals[totals.length - 1] ?? 0;
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
@@ -205,7 +249,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
         <div className="mt-14 grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
           {/* ---------- stylised live map ---------- */}
           <Reveal className="h-full">
-            <div className="relative flex h-full min-h-[400px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:min-h-[440px]">
+            <div
+              ref={mapBoxRef}
+              className="relative flex h-full min-h-[400px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:min-h-[440px]"
+            >
               <div className="absolute inset-0 bg-grid opacity-70 [mask-image:radial-gradient(ellipse_80%_80%_at_50%_40%,black,transparent)]" aria-hidden />
               <div className="shrink-0 aspect-square absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
               <div className="shrink-0 aspect-square absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
@@ -219,9 +266,13 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                 liveState={location.state}
                 status={status}
                 pingLabel={pingLabel}
+                topInset={topInset}
               />
 
-              <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5 sm:p-6">
+              <div
+                ref={topPlateRef}
+                className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5 sm:p-6"
+              >
                 <a
                   href="#/live-map"
                   aria-label={`Live: PB is in ${location.name}, ${location.state}. Open the live map.`}
@@ -430,12 +481,16 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                             <button
                               type="button"
                               data-weather-temp=""
-                              onClick={() => setRoutePeek((current) => (current === index ? null : index))}
-                              aria-expanded={routePeek === index}
+                              data-temp-peek=""
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openPeek(event.currentTarget, index);
+                              }}
+                              aria-expanded={peek?.index === index}
                               aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
                               className={cn(
                                 "-my-1 -mr-1.5 rounded-full p-1 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
-                                routePeek === index ? "scale-110" : "",
+                                peek?.index === index ? "scale-110" : "",
                               )}
                             >
                               <WeatherBadge conditions={conditions[index]} />
@@ -444,7 +499,6 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                         </li>
                       ))}
                     </ul>
-                    {routePeek !== null && forecastFor(routePeek)}
                   </div>
                 )}
 
@@ -481,16 +535,16 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                             <button
                               type="button"
                               data-weather-temp=""
-                              onClick={() =>
-                                setNextPeek((current) =>
-                                  current === progressIndex + 1 + i ? null : progressIndex + 1 + i,
-                                )
-                              }
-                              aria-expanded={nextPeek === progressIndex + 1 + i}
+                              data-temp-peek=""
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openPeek(event.currentTarget, progressIndex + 1 + i);
+                              }}
+                              aria-expanded={peek?.index === progressIndex + 1 + i}
                               aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
                               className={cn(
                                 "rounded-full p-0.5 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
-                                nextPeek === progressIndex + 1 + i ? "scale-110" : "",
+                                peek?.index === progressIndex + 1 + i ? "scale-110" : "",
                               )}
                             >
                               <WeatherBadge conditions={conditions?.[progressIndex + 1 + i]} compact />
@@ -499,7 +553,6 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                           <p className="text-xs text-zinc-500">
                             {stop.note || `${formatKm(totals[progressIndex + 1 + i] ?? 0)} from the start`}
                           </p>
-                          {nextPeek === progressIndex + 1 + i && forecastFor(progressIndex + 1 + i)}
                         </div>
                         <span className="rounded-full bg-saffron-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
                           {formatKm((totals[progressIndex + 1 + i] ?? 0) - coveredKm)}
@@ -520,6 +573,35 @@ export default function LiveTracker({ data }: { data: LiveData }) {
           </Stagger>
         </div>
       </div>
+
+      {/* The forecast for a tapped temperature — fixed to the viewport, so
+          opening it moves nothing: the map beside it keeps its size and the
+          list it came from keeps its height. */}
+      {peek && stops[peek.index] && details?.[peek.index] && (
+        <div
+          data-temp-peek=""
+          role="dialog"
+          aria-label={`Weather at ${stops[peek.index].name}`}
+          className="fixed z-[60] w-[21rem] max-w-[calc(100vw-1.5rem)]"
+          style={{
+            left: `${peek.x}px`,
+            top: `${peek.y}px`,
+            transform: `translate(-50%, ${peek.above ? "-100%" : "0"})`,
+          }}
+        >
+          <WeatherCard
+            eyebrow={`${
+              peek.index === 0 ? "Start" : peek.index === stops.length - 1 ? "Destination" : "On the way"
+            } · ${formatKm(totals[peek.index] ?? 0)}`}
+            title={stops[peek.index].name}
+            subtitle={details[peek.index]!.now.label}
+            detail={details[peek.index]!}
+            width="100%"
+            style={{ position: "relative" }}
+            onClose={() => setPeek(null)}
+          />
+        </div>
+      )}
     </section>
   );
 }

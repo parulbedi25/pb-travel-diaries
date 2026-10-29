@@ -64,28 +64,20 @@ export interface TrackerMapProps {
   /** Draw the current weather at each checkpoint. On unless told otherwise. */
   weather?: boolean;
   /**
+   * How far down the panel the plate across the top reaches, in pixels.
+   *
+   * Measured by whoever draws that plate rather than guessed at here: the route
+   * should start just under it, and a constant that is even slightly too big
+   * leaves the visible gap this was reported for. The strip along the bottom is
+   * measured here, because it belongs to this component.
+   */
+  topInset?: number;
+  /**
    * The routing service's own length for the road, when the dashboard measured
    * it. The drawn line is simplified, so summing it reads a little short; this
    * is the number the legs are scaled to.
    */
   routeDistanceKm?: number;
-}
-
-/** Space the drawn route has to keep clear of. */
-function useBandInsets(): { top: number; bottom: number } {
-  // The badge across the top and the strip along the bottom; both grow a
-  // little at the small breakpoint.
-  const [insets, setInsets] = useState({ top: 92, bottom: 152 });
-  useEffect(() => {
-    const wide =
-      typeof window.matchMedia === "function" ? window.matchMedia("(min-width: 640px)") : null;
-    const apply = () =>
-      setInsets(wide?.matches ? { top: 110, bottom: 174 } : { top: 92, bottom: 152 });
-    apply();
-    wide?.addEventListener?.("change", apply);
-    return () => wide?.removeEventListener?.("change", apply);
-  }, []);
-  return insets;
 }
 
 /**
@@ -157,8 +149,11 @@ export default function TrackerMap({
   geometry: givenGeometry,
   weather = true,
   routeDistanceKm = 0,
+  topInset,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  /** The route strip along the bottom — measured, so the route stops just above it. */
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   /** Which checkpoint's temperature is open, by index. */
   const [openStop, setOpenStop] = useState<number | null>(null);
@@ -185,7 +180,29 @@ export default function TrackerMap({
 
   const width = size.width || 600;
   const height = size.height || 400;
-  const insets = useBandInsets();
+  // The strip along the bottom is this component's own furniture, so it is
+  // measured here; the plate at the top is measured by the card that draws it
+  // and arrives as `topInset`.
+  const [stripInset, setStripInset] = useState(152);
+  useEffect(() => {
+    const host = hostRef.current;
+    const strip = stripRef.current;
+    if (!host || !strip) return;
+    const measure = () => {
+      const gap = Math.round(host.getBoundingClientRect().bottom - strip.getBoundingClientRect().top) + 8;
+      if (gap > 40) setStripInset(gap);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [stops.length]);
+
+  const insets = {
+    top: Math.max(56, topInset ?? 92),
+    bottom: stripInset,
+  };
 
   const road = useRoadGeometry(stops, routeGeometry);
   const geometry = useMemo(
@@ -222,7 +239,10 @@ export default function TrackerMap({
   // fraction of it a rounded-down zoom happens to give. The pad leaves room for
   // the pin, its weather badge and the name plate hanging under it.
   const { view, projector } = useMemo(
-    () => fitRouteToBand(frame, width, height, insets, { padX: 34, padY: 34, minBand: MIN_BAND }),
+    // padY is the temp badge above a pin and the name plate below it: enough
+    // for both, and no more, so the top checkpoint sits just under the LIVE
+    // plate and the bottom one just above the route strip.
+    () => fitRouteToBand(frame, width, height, insets, { padX: 34, padY: 26, minBand: MIN_BAND }),
     [frame, width, height, insets.top, insets.bottom],
   );
   // The map is centred on whatever our overlay puts at the middle of the
@@ -571,7 +591,10 @@ export default function TrackerMap({
       ) : null}
 
       {count > 0 && (
-        <div className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5">
+        <div
+          ref={stripRef}
+          className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5"
+        >
           <div className="rounded-2xl border border-white/10 bg-ink-950/85 px-3 py-2.5 shadow-xl shadow-black/40 backdrop-blur-xl sm:px-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">
