@@ -6,21 +6,19 @@
  * fetch. A wrong URL means a map that never arrives, so it is worth being sure
  * about in one place.
  *
- * There is one provider now. Geoapify answers with a complete MapLibre style
- * (tiles, fonts, sprites, attribution) for every look, so there is no chain of
- * substitutes to walk: the chosen drawing, or — when the site has no key to
- * fetch a style with — its raster tiles, which at least put a map on screen.
+ * Four vendors are offered (see utils/mapLooks). Each answers with a complete
+ * MapLibre style document for every look, so there is no chain of substitutes
+ * to walk: the chosen drawing, or — when the site has no key to fetch a style
+ * with — nothing at all, and the plain base underneath carries the map.
  */
 
 import type { MapSettings } from "../store/siteContent";
-import { lookById, styleUrlFor, type MapLook, type Theme } from "./mapLooks";
+import { lookById, styleUrlFor, vendorById, type MapLook, type Theme } from "./mapLooks";
 
-/** Who draws the map, for the credit. */
-export const BASEMAP_MAKER = "Geoapify";
-
-/** The look a theme is set to draw. */
-function chosenLook(settings: MapSettings, theme: Theme): MapLook {
-  return lookById(theme === "light" ? settings.lightLook : settings.darkLook, theme);
+/** The look a theme is set to draw, in the vendor that draws it. */
+export function chosenLook(settings: MapSettings, theme: Theme): MapLook {
+  const vendor = vendorById(settings.mapVendor);
+  return lookById(theme === "light" ? settings.lightLook : settings.darkLook, theme, vendor.id);
 }
 
 /**
@@ -37,6 +35,6 @@ function chosenLook(settings: MapSettings, theme: Theme): MapLook {
 export function styleChain(settings: MapSettings, theme: Theme): string[] {
   const look = chosenLook(settings, theme);
   if (look.imagery) return [];
-  const url = styleUrlFor(look, settings.geoapifyKey);
+  const url = styleUrlFor(look, settings.mapKey);
   return url ? [url, url] : [];
 }
