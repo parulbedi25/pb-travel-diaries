@@ -81,6 +81,20 @@ const ERROR_LIMIT = 12;
  */
 const RETRY_WITHIN_MS = 4000;
 /**
+ * MapLibre counts a zoom level in 512-pixel tiles; this site's projector, its
+ * raster tiles and its pins all count it in 256-pixel ones.
+ *
+ * Handed `view.zoom` unchanged, MapLibre therefore draws the world one level
+ * too deep: everything appears at twice the scale the pins were placed for, so
+ * a pin eighty pixels east of the centre sits over a street a hundred and sixty
+ * pixels east of it. Near the centre the error is nil, which is why the map
+ * looked "nearly right"; it grows with distance, which is why a city full of
+ * petrol stations — the furthest things on the panel — was the place it showed.
+ *
+ * One level down makes the two agree exactly: 512 x 2^(z-1) == 256 x 2^z.
+ */
+const ZOOM_FOR_MAPLIBRE = -1;
+/**
  * Whether this browser can draw a vector map at all.
  *
  * Asked before MapLibre is given a container, because the answer decides
@@ -194,7 +208,7 @@ export default function VectorBasemap({
         container: host.current,
         style: styleUrl,
         center: [view.lng, view.lat],
-        zoom: view.zoom,
+        zoom: Math.max(0, view.zoom + ZOOM_FOR_MAPLIBRE),
         // Every one of these would move the map away from the projection our
         // pins are placed with, so they are pinned rather than left to default.
         bearing: 0,
@@ -334,7 +348,10 @@ export default function VectorBasemap({
 
   // Follow the view. jumpTo so there is no animation to fall out of step with.
   useEffect(() => {
-    map.current?.jumpTo({ center: [view.lng, view.lat], zoom: view.zoom });
+    map.current?.jumpTo({
+      center: [view.lng, view.lat],
+      zoom: Math.max(0, view.zoom + ZOOM_FOR_MAPLIBRE),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.lat, view.lng, view.zoom]);
 

@@ -158,6 +158,10 @@ export default function RideMap({
         )}
       </svg>
 
+      {/* Each marker is anchored by its top edge and its badge lifted by half
+          the badge's height, so the circle lands on the stop itself and the
+          name hangs below it. Centring the whole button instead would put the
+          point halfway between the badge and its label. */}
       {points.map((point, index) => (
         <button
           key={`${stops[index]?.lat},${stops[index]?.lng},${index}`}
@@ -169,14 +173,14 @@ export default function RideMap({
           }}
           aria-label={`Stop ${index + 1}: ${stops[index]?.name ?? "unnamed"}`}
           className={cn(
-            "absolute -translate-x-1/2 -translate-y-full",
+            "absolute block -translate-x-1/2",
             onSelect ? "cursor-pointer" : "cursor-default",
           )}
           style={{ left: point.x, top: point.y }}
         >
           <span
             className={cn(
-              "shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border text-[11px] font-bold shadow-lg transition-transform",
+              "-mt-3.5 shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border text-[11px] font-bold shadow-lg transition-transform",
               selected === index
                 ? "scale-110 border-white bg-white text-ink-950"
                 : "border-saffron-400/70 bg-ink-950/90 text-saffron-300",
