@@ -76,6 +76,20 @@ const DEFAULT_INSETS: Insets = { top: 34, right: 34, bottom: 54, left: 34 };
 
 type TabId = "places" | "stays" | "essentials";
 
+/** What each tab is called when the search is handed to Google instead. */
+const GOOGLE_TERMS: Record<TabId, string> = {
+  places: "places to visit",
+  stays: "hotels guest houses",
+  essentials: "petrol pump hospital motorcycle workshop",
+};
+
+/** The source each tab's list came from, in words a rider reads once. */
+const SOURCE_COPY: Record<string, string> = {
+  overpass: "OpenStreetMap",
+  nominatim: "OpenStreetMap (Nominatim)",
+  google: "Google Places",
+};
+
 /**
  * The tabs, in the order a rider stops: where to go, where to sleep, what the
  * bike needs. Each one owns the map while it is open — its own pins, its own
@@ -253,6 +267,18 @@ export default function NearbyPlacesPage() {
   const loading = tab === "places" ? placesQuery.loading : tab === "stays" ? stays.loading : essentials.loading;
   const error = tab === "places" ? placesQuery.error : tab === "stays" ? stays.error : essentials.error;
   const reloadActive = tab === "places" ? placesQuery.reload : tab === "stays" ? stays.reload : essentials.reload;
+  const loadingSource =
+    tab === "stays" ? stays.loadingSource : tab === "essentials" ? essentials.loadingSource : "Wikipedia";
+  /** Which service answered each tab, for the line under the list. */
+  const source: Record<TabId, string> = {
+    places: "wikipedia",
+    stays: stays.source,
+    essentials: essentials.source,
+  };
+  const googleSearchUrl = (which: TabId) =>
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${GOOGLE_TERMS[which]} near ${origin.name}`,
+    )}`;
 
   const tabRadius = tab === "places" ? radiusKm : tab === "stays" ? STAY_RADIUS_KM : ESSENTIALS_RADIUS_KM;
 
@@ -364,7 +390,7 @@ export default function NearbyPlacesPage() {
             Within {tabRadius} km of {origin.name}
           </p>
           <p className="font-display text-sm font-semibold text-white">
-            {loading ? "Searching…" : `${items.length} ${items.length === 1 ? "place" : "places"}`}
+            {loading ? `Searching ${loadingSource}…` : `${items.length} ${items.length === 1 ? "place" : "places"}`}
           </p>
         </div>
         <button
@@ -396,13 +422,25 @@ export default function NearbyPlacesPage() {
         {!loading && error && (
           <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.07] p-3 text-[11px] leading-relaxed text-amber-200">
             <p>{error}</p>
-            <button
-              type="button"
-              onClick={reloadActive}
-              className="mt-2.5 rounded-full border border-amber-300/40 px-3 py-1 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/10"
-            >
-              Try again
-            </button>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={reloadActive}
+                className="rounded-full border border-amber-300/40 px-3 py-1 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-300/10"
+              >
+                Try again
+              </button>
+              {/* The map data being busy is not the rider's problem: hand the
+                  same question to Google, which always answers. */}
+              <a
+                href={googleSearchUrl(tab)}
+                {...externalLinkProps(googleSearchUrl(tab))}
+                className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-ink-950 transition-colors hover:bg-white"
+              >
+                Search on Google Maps
+                <ArrowUpRight className="h-3 w-3" />
+              </a>
+            </div>
           </div>
         )}
 
@@ -410,6 +448,14 @@ export default function NearbyPlacesPage() {
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[11px] leading-relaxed text-zinc-400">
             <p className="font-display text-sm font-semibold text-white">{emptyCopy.title}</p>
             <p className="mt-1">{emptyCopy.body}</p>
+            <a
+              href={googleSearchUrl(tab)}
+              {...externalLinkProps(googleSearchUrl(tab))}
+              className="mt-2.5 inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/40 hover:text-white"
+            >
+              Search on Google Maps
+              <ArrowUpRight className="h-3 w-3" />
+            </a>
           </div>
         )}
 
@@ -497,7 +543,7 @@ export default function NearbyPlacesPage() {
       <p className="border-t border-white/[0.07] px-3.5 py-2 text-[9.5px] leading-relaxed text-zinc-500">
         {tab === "places"
           ? "Places & photos: Wikipedia · Wikimedia Commons (CC BY-SA)"
-          : "Beds, fuel, workshops & hospitals: © OpenStreetMap contributors (ODbL)"}
+          : `${SOURCE_COPY[source[tab]] ?? "Beds, fuel, workshops & hospitals"} · © OpenStreetMap contributors (ODbL)`}
       </p>
     </>
   );
