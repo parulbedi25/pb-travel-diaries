@@ -48,6 +48,27 @@ import { inputCls } from "./fieldStyles";
 
 const labelCls = "mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500";
 
+/**
+ * Expand one short link, asking twice only when asking twice can help.
+ *
+ * Following a share link means the server reaching Google, and a busy host or
+ * a stalled connection is worth one more try a moment later. A refusal is not:
+ * a link that is not a map, or one whose destination is unreadable, answers the
+ * same way however many times it is asked, and retrying it only makes the
+ * operator wait twice as long for the same sentence.
+ */
+async function resolveShortLink(link: string): Promise<string> {
+  try {
+    return await siteApi.resolveMapLink(link);
+  } catch (error) {
+    const status = (error as { status?: number }).status ?? 0;
+    // 0 is "the server could not be reached" from the client's own layer.
+    if (status !== 0 && status !== 502 && status !== 504) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 900));
+    return siteApi.resolveMapLink(link);
+  }
+}
+
 const STATUSES: LiveStop["status"][] = ["done", "live", "next"];
 
 const STATUS_COPY: Record<LiveStop["status"], string> = {
@@ -492,12 +513,7 @@ export default function RouteStopsEditor({
     const timer = window.setTimeout(() => {
       setResolving(true);
       setExpandError("");
-      // Two tries, a moment apart: expanding is a redirect followed by the
-      // server, and Google is not always quick to answer the first time. One
-      // failure used to leave the buttons greyed out with no way forward.
-      void siteApi
-        .resolveMapLink(cleanLink)
-        .catch(() => new Promise<string>((resolve) => window.setTimeout(resolve, 1200)).then(() => siteApi.resolveMapLink(cleanLink)))
+      void resolveShortLink(cleanLink)
         .then((url) => {
           if (cancelled) return;
           // An answer without an address is not an expansion; treating it as
@@ -513,9 +529,11 @@ export default function RouteStopsEditor({
         .catch((error: unknown) => {
           if (cancelled) return;
           setResolving(false);
+          // The server's own sentence already says what went wrong and what to
+          // do about it — appending a second instruction only repeats it.
           setExpandError(
             error instanceof Error
-              ? `${error.message} Open the short link in a browser and paste the full address instead.`
+              ? error.message
               : "That short link could not be expanded. Open it and copy the address bar instead.",
           );
         })
@@ -1107,6 +1125,22 @@ export default function RouteStopsEditor({
             )}
           >
             {linkStatus}
+            {/* When the expansion fails, the link itself is the way out: open
+                it, copy the address bar, paste it above — and the same parser
+                reads the route without asking the server at all. */}
+            {expandError && /^https?:\/\//i.test(cleanLink) && (
+              <>
+                {" "}
+                <a
+                  href={cleanLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold underline decoration-amber-300/40 underline-offset-2 hover:decoration-amber-300"
+                >
+                  Open it
+                </a>
+              </>
+            )}
           </p>
         </div>
 
