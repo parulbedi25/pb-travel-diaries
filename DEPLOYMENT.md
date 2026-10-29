@@ -521,7 +521,9 @@ sections are exported locked and empty — a file on a web server keeps no
 secrets.
 
 To change the site afterwards, edit it where the server runs (or locally) and
-export again.
+export again. For the step-by-step version of this — cPanel/Namecheap, Netlify,
+Cloudflare Pages, GitHub Pages, S3, plus the two ways an upload goes wrong
+quietly — see [STATIC-HOSTING.md](STATIC-HOSTING.md).
 
 ---
 

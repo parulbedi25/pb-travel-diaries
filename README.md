@@ -83,6 +83,10 @@ credentials, uploaded media or database backups.
 [DEPLOYMENT.md](DEPLOYMENT.md) covers environment variables, access controls,
 backups and restoring an installation.
 
+The site can also be exported as plain files and hosted with no Node at all —
+`npm run export:static`, then upload — for a read-only copy on shared hosting or
+any static host. Steps, per host: [STATIC-HOSTING.md](STATIC-HOSTING.md).
+
 ## Optimization notes
 
 The HTML bundle is already minified. The server negotiates gzip for the

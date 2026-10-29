@@ -1,0 +1,166 @@
+# Hosting this site as static files
+
+This is the "no Node.js anywhere" route. The site is exported into a folder of
+ordinary files, you upload that folder, and the domain serves the site. No
+database, no `npm install`, no Passenger, no Node version to pick, no process to
+keep alive.
+
+Use it when the site is finished and just needs to be online. If you still want
+to edit the site from a browser, or have pasted map links expand on the live
+site, you want the server instead — see [DEPLOYMENT.md](DEPLOYMENT.md) and
+[NAMECHEAP.md](NAMECHEAP.md).
+
+---
+
+## 1. What you get
+
+`npm run export:static` writes `release/static/`, which looks like this:
+
+```
+release/static/
+├── index.html                 the whole site: markup, styles, scripts inlined
+├── content.json               the published content, as a visitor sees it
+├── images/                    art that ships with the code
+├── media/                     shipped art, plus any photos you uploaded
+├── mobile-layout.css          small-screen overrides the page links to
+├── maplibre-gl-worker.mjs     the map's worker thread
+└── README.txt                 a note for whoever opens the folder later
+```
+
+About 16 MB in total. The page reads `content.json` when there is no API behind
+it, which is what makes the site work without a server.
+
+## 2. Make the export
+
+Run this on the machine that has your saved site — the one where the dashboard
+was used last — not on the web host:
+
+```bash
+# once, if the frontend toolchain is not installed on this machine:
+npm i --no-save --legacy-peer-deps react react-dom maplibre-gl lucide-react \
+  framer-motion clsx tailwind-merge typescript@5 vite @vitejs/plugin-react \
+  @tailwindcss/vite tailwindcss vite-plugin-singlefile @types/react \
+  @types/react-dom @types/node
+
+node scripts/build.mjs      # writes dist/index.html
+npm run export:static       # writes release/static/
+```
+
+A different folder:
+
+```bash
+npm run export:static -- --out ~/Desktop/pb-static
+```
+
+The export reads the database, so it stops with a message if no database is
+configured or if nothing has been published yet. That is deliberate: an export
+of an empty site looks like the real thing and would go unnoticed.
+
+## 3. Upload the **contents**, at the **root**
+
+Two rules, and both of them bite silently:
+
+1. **The contents, not the folder.** `index.html` must sit at the top level of
+   the site, not inside `static/`.
+2. **The site's root, not a subfolder.** The page asks for its art as
+   `/media/…` and `/images/…`, with a leading slash. In a subfolder the page
+   loads and every picture is missing.
+
+Upload at once and keep the folder structure: a ZIP extracted in place is the
+safest way, because 45 loose files through a file manager is 45 chances to drop
+one.
+
+## 4. By host
+
+### Namecheap / cPanel / any shared hosting
+
+1. cPanel → **File Manager** → the document root: `public_html`, or
+   `public_html/yourdomain.com` for an addon domain or subdomain.
+2. ZIP the **contents** of `release/static/`, upload, then **Extract**.
+3. Delete any `index.htm`, `index.html` or `default.html` the host created. If
+   one is left there, Apache serves that instead and the site looks untouched.
+4. Do **not** use **Setup Node.js App** for this. It is not needed and it will
+   fight the static files for the domain.
+
+### Netlify
+
+Drag `release/static` onto the Netlify dashboard, or set:
+
+| Setting | Value |
+| --- | --- |
+| Build command | *(empty)* |
+| Publish directory | `release/static` |
+
+### Cloudflare Pages
+
+Same shape: no build command, output directory `release/static`.
+
+### GitHub Pages
+
+Works, with one trap: a **project** site (`username.github.io/repo`) is served
+from a subfolder, and the absolute `/media/…` paths will not resolve. Use a
+**user site** (`username.github.io`) or attach a **custom domain**, so the site
+is served from the root. Add an empty `.nojekyll` file at the top level so Pages
+publishes the folder verbatim.
+
+### Amazon S3 / any object storage
+
+Serve it as a static website: index document `index.html`, and upload the folder
+with its structure. Give `content.json` the type `application/json` — the page
+tolerates anything, but other tools read it too.
+
+## 5. Check it worked
+
+Three URLs, in order:
+
+```
+https://yourdomain.com/                     the site, with its pictures
+https://yourdomain.com/content.json         JSON — your saved content
+https://yourdomain.com/maplibre-gl-worker.mjs   JavaScript
+```
+
+If `content.json` returns your page's HTML instead of JSON, it did not land in
+the root — and the site will fall back to its built-in content. If the site
+appears with no pictures, the folder was uploaded one level too deep.
+
+Then scroll the live site: the journey, the machine, the gear, and the map. The
+map is the one that needs `maplibre-gl-worker.mjs` beside the page.
+
+## 6. What a static export cannot do
+
+There is no server, so these are absent by design, not broken:
+
+- the dashboard and signing in — `#/dashboard` opens the home page instead
+- editing the site, and the publish/history/backup features
+- adding photos later (they are copied at export time)
+- pasting a Google or Bing short link to fill in stops
+- nearby places, and the live tracker's shared position
+
+Members-only sections are exported **locked and empty**, because the server
+strips them for visitors and a file on a web server keeps no secrets.
+
+## 7. Updating the site
+
+There is no in-place editing. The cycle is:
+
+```bash
+# on the machine with the database
+node scripts/build.mjs
+npm run export:static
+# then upload release/static/ again
+```
+
+Replace the uploaded files rather than merging them, or a photo you deleted
+locally will linger on the server. If the host caches aggressively and the site
+looks stale after an upload, clear the cache; the page asks for `content.json`
+with revalidation, so it should not need to be purged by hand on most hosts.
+
+## 8. If something looks wrong
+
+| What you see | What it is |
+| --- | --- |
+| Site loads, every picture broken | uploaded into a subfolder, or `images/` and `media/` were left behind |
+| The built-in content, not your edits | `content.json` missing, or served as HTML by a catch-all rule |
+| Blank page, no error | `index.html` uploaded alone; the map worker and stylesheet are separate files |
+| The host's own holding page | an old `index.htm`/`default.html` still in the document root |
+| Works on the host, stale in your browser | cache — hard-reload once, then confirm on another device |
