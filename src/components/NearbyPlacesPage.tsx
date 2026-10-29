@@ -18,8 +18,6 @@ import {
 import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import { useNearbyPlaces, type NearbyPlace } from "../hooks/useNearbyPlaces";
 import {
-  ESSENTIALS_RADIUS_KM,
-  STAY_RADIUS_KM,
   useNearbyAmenities,
   type Amenity,
 } from "../hooks/useNearbyAmenities";
@@ -248,8 +246,18 @@ export default function NearbyPlacesPage() {
     radiusKm,
     count,
   });
-  const stays = useNearbyAmenities({ lat: origin.lat, lng: origin.lng, group: "stays" });
-  const essentials = useNearbyAmenities({ lat: origin.lat, lng: origin.lng, group: "essentials" });
+  const stays = useNearbyAmenities({
+    lat: origin.lat,
+    lng: origin.lng,
+    place: origin.name,
+    group: "stays",
+  });
+  const essentials = useNearbyAmenities({
+    lat: origin.lat,
+    lng: origin.lng,
+    place: origin.name,
+    group: "essentials",
+  });
 
   const items = useMemo<PinItem[]>(() => {
     if (tab === "places") return placesToItems(placesQuery.places);
@@ -282,7 +290,22 @@ export default function NearbyPlacesPage() {
       `${GOOGLE_TERMS[which]} near ${origin.name}`,
     )}`;
 
-  const tabRadius = tab === "places" ? radiusKm : tab === "stays" ? STAY_RADIUS_KM : ESSENTIALS_RADIUS_KM;
+  /**
+   * What the list covers, in the rider's words.
+   *
+   * Not a radius: the whole town the stop is in, which is what was asked for.
+   * If the town's boundary could not be looked up the server says so, and the
+   * line falls back to naming the circle it used instead.
+   */
+  const activeArea = tab === "stays" ? stays.area : tab === "essentials" ? essentials.area : null;
+  const coverage =
+    tab === "places"
+      ? `Within ${radiusKm} km of ${origin.name}`
+      : activeArea?.city
+        ? `All of ${activeArea.label}`
+        : activeArea
+          ? `Around ${origin.name} · ${activeArea.spanKm} km across`
+          : `Around ${origin.name}`;
 
   // The pins are laid over the tiles, so the panel is measured rather than
   // assumed — and so is the list, because whatever the list covers is not map
@@ -376,12 +399,16 @@ export default function NearbyPlacesPage() {
         }
       : tab === "stays"
         ? {
-            title: `No beds tagged within ${STAY_RADIUS_KM} km`,
-            body: `Google and OpenStreetMap have no hotel, guest house or hostel this close to ${origin.name}. Try a bigger town from the list above, or open the search in Google Maps.`,
+            title: `No beds listed in ${activeArea?.city ? activeArea.label : origin.name}`,
+            body: `Google and OpenStreetMap have no hotel, guest house or hostel anywhere in ${
+              activeArea?.city ? activeArea.label : origin.name
+            }. Try the next town from the list above, or open the search in Google Maps.`,
           }
         : {
-            title: `Nothing tagged within ${ESSENTIALS_RADIUS_KM} km`,
-            body: `No fuel, workshop or hospital is listed this close to ${origin.name}. Try a bigger town from the list above, or open the search in Google Maps.`,
+            title: `Nothing listed in ${activeArea?.city ? activeArea.label : origin.name}`,
+            body: `No fuel, workshop or hospital is listed anywhere in ${
+              activeArea?.city ? activeArea.label : origin.name
+            }. Try the next town from the list above, or open the search in Google Maps.`,
           };
 
   const panelBody = (
@@ -389,7 +416,7 @@ export default function NearbyPlacesPage() {
       <div className="flex items-center justify-between gap-2 border-b border-white/[0.07] px-3.5 py-2.5">
         <div className="min-w-0">
           <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Within {tabRadius} km of {origin.name}
+            {coverage}
           </p>
           <p className="font-display text-sm font-semibold text-white">
             {loading ? `Searching ${loadingSource}…` : `${items.length} ${items.length === 1 ? "place" : "places"}`}

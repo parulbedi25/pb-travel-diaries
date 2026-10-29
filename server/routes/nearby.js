@@ -1,7 +1,11 @@
 /**
  * The nearby search, as the page asks for it.
  *
- *   GET /api/nearby?kind=stays&lat=34.1526&lng=77.5771
+ *   GET /api/nearby?kind=stays&lat=34.1526&lng=77.5771&place=Leh
+ *
+ * `place` is the stop the page is looking around. It is what makes the answer
+ * the whole town rather than a circle around a pin: the name is looked up once
+ * for its boundary, and every source is then asked over that area.
  *
  * Deliberately open: it is the same public map data anyone could ask Overpass
  * for themselves, and it reveals nothing about the site. Doing it here rather
@@ -32,8 +36,9 @@ nearbyRouter.get("/nearby", async (req, res, next) => {
     const lng = Number(req.query.lng);
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw problem("A latitude between -90 and 90 is needed.");
     if (!Number.isFinite(lng) || lng < -180 || lng > 180) throw problem("A longitude between -180 and 180 is needed.");
+    const place = String(req.query.place ?? "").trim().slice(0, 120);
 
-    const result = await searchNearbyCached({ kind, lat, lng });
+    const result = await searchNearbyCached({ kind, lat, lng, place });
 
     // `tried` is what the page shows when it found nothing: it is the
     // difference between "there is nothing here" and "nothing answered". The
@@ -44,7 +49,9 @@ nearbyRouter.get("/nearby", async (req, res, next) => {
     res.set("Cache-Control", "no-store");
     res.json({
       source: result.source,
-      radiusKm: result.radiusKm,
+      // The area the answer covers: the town's own box, or — when its boundary
+      // could not be looked up — the radius that stood in for it.
+      area: result.area ?? null,
       cached: Boolean(result.cached),
       items: result.items,
       ...(result.items.length ? {} : { tried: result.tried ?? [] }),

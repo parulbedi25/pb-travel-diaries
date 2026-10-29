@@ -28,10 +28,23 @@
  * cached for ten minutes so flipping between tabs costs nothing.
  */
 
-/** How far out each question is asked. A bed is worth a detour; petrol is not. */
+/**
+ * How wide each question is, when the city it is about cannot be named.
+ *
+ * The normal answer is the city's own area — every bed, pump and hospital
+ * inside the boundary of the town the rider picked, however big that town is.
+ * These figures are only the fallback for the rare time the boundary cannot be
+ * looked up: a shape of the right order, rather than the whole district.
+ */
 export const KIND_RADIUS_KM = { stays: 15, essentials: 25 };
 
 export const KINDS = Object.keys(KIND_RADIUS_KM);
+
+/** A city, not a district and not a state. Anything wider is rejected. */
+export const MAX_AREA_SPAN_KM = 90;
+
+/** The area lookup is one quick question before the real one. */
+export const AREA_TIMEOUT_MS = 2_500;
 
 /**
  * Overpass mirrors, tried in order.
@@ -75,22 +88,237 @@ const cache = new Map();
  * The question
  * ------------------------------------------------------------------ */
 
-/** The Overpass query for one question, as a radius around a point. */
-export function overpassQuery(kind, lat, lng, radiusKm) {
-  const around = `(around:${Math.round(radiusKm * 1000)},${lat.toFixed(4)},${lng.toFixed(4)})`;
+/**
+ * The Overpass query for one question, over an area.
+ *
+ * The area is a bounding box — the city's own box — not a circle around a
+ * point, because a rider asking about Jaisalmer means Jaisalmer, and a 15 km
+ * radius either cuts the town in half or misses the far end of it.
+ */
+export function overpassQuery(kind, bounds) {
+  const box = boundsClause(bounds);
   const head = "[out:json][timeout:20]";
   if (kind === "stays") {
-    return `${head};nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]${around};out center 80;`;
+    return `${head};nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]${box};out center 120;`;
   }
   return (
     `${head};(` +
-    `nwr["amenity"="fuel"]${around};` +
-    `nwr["amenity"~"^(hospital|clinic)$"]${around};` +
-    `nwr["shop"="motorcycle"]${around};` +
-    `nwr["service:vehicle:motorcycle"="yes"]${around};` +
-    `nwr["name"~"Royal Enfield",i]${around};` +
-    `);out center 140;`
+    `nwr["amenity"="fuel"]${box};` +
+    `nwr["amenity"~"^(hospital|clinic)$"]${box};` +
+    `nwr["shop"="motorcycle"]${box};` +
+    `nwr["service:vehicle:motorcycle"="yes"]${box};` +
+    `nwr["name"~"Royal Enfield",i]${box};` +
+    `);out center 200;`
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * The area a question is about
+ * ------------------------------------------------------------------ */
+
+/** A box: `{ south, north, west, east }`, in degrees. */
+export function boundsAround(lat, lng, radiusKm) {
+  const dLat = radiusKm / 111;
+  const dLng = radiusKm / Math.max(0.2, 111 * Math.cos((lat * Math.PI) / 180));
+  return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
+}
+
+/** How wide a box is, tip to tip, in kilometres. */
+export function spanKmOf(bounds) {
+  const midLat = (bounds.north + bounds.south) / 2;
+  const heightKm = (bounds.north - bounds.south) * 111;
+  const widthKm = (bounds.east - bounds.west) * 111 * Math.cos((midLat * Math.PI) / 180);
+  return Math.hypot(heightKm, widthKm);
+}
+
+/** Overpass's box syntax: `(south,west,north,east)`. */
+export function boundsClause(bounds) {
+  return `(${bounds.south.toFixed(4)},${bounds.west.toFixed(4)},${bounds.north.toFixed(4)},${bounds.east.toFixed(4)})`;
+}
+
+/** Nominatim's: `west,north,east,south`. */
+export function viewboxOfBounds(bounds) {
+  return [bounds.west, bounds.north, bounds.east, bounds.south].map((n) => n.toFixed(5)).join(",");
+}
+
+/** Is a place inside the box? A drop of slack covers a boundary road. */
+export function insideBounds(lat, lng, bounds, padKm = 0) {
+  const pad = padKm / 111;
+  return (
+    lat >= bounds.south - pad &&
+    lat <= bounds.north + pad &&
+    lng >= bounds.west - pad &&
+    lng <= bounds.east + pad
+  );
+}
+
+/** What kind of place a Nominatim answer is, read as one word. */
+function areaRankOf(hit) {
+  const kind = String(hit.addresstype ?? hit.type ?? "").toLowerCase();
+  if (["city", "town", "municipality", "village", "suburb", "borough", "administrative"].includes(kind)) {
+    return kind;
+  }
+  if (["city_district", "district", "county", "state_district"].includes(kind)) return "district";
+  if (["state", "region", "country"].includes(kind)) return "too-wide";
+  return "other";
+}
+
+/**
+ * The box a Nominatim answer describes, if it is usable.
+ *
+ * `boundingbox` arrives as `[south, north, west, east]` strings; a box that is
+ * wider than a city, or that does not contain the point being asked about, is
+ * not the area a rider meant.
+ */
+export function boundsFromNominatim(hit, origin) {
+  const box = Array.isArray(hit?.boundingbox) ? hit.boundingbox.map(Number) : null;
+  if (!box || box.length !== 4 || box.some((n) => !Number.isFinite(n))) return null;
+  const [south, north, west, east] = box;
+  if (north <= south || east <= west) return null;
+  const bounds = { south, north, west, east };
+  if (spanKmOf(bounds) > MAX_AREA_SPAN_KM) return null;
+  if (origin && !insideBounds(origin.lat, origin.lng, bounds, 2)) return null;
+  return bounds;
+}
+
+/** The name a rider would use for an area: "Leh", "Nangal". */
+function areaLabelOf(hit) {
+  const address = hit?.address ?? {};
+  const local = address.city ?? address.town ?? address.village ?? address.suburb ?? address.municipality;
+  const name = String(local ?? hit?.name ?? String(hit?.display_name ?? "").split(",")[0] ?? "").trim();
+  const state = String(address.state ?? "").trim();
+  if (!name) return "";
+  return state && state.toLowerCase() !== name.toLowerCase() ? `${name}, ${state}` : name;
+}
+
+/**
+ * The city a point is in, as a box.
+ *
+ * Asked of Nominatim by the name the page already has — the stop the rider
+ * picked — and then, when that name finds nothing usable, of Nominatim's
+ * reverse lookup, which names the town the coordinates are actually in. The
+ * smallest usable answer that contains the point wins, so "Nangal" is Nangal
+ * and not the whole of Punjab.
+ *
+ * A day-long cache, because a city does not move, and a shared promise per
+ * key, because the two tabs ask at the same moment.
+ */
+const areaCache = new Map();
+const AREA_TTL_MS = 24 * 60 * 60 * 1000;
+const AREA_CACHE_MAX = 300;
+const areaInFlight = new Map();
+
+export function clearAreaCache() {
+  areaCache.clear();
+  areaInFlight.clear();
+}
+
+async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
+  const ask = async (params) => {
+    const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return readJson(response, "Nominatim");
+  };
+
+  const origin = { lat, lng };
+  const usable = (hits) => {
+    const scored = (Array.isArray(hits) ? hits : [])
+      .map((hit) => ({ hit, bounds: boundsFromNominatim(hit, origin), rank: areaRankOf(hit) }))
+      .filter((entry) => entry.bounds);
+    // City and town before district, and the tightest box within a rank.
+    const order = ["city", "town", "municipality", "village", "suburb", "borough", "administrative", "district", "other"];
+    scored.sort((a, b) => order.indexOf(a.rank) - order.indexOf(b.rank) || spanKmOf(a.bounds) - spanKmOf(b.bounds));
+    return scored[0] ?? null;
+  };
+
+  const query = String(place ?? "").trim();
+  if (query) {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      q: query,
+      limit: "6",
+      addressdetails: "1",
+      countrycodes: "in",
+    });
+    const found = usable(await ask(params));
+    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || query };
+  }
+
+  // The name did not resolve: ask what town these coordinates are in, then
+  // look that name up, which is what gives a box rather than a point.
+  const reverse = new URLSearchParams({ format: "jsonv2", lat: String(lat), lon: String(lng), zoom: "10", addressdetails: "1" });
+  const here = await ask(reverse);
+  const town = String(
+    here?.address?.city ?? here?.address?.town ?? here?.address?.village ?? here?.address?.municipality ?? "",
+  ).trim();
+  if (town) {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      q: town,
+      limit: "6",
+      addressdetails: "1",
+      countrycodes: "in",
+    });
+    const found = usable(await ask(params));
+    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || town };
+  }
+  return null;
+}
+
+/**
+ * The area a question is about, with a guaranteed answer.
+ *
+ * `city: true` means the box is the town's own boundary; `city: false` means
+ * the lookup failed and the old radius is being used, which the page says in
+ * its own words rather than pretending otherwise.
+ */
+export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AREA_TIMEOUT_MS }) {
+  const radiusKm = KIND_RADIUS_KM[kind] ?? 15;
+  const fallback = {
+    bounds: boundsAround(lat, lng, radiusKm),
+    label: String(place ?? "").trim() || "this area",
+    city: false,
+    // The width of the circle, not its diagonal: that is what the page says.
+    spanKm: Math.round(radiusKm * 2),
+  };
+
+  // Without a name there is nothing to look a boundary up by, and a reverse
+  // lookup would cost a round trip to describe a circle anyway.
+  if (!String(place ?? "").trim()) return fallback;
+
+  const key = `${String(place ?? "").trim().toLowerCase()}|${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const hit = areaCache.get(key);
+  if (hit && Date.now() - hit.at < AREA_TTL_MS) return hit.value;
+
+  const running = areaInFlight.get(key);
+  if (running) return running;
+
+  const lookup = (async () => {
+    try {
+      const found = await nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs });
+      if (!found) return fallback;
+      return {
+        bounds: found.bounds,
+        label: found.label,
+        city: true,
+        spanKm: Math.round(spanKmOf(found.bounds)),
+      };
+    } catch {
+      return fallback;
+    }
+  })();
+
+  areaInFlight.set(key, lookup);
+  try {
+    const value = await lookup;
+    areaCache.set(key, { at: Date.now(), value });
+    if (areaCache.size > AREA_CACHE_MAX) areaCache.delete(areaCache.keys().next().value);
+    return value;
+  } finally {
+    areaInFlight.delete(key);
+  }
 }
 
 /**
@@ -111,9 +339,7 @@ export function nominatimTerms(kind) {
 
 /** The bounding box around a point, as Nominatim wants it: west,north,east,south. */
 export function viewboxOf(lat, lng, radiusKm) {
-  const dLat = radiusKm / 111;
-  const dLng = radiusKm / Math.max(0.2, 111 * Math.cos((lat * Math.PI) / 180));
-  return [lng - dLng, lat + dLat, lng + dLng, lat - dLat].map((n) => n.toFixed(5)).join(",");
+  return viewboxOfBounds(boundsAround(lat, lng, radiusKm));
 }
 
 /** What Photon is asked: one free-text term per category, biased to the point. */
@@ -534,8 +760,8 @@ async function readJson(response, what) {
   return response.json();
 }
 
-/** One Overpass mirror, one question. Throws so the caller can try the next. */
-async function askOverpass(url, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
+/** One Overpass mirror, one question over the area. Throws so the caller can try the next. */
+async function askOverpass(url, kind, bounds, origin, { fetchImpl, timeoutMs }) {
   const response = await fetchImpl(url, {
     method: "POST",
     headers: {
@@ -543,15 +769,15 @@ async function askOverpass(url, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs
       Accept: "application/json",
       "User-Agent": USER_AGENT,
     },
-    body: `data=${encodeURIComponent(overpassQuery(kind, lat, lng, radiusKm))}`,
+    body: `data=${encodeURIComponent(overpassQuery(kind, bounds))}`,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  return itemsFromOverpass(await readJson(response, "Overpass"), { lat, lng });
+  return itemsFromOverpass(await readJson(response, "Overpass"), origin);
 }
 
 /** Nominatim, one term — the last resort, so it gets one try, not three. */
-async function askNominatim(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
-  const viewbox = viewboxOf(lat, lng, radiusKm);
+async function askNominatim(kind, bounds, origin, { fetchImpl, timeoutMs }) {
+  const viewbox = viewboxOfBounds(bounds);
   const [term] = nominatimTerms(kind);
   const params = new URLSearchParams({
     format: "jsonv2",
@@ -566,7 +792,7 @@ async function askNominatim(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) 
     headers: { Accept: "application/json", "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  return itemsFromNominatim(await readJson(response, "Nominatim"), { lat, lng });
+  return itemsFromNominatim(await readJson(response, "Nominatim"), origin);
 }
 
 /**
@@ -576,7 +802,7 @@ async function askNominatim(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) 
  * as three calls added together. Photon is keyless and has no pacing rule, so
  * they go out together and the answers are merged.
  */
-async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
+async function askPhoton(kind, lat, lng, bounds, { fetchImpl, timeoutMs }) {
   const answers = await Promise.allSettled(
     photonTerms(kind).map(async (term) => {
       const params = new URLSearchParams({
@@ -593,7 +819,9 @@ async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
         signal: AbortSignal.timeout(timeoutMs),
       });
       const json = await readJson(response, "Photon");
-      return itemsFromPhoton(json.features, { lat, lng }).filter((item) => item.distanceKm <= radiusKm);
+      return itemsFromPhoton(json.features, { lat, lng }).filter((item) =>
+        insideBounds(item.lat, item.lng, bounds, 1),
+      );
     }),
   );
   const all = [];
@@ -609,12 +837,13 @@ async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
  *
  * The page is asked exactly as a browser asks it — `/maps/search/<words>/@lat,
  * lng,<zoom>z` — and the results are read out of the answer. The zoom is set
- * from the radius so Google's own list is about as wide as the tab claims to
- * be, and the radius is then applied here, because Google's idea of "near" is
- * generous.
+ * from the area so Google's own list is about as wide as the town, and the
+ * box is then applied here, because Google's idea of "near" is generous.
  */
-async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
-  const zoom = Math.max(10, Math.min(15, Math.round(15 - Math.log2(Math.max(1, radiusKm / 2)))));
+async function askGoogle(kind, lat, lng, bounds, { fetchImpl, timeoutMs }) {
+  // Google's zoom levels: 15 is a neighbourhood, 13 a town, 11 an hour's drive.
+  const span = spanKmOf(bounds);
+  const zoom = span <= 3 ? 15 : span <= 8 ? 14 : span <= 18 ? 13 : span <= 40 ? 12 : 11;
   const all = [];
   for (const term of googleTerms(kind)) {
     const url = `${GOOGLE_MAPS_URL}/${encodeURIComponent(term)}/@${lat.toFixed(5)},${lng.toFixed(5)},${zoom}z?hl=en`;
@@ -625,7 +854,9 @@ async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
     if (!response.ok) throw new Error(`Google answered ${response.status}`);
     const html = await response.text();
     all.push(
-      ...itemsFromGoogleMapsHtml(html, { lat, lng }).filter((item) => item.distanceKm <= radiusKm),
+      ...itemsFromGoogleMapsHtml(html, { lat, lng }).filter((item) =>
+        insideBounds(item.lat, item.lng, bounds, 1),
+      ),
     );
   }
   return all;
@@ -639,7 +870,7 @@ async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
  * run the same data on different servers, so whichever answers first is the
  * answer.
  */
-async function askAnyMirror(mirrors, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, onError }) {
+async function askAnyMirror(mirrors, kind, bounds, origin, { fetchImpl, timeoutMs, onError }) {
   return new Promise((resolve, reject) => {
     if (!mirrors.length) {
       reject(new Error("no mirror to ask"));
@@ -648,7 +879,7 @@ async function askAnyMirror(mirrors, kind, lat, lng, radiusKm, { fetchImpl, time
     let settled = false;
     let pending = mirrors.length;
     for (const mirror of mirrors) {
-      askOverpass(mirror, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }).then(
+      askOverpass(mirror, kind, bounds, origin, { fetchImpl, timeoutMs }).then(
         (items) => {
           if (settled) return;
           if (items.length) {
@@ -742,12 +973,16 @@ function withCap(promise, ms) {
 }
 
 /**
- * Search around a point, asking every source that can answer at the same time.
+ * Search a whole town, asking every source that can answer at the same time.
  *
- * Google, the Overpass mirrors and Photon are all keyless, all free, and all
- * faster than the rider is patient, so they are asked together and the first
- * one with something to say is the answer. Nominatim, which paces its callers
- * and is the slowest, is only asked if the first wave came back with nothing.
+ * The area is the town's own box — looked up once, cached for a day — so the
+ * question is "every bed in Leh", not "every bed within 15 km of a pin", which
+ * gave half a town on one side and the next one on the other.
+ *
+ * Google, the Overpass mirrors and Photon are all keyless, free, and faster
+ * than the rider is patient, so they are asked together and the first one with
+ * something to say is the answer. Nominatim, which paces its callers and is
+ * the slowest, is only asked if the first wave came back with nothing.
  *
  * Never throws for a busy service: the caller gets whatever the first
  * answering source found, and `source` says which one it was so the page can
@@ -758,14 +993,15 @@ export async function searchNearby({
   kind,
   lat,
   lng,
+  place,
   fetchImpl,
   mirrors = OVERPASS_MIRRORS,
   timeoutMs = SEARCH_TIMEOUT_MS,
   budgetMs = SEARCH_BUDGET_MS,
   fallbackBudgetMs = FALLBACK_BUDGET_MS,
+  areaTimeoutMs = AREA_TIMEOUT_MS,
 } = {}) {
-  const radiusKm = KIND_RADIUS_KM[kind];
-  if (!radiusKm) throw new Error(`Unknown nearby kind: ${kind}`);
+  if (!KIND_RADIUS_KM[kind]) throw new Error(`Unknown nearby kind: ${kind}`);
   const origin = { lat, lng };
   const run = fetchImpl ?? globalThis.fetch;
 
@@ -773,18 +1009,18 @@ export async function searchNearby({
   // once each, in words a rider reads. `notes` keeps the technical detail.
   const tried = [];
   const notes = [];
-  const mark = (label, note) => {
-    if (!tried.includes(label)) tried.push(label);
-    if (note) notes.push(note);
-  };
   const note = (source, error) => notes.push(`${source}: ${error?.message ?? error}`);
+
+  const area = await areaFor({ place, lat, lng, kind, fetchImpl: run, timeoutMs: areaTimeoutMs });
+  const bounds = area.bounds;
+  const areaOut = { label: area.label, spanKm: area.spanKm, city: area.city, bounds };
 
   const wave = [
     {
       label: "Google",
       run: async () => {
         try {
-          return await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+          return await askGoogle(kind, lat, lng, bounds, { fetchImpl: run, timeoutMs });
         } catch (error) {
           note("google", error);
           return [];
@@ -795,7 +1031,7 @@ export async function searchNearby({
       label: "OpenStreetMap",
       run: async () => {
         try {
-          return await askAnyMirror(mirrors, kind, lat, lng, radiusKm, {
+          return await askAnyMirror(mirrors, kind, bounds, origin, {
             fetchImpl: run,
             timeoutMs,
             onError: (mirror, error) => note(new URL(mirror).host, error?.message ?? error),
@@ -810,7 +1046,7 @@ export async function searchNearby({
       label: "Photon",
       run: async () => {
         try {
-          return await askPhoton(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+          return await askPhoton(kind, lat, lng, bounds, { fetchImpl: run, timeoutMs });
         } catch (error) {
           note("photon", error);
           return [];
@@ -819,6 +1055,10 @@ export async function searchNearby({
     },
   ];
   for (const task of wave) tried.push(task.label);
+
+  // Belt and braces: whatever a source returns is clipped to the town's box,
+  // because "in Leh" is the question, not "near this pin".
+  const inArea = (items) => items.filter((item) => insideBounds(item.lat, item.lng, bounds, 1));
 
   const winner = await firstAnswer(wave, budgetMs);
   if (winner) {
@@ -829,8 +1069,8 @@ export async function searchNearby({
           : winner.task.label === "OpenStreetMap"
             ? "overpass"
             : "photon",
-      radiusKm,
-      items: rankItems(winner.items, kind).slice(0, 40),
+      area: areaOut,
+      items: rankItems(inArea(winner.items), kind).slice(0, 60),
       tried,
       notes,
     };
@@ -839,23 +1079,29 @@ export async function searchNearby({
   tried.push("Nominatim");
   try {
     const items = await withCap(
-      askNominatim(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs: fallbackBudgetMs }),
+      askNominatim(kind, bounds, origin, { fetchImpl: run, timeoutMs: fallbackBudgetMs }),
       fallbackBudgetMs,
     );
     if (items.length) {
-      return { source: "nominatim", radiusKm, items: rankItems(items, kind).slice(0, 40), tried, notes };
+      return { source: "nominatim", area: areaOut, items: rankItems(inArea(items), kind).slice(0, 60), tried, notes };
     }
     notes.push("nominatim: nothing nearby");
   } catch (error) {
     note("nominatim", error);
   }
 
-  return { source: "none", radiusKm, items: [], tried, notes };
+  return { source: "none", area: areaOut, items: [], tried, notes };
 }
 
 /** The cached answer for a point, or a fresh one. */
 export async function searchNearbyCached(params) {
-  const key = `${params.kind}:${Number(params.lat).toFixed(3)},${Number(params.lng).toFixed(3)}`;
+  // The place is part of the key: two towns a few hundred metres apart still
+  // mean different areas, and one must not be answered with the other's list.
+  const key = `${params.kind}:${Number(params.lat).toFixed(3)},${Number(params.lng).toFixed(3)}:${String(
+    params.place ?? "",
+  )
+    .trim()
+    .toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { ...hit.value, cached: true };
 
