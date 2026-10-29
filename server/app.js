@@ -237,6 +237,16 @@ const SITE_CSP = [
       (error) => { if (error) next(error); });
   });
 
+  // MapLibre's worker, for pages whose policy forbids blob workers. Without a
+  // real file here the request would fall through to the app's HTML, and a
+  // worker made of HTML draws nothing at all — the map would be blank.
+  app.get("/maplibre-gl-worker.mjs", (req, res, next) => {
+    res.type("text/javascript");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.sendFile(path.join(config.root, "public/maplibre-gl-worker.mjs"),
+      (error) => { if (error) next(error); });
+  });
+
   // Unlisted recovery entry: normal authentication and role checks still apply.
   // Redirect to the hash router so maintenance/countdown never intercept it.
   app.get("/commandcenter", (_req, res) => {

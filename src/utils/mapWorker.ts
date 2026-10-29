@@ -25,20 +25,43 @@
 import { setWorkerUrl } from "maplibre-gl";
 import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs?raw";
 
+/** Where the build puts the copy of the worker, for hosts that block blobs. */
+const WORKER_FILE = "/maplibre-gl-worker.mjs";
+
 let installed = false;
+
+/**
+ * Whether this page may start a worker from a blob URL.
+ *
+ * Some hosting policies allow only same-origin workers. A blocked blob worker
+ * throws as it is created, which is what makes this answerable before anything
+ * depends on it.
+ */
+function blobWorkersAllowed(): boolean {
+  try {
+    const probe = new Worker(URL.createObjectURL(new Blob(["close()"], { type: "text/javascript" })));
+    probe.terminate();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Point MapLibre at a worker built from the copy it ships with. */
 export function installMapWorker(): void {
   if (installed) return;
   installed = true;
+  // The copy carries a reference to its own source map, which a blob cannot
+  // resolve — leaving it in is one guaranteed 404 in the console for nothing.
+  const source = workerSource.replace(/\n?\/\/# sourceMappingURL=\S*\s*$/, "");
   try {
-    // The copy carries a reference to its own source map, which a blob cannot
-    // resolve — leaving it in is one guaranteed 404 in the console for nothing.
-    const source = workerSource.replace(/\n?\/\/# sourceMappingURL=\S*\s*$/, "");
-    const blob = new Blob([source], { type: "text/javascript" });
-    setWorkerUrl(URL.createObjectURL(blob));
+    if (blobWorkersAllowed()) {
+      const blob = new Blob([source], { type: "text/javascript" });
+      setWorkerUrl(URL.createObjectURL(blob));
+      return;
+    }
   } catch {
-    // Leaving MapLibre's own default alone is better than pointing it at a URL
-    // that could not be made.
+    // Fall through to the file the build ships.
   }
+  setWorkerUrl(WORKER_FILE);
 }

@@ -1,16 +1,18 @@
 /**
- * Satellite imagery — a photograph of the ground instead of a drawing.
+ * A raster basemap — a picture of the ground instead of a drawing.
  *
  * Every one of the site's drawings comes from Geoapify as a vector style, and
- * the vector map switches its labels off. Imagery is the exception: it has no
- * layers to switch off, no names to hide and nothing to restyle, so it is drawn
- * here as plain tiles, without a map library, and it suits the Himalaya in a
- * way no street drawing does.
+ * the vector map switches its labels off. A raster has no layers to switch off,
+ * so only rasters with no names printed on them are allowed here: Esri's
+ * imagery, and Esri's light and dark canvases. A raster of a *drawn* map would
+ * carry its place names in the picture and break the promise the vector map
+ * keeps.
  *
- * The tiles are Esri's World Imagery: keyless, CORS-open and photographic, with
- * no name printed anywhere on it. That is also why this path is the only raster
- * one left — a raster tile of a *drawn* map carries its place names in the
- * picture, and showing one would break the promise the vector map keeps.
+ * That makes this component the map of last resort as well as a look in its own
+ * right: it needs no key, no WebGL and no worker, so it draws wherever the
+ * drawings cannot. The light or dark canvas sits under a drawing until the
+ * drawing has actually painted (see VectorBasemap), which is why a panel is
+ * never empty.
  *
  * Tiles are placed by hand rather than with a map library, so the arithmetic
  * lives in utils/tiles alongside the mercator projector that places the pins —
@@ -18,7 +20,7 @@
  */
 
 import { useMemo } from "react";
-import { imageryTileUrl, tilesForView, type TileView } from "../utils/tiles";
+import { baseTileUrl, tilesForView, type MapBase, type TileView } from "../utils/tiles";
 
 export type { TileView };
 
@@ -28,6 +30,7 @@ export default function TileBasemap({
   height,
   className,
   attributionClassName,
+  base = "imagery",
 }: {
   view: TileView;
   width: number;
@@ -35,6 +38,8 @@ export default function TileBasemap({
   className?: string;
   /** Where to put the credit. The licence wants one whenever tiles are on screen. */
   attributionClassName?: string;
+  /** Which raster to draw: imagery, or the light or dark canvas. */
+  base?: MapBase;
 }) {
   const tiles = useMemo(
     () => tilesForView(view, width, height),
@@ -44,11 +49,11 @@ export default function TileBasemap({
 
   return (
     <>
-      <div className={className} data-raster-theme="imagery" aria-hidden="true">
+      <div className={className} data-raster-theme={base} aria-hidden="true">
         {tiles.map((tile) => (
           <img
             key={`${tile.tx}/${tile.ty}`}
-            src={imageryTileUrl(tile.tileZoom, tile)}
+            src={baseTileUrl(base, tile.tileZoom, tile)}
             alt=""
             loading="eager"
             width={Math.round(tile.size)}
@@ -66,7 +71,7 @@ export default function TileBasemap({
         ))}
       </div>
       {attributionClassName && (
-        <MapAttribution className={attributionClassName} source="Esri" />
+        <MapAttribution className={attributionClassName} map={base === "imagery" ? "imagery" : "canvas"} />
       )}
     </>
   );
@@ -80,46 +85,47 @@ export default function TileBasemap({
  * palette — a light drawing and a dark drawing sit under the same overlay — so
  * the credit cannot use text that only works on one of them. It carries its own
  * background instead, and every caller supplies position and nothing else.
+ *
+ * Three things can be under it, and each owes a different credit: a Geoapify
+ * drawing is OpenStreetMap's data through OpenMapTiles, while the imagery and
+ * the canvases are Esri's.
  */
-const PROVIDER_LINKS: Record<string, string> = {
-  Geoapify: "https://www.geoapify.com/",
-};
+export type MapCredit = "drawing" | "imagery" | "canvas";
 
-const CREDITS: Record<string, { label: string; href: string; text: string }> = {
-  Esri: {
-    label: "Esri",
-    href: "https://www.esri.com/en-us/legal/terms/data-attributions",
-    text: "Maxar, Earthstar Geographics and the GIS community",
-  },
+const ESRI_HREF = "https://www.esri.com/en-us/legal/terms/data-attributions";
+
+const RASTER_CREDITS: Record<"imagery" | "canvas", { lead: string; text: string }> = {
+  imagery: { lead: "Imagery ©", text: "Maxar, Earthstar Geographics and the GIS community" },
+  canvas: { lead: "©", text: "HERE, Garmin, OpenStreetMap contributors, the GIS community" },
 };
 
 export function MapAttribution({
   className,
-  source,
+  map,
 }: {
   className?: string;
-  /** Who is drawing the map: "Geoapify" for a drawing, "Esri" for imagery. */
-  source?: string;
+  /** What is being drawn: a Geoapify drawing, Esri imagery, or an Esri canvas. */
+  map?: MapCredit;
 }) {
-  const imagery = source ? CREDITS[source] : undefined;
+  const raster = map === "imagery" || map === "canvas" ? RASTER_CREDITS[map] : undefined;
   const link = "underline decoration-dotted underline-offset-2 hover:no-underline";
 
   return (
     <p
       className={[
-        // The chip's colours live in index.css, one rule per theme, because a
-        // map can be a light drawing or a dark one under the same overlay.
+        // The chip's colours live in index.css, because a map can be a light
+        // drawing or a dark one under the same overlay.
         "live-map-attribution pointer-events-auto inline-block max-w-[calc(100%-1rem)]",
         className ?? "",
       ].join(" ")}
     >
-      {imagery ? (
+      {raster ? (
         <>
-          Imagery ©{" "}
-          <a href={imagery.href} target="_blank" rel="noreferrer" className={link}>
-            {imagery.label}
+          {raster.lead}{" "}
+          <a href={ESRI_HREF} target="_blank" rel="noreferrer" className={link}>
+            Esri
           </a>
-          , {imagery.text}
+          , {raster.text}
         </>
       ) : (
         <>
@@ -135,21 +141,11 @@ export function MapAttribution({
           contributors ·{" "}
           <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer" className={link}>
             OpenMapTiles
+          </a>{" "}
+          ·{" "}
+          <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer" className={link}>
+            Geoapify
           </a>
-          {source && (
-            <>
-              {" "}
-              ·{" "}
-              <a
-                href={PROVIDER_LINKS[source] ?? "https://www.openstreetmap.org/copyright"}
-                target="_blank"
-                rel="noreferrer"
-                className={link}
-              >
-                {source}
-              </a>
-            </>
-          )}
         </>
       )}
     </p>

@@ -8,5 +8,5 @@ database only stores which file is which. Restoring is the two together: the
 folder and a database dump.
 
 - Served at `/media/<file>`, with a one-year cache (filenames are never reused).
-- Safe to rebuild the site — `npm run build` writes `dist/`, never this folder.
+- Safe to rebuild the site — `node scripts/build.mjs` writes `dist/`, never this folder.
 - Not in git: see `.gitignore`.
