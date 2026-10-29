@@ -30,6 +30,7 @@ import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from "../utils/majorStops";
 import { lookupQueries, placeRegion, shortPlaceName } from "../utils/placeNames";
+import { expandShortLinkInBrowser } from "../utils/unshorten";
 import { cascadeHereNow, cascadeRidden } from "../utils/liveRoute";
 import { cn } from "../utils/cn";
 import { inputCls } from "./fieldStyles";
@@ -247,7 +248,9 @@ export default function RouteStopsEditor({
   const [undo, setUndo] = useState<{ stops: LiveStop[]; geometry: LatLng[]; distanceKm: number } | null>(
     null,
   );
-  const [expanded, setExpanded] = useState<{ link: string; url: string } | null>(null);
+  const [expanded, setExpanded] = useState<{ link: string; url: string; via?: string } | null>(
+    null,
+  );
   /**
    * What the server said when asked whether it can reach the maps at all.
    *
@@ -498,7 +501,9 @@ export default function RouteStopsEditor({
       ? "Short link — expanding it to read the route…"
       : expandError
         ? expandError
-        : parsedLink.message;
+        : expanded?.via
+          ? `${parsedLink.message} Read in this browser (${expanded.via}), because the server could not reach Google.`
+          : parsedLink.message;
 
   useEffect(() => {
     if (!trimmedLink) {
@@ -530,16 +535,25 @@ export default function RouteStopsEditor({
           if (cancelled) return;
           // An answer without an address is not an expansion; treating it as
           // one leaves the panel parsing "undefined" and the buttons dead.
-          if (!url || !/^https?:\/\//i.test(url)) {
-            setResolving(false);
-            setExpandError("That short link came back empty. Open it in a browser and paste the full address instead.");
-            return;
-          }
+          if (!url || !/^https?:\/\//i.test(url)) throw new Error("That short link came back empty.");
           setResolving(false);
           setExpanded({ link: cleanLink, url });
         })
-        .catch((error: unknown) => {
+        .catch(async (error: unknown) => {
           if (cancelled) return;
+          // The server could not do it — usually because this machine's Node
+          // has no road out while the browser beside it does. Ask the browser
+          // before giving up: the route is the point, not which half of the
+          // app fetched it.
+          const fromBrowser = await expandShortLinkInBrowser(cleanLink).catch(() => null);
+          if (cancelled) return;
+          if (fromBrowser) {
+            setServerCheck({ state: "idle" });
+            setResolving(false);
+            setExpandError("");
+            setExpanded({ link: cleanLink, url: fromBrowser.url, via: fromBrowser.via });
+            return;
+          }
           setResolving(false);
           // Ask the server why, once, so the panel can say whether this is a
           // bad link or a host with no road out.
