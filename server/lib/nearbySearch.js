@@ -529,8 +529,6 @@ export function rankItems(items, kind) {
  * Asking
  * ------------------------------------------------------------------ */
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 async function readJson(response, what) {
   if (!response.ok) throw new Error(`${what} answered ${response.status}`);
   return response.json();
@@ -551,51 +549,57 @@ async function askOverpass(url, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs
   return itemsFromOverpass(await readJson(response, "Overpass"), { lat, lng });
 }
 
-/** Nominatim, one term at a time, politely paced. */
+/** Nominatim, one term — the last resort, so it gets one try, not three. */
 async function askNominatim(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
   const viewbox = viewboxOf(lat, lng, radiusKm);
-  const wanted = nominatimTerms(kind);
-  const all = [];
-  for (const [index, term] of wanted.entries()) {
-    if (index > 0) await sleep(1100);
-    const params = new URLSearchParams({
-      format: "jsonv2",
-      q: term,
-      viewbox,
-      bounded: "1",
-      limit: "25",
-      addressdetails: "0",
-      extratags: "1",
-    });
-    const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
-      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    all.push(...itemsFromNominatim(await readJson(response, "Nominatim"), { lat, lng }));
-  }
-  return all;
+  const [term] = nominatimTerms(kind);
+  const params = new URLSearchParams({
+    format: "jsonv2",
+    q: term,
+    viewbox,
+    bounded: "1",
+    limit: "25",
+    addressdetails: "0",
+    extratags: "1",
+  });
+  const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
+    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  return itemsFromNominatim(await readJson(response, "Nominatim"), { lat, lng });
 }
 
-/** Photon, one term at a time, around the point. */
+/**
+ * Photon, every term at once.
+ *
+ * The terms were asked one after another, which made the whole source as slow
+ * as three calls added together. Photon is keyless and has no pacing rule, so
+ * they go out together and the answers are merged.
+ */
 async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
+  const answers = await Promise.allSettled(
+    photonTerms(kind).map(async (term) => {
+      const params = new URLSearchParams({
+        q: term,
+        lat: String(lat),
+        lon: String(lng),
+        limit: "25",
+        // A bias, not a box: Photon sorts by distance from the point, and the
+        // radius is applied here rather than left to the service.
+        lang: "en",
+      });
+      const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
+        headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const json = await readJson(response, "Photon");
+      return itemsFromPhoton(json.features, { lat, lng }).filter((item) => item.distanceKm <= radiusKm);
+    }),
+  );
   const all = [];
-  for (const term of photonTerms(kind)) {
-    const params = new URLSearchParams({
-      q: term,
-      lat: String(lat),
-      lon: String(lng),
-      limit: "25",
-      // A bias, not a box: Photon sorts by distance from the point, and the
-      // radius is applied here rather than left to the service.
-      lang: "en",
-    });
-    const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
-      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const json = await readJson(response, "Photon");
-    const found = itemsFromPhoton(json.features, { lat, lng }).filter((item) => item.distanceKm <= radiusKm);
-    all.push(...found);
+  for (const answer of answers) if (answer.status === "fulfilled") all.push(...answer.value);
+  if (answers.every((answer) => answer.status === "rejected")) {
+    throw answers[0].reason;
   }
   return all;
 }
@@ -628,17 +632,127 @@ async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
 }
 
 /**
- * Search around a point, trying every source that can answer.
+ * Every Overpass mirror at once, the first non-empty answer kept.
  *
- * The order is the answer to "which is most likely to work, and best": Google
- * first (the most complete list, and free to ask), then OpenStreetMap three
- * ways — Overpass, its mirrors, Photon, and Nominatim — and nothing at all as
- * the last resort.
+ * Asking them in turn meant three timeouts in a row when the network was
+ * having a bad day — a minute and a half before the rider saw anything. They
+ * run the same data on different servers, so whichever answers first is the
+ * answer.
+ */
+async function askAnyMirror(mirrors, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, onError }) {
+  return new Promise((resolve, reject) => {
+    if (!mirrors.length) {
+      reject(new Error("no mirror to ask"));
+      return;
+    }
+    let settled = false;
+    let pending = mirrors.length;
+    for (const mirror of mirrors) {
+      askOverpass(mirror, kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }).then(
+        (items) => {
+          if (settled) return;
+          if (items.length) {
+            settled = true;
+            resolve(items);
+            return;
+          }
+          if (--pending === 0) {
+            settled = true;
+            resolve([]);
+          }
+        },
+        (error) => {
+          onError?.(mirror, error);
+          if (settled) return;
+          if (--pending === 0) {
+            settled = true;
+            reject(new Error("every mirror was busy"));
+          }
+        },
+      );
+    }
+  });
+}
+
+/**
+ * How long the whole question is allowed to take.
+ *
+ * A rider opening this tab expects a list, not a spinner: the sources are
+ * asked together and the first good answer wins, so a reachable one arrives in
+ * a few hundred milliseconds. The limits below are what happens when the
+ * network is having a bad day — never four minutes, as three sequential
+ * mirrors and a paced geocoder once added up to.
+ */
+export const SEARCH_TIMEOUT_MS = 4_000;
+export const SEARCH_BUDGET_MS = 5_000;
+export const FALLBACK_BUDGET_MS = 2_500;
+
+/**
+ * The first non-empty answer, or null once every task has failed or gone
+ * quiet past the budget. Each task is `{ label, run }`, and `run` resolves to
+ * items — an empty list counts as "no answer", not as a result.
+ */
+function firstAnswer(tasks, budgetMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let pending = tasks.length;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    // The timer is a cap, not a delay: whatever is still in flight when it
+    // fires has already lost. It is cleared the moment somebody answers, so a
+    // normal search holds the process open for no longer than it takes.
+    const timer = setTimeout(() => finish(null), budgetMs);
+    if (!pending) {
+      finish(null);
+      return;
+    }
+    for (const task of tasks) {
+      task.run().then(
+        (items) => {
+          if (Array.isArray(items) && items.length) finish({ task, items });
+          else if (--pending === 0) finish(null);
+        },
+        () => {
+          if (--pending === 0) finish(null);
+        },
+      );
+    }
+  });
+}
+
+/** Nothing below is trusted to honour its own timeout, so the caller caps it. */
+function withCap(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve([]), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Search around a point, asking every source that can answer at the same time.
+ *
+ * Google, the Overpass mirrors and Photon are all keyless, all free, and all
+ * faster than the rider is patient, so they are asked together and the first
+ * one with something to say is the answer. Nominatim, which paces its callers
+ * and is the slowest, is only asked if the first wave came back with nothing.
  *
  * Never throws for a busy service: the caller gets whatever the first
  * answering source found, and `source` says which one it was so the page can
  * be honest about it. `tried` is there for the log and for the page's own
- * "what did you try" line.
+ * "what did you try" line; `notes` keeps the technical detail.
  */
 export async function searchNearby({
   kind,
@@ -646,58 +760,94 @@ export async function searchNearby({
   lng,
   fetchImpl,
   mirrors = OVERPASS_MIRRORS,
-  timeoutMs = 20_000,
+  timeoutMs = SEARCH_TIMEOUT_MS,
+  budgetMs = SEARCH_BUDGET_MS,
+  fallbackBudgetMs = FALLBACK_BUDGET_MS,
 } = {}) {
   const radiusKm = KIND_RADIUS_KM[kind];
   if (!radiusKm) throw new Error(`Unknown nearby kind: ${kind}`);
   const origin = { lat, lng };
   const run = fetchImpl ?? globalThis.fetch;
+
   // `tried` is what the page shows: the sources that were asked, in order,
-  // once each, in words a rider reads. `notes` keeps the technical detail —
-  // which mirror, which status — for the server log and for tests.
+  // once each, in words a rider reads. `notes` keeps the technical detail.
   const tried = [];
   const notes = [];
   const mark = (label, note) => {
     if (!tried.includes(label)) tried.push(label);
     if (note) notes.push(note);
   };
-  // Google first, and without a key: the page is asked as a browser asks it.
-  try {
-    const items = await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
-    if (items.length) return { source: "google", radiusKm, items: rankItems(items, kind), tried, notes };
-    mark("Google", "google: nothing nearby");
-  } catch (error) {
-    mark("Google", `google: ${error.message}`);
+  const note = (source, error) => notes.push(`${source}: ${error?.message ?? error}`);
+
+  const wave = [
+    {
+      label: "Google",
+      run: async () => {
+        try {
+          return await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+        } catch (error) {
+          note("google", error);
+          return [];
+        }
+      },
+    },
+    {
+      label: "OpenStreetMap",
+      run: async () => {
+        try {
+          return await askAnyMirror(mirrors, kind, lat, lng, radiusKm, {
+            fetchImpl: run,
+            timeoutMs,
+            onError: (mirror, error) => note(new URL(mirror).host, error?.message ?? error),
+          });
+        } catch (error) {
+          note("overpass", error);
+          return [];
+        }
+      },
+    },
+    {
+      label: "Photon",
+      run: async () => {
+        try {
+          return await askPhoton(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+        } catch (error) {
+          note("photon", error);
+          return [];
+        }
+      },
+    },
+  ];
+  for (const task of wave) tried.push(task.label);
+
+  const winner = await firstAnswer(wave, budgetMs);
+  if (winner) {
+    return {
+      source:
+        winner.task.label === "Google"
+          ? "google"
+          : winner.task.label === "OpenStreetMap"
+            ? "overpass"
+            : "photon",
+      radiusKm,
+      items: rankItems(winner.items, kind).slice(0, 40),
+      tried,
+      notes,
+    };
   }
 
-  for (const mirror of mirrors) {
-    try {
-      const items = await askOverpass(mirror, kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
-      // An empty answer from a working server is a real answer: nothing is
-      // tagged there, and asking more servers for the same nothing only wastes
-      // a minute of the rider's time. It is only believed while the other
-      // sources have not already been found wanting.
-      if (items.length) return { source: "overpass", radiusKm, items: rankItems(items, kind), tried, notes };
-      mark("OpenStreetMap", `${new URL(mirror).host}: nothing nearby`);
-    } catch (error) {
-      mark("OpenStreetMap", `${new URL(mirror).host}: ${error.message}`);
+  tried.push("Nominatim");
+  try {
+    const items = await withCap(
+      askNominatim(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs: fallbackBudgetMs }),
+      fallbackBudgetMs,
+    );
+    if (items.length) {
+      return { source: "nominatim", radiusKm, items: rankItems(items, kind).slice(0, 40), tried, notes };
     }
-  }
-
-  try {
-    const items = await askPhoton(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
-    if (items.length) return { source: "photon", radiusKm, items: rankItems(items, kind), tried, notes };
-    mark("Photon", "photon: nothing nearby");
+    notes.push("nominatim: nothing nearby");
   } catch (error) {
-    mark("Photon", `photon: ${error.message}`);
-  }
-
-  try {
-    const items = await askNominatim(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
-    if (items.length) return { source: "nominatim", radiusKm, items: rankItems(items, kind), tried, notes };
-    mark("Nominatim", "nominatim: nothing nearby");
-  } catch (error) {
-    mark("Nominatim", `nominatim: ${error.message}`);
+    note("nominatim", error);
   }
 
   return { source: "none", radiusKm, items: [], tried, notes };

@@ -224,10 +224,10 @@ test("a page with no data, or no page at all, is an empty answer and not a crash
   assert.equal(itemsFromGoogleMapsHtml(twice, leh).length, 2);
 });
 
-test("Google is asked first, without a key, and no mirror is troubled", async () => {
+test("Google is asked without a key, and its answer is the one that is used", async () => {
   const fetchImpl = fakeFetch((url) => {
-    if (!isGoogle(url)) throw new Error("no other source should be asked");
-    return okHtml(googlePage(googleState));
+    if (isGoogle(url)) return okHtml(googlePage(googleState));
+    throw new Error("the other sources are slower, or busy");
   });
 
   const result = await searchNearby({ kind: "stays", ...leh, fetchImpl });
@@ -237,15 +237,18 @@ test("Google is asked first, without a key, and no mirror is troubled", async ()
     ["Leh Backpacker Hostel", "The Grand Dragon Ladakh"],
     "nearest first: the hostel is closer than the hotel",
   );
-  assert.equal(fetchImpl.calls.length, googleTerms("stays").length, "one search page per kind of bed");
+  const googleCalls = fetchImpl.calls.filter((call) => isGoogle(call.url));
+  assert.equal(googleCalls.length, googleTerms("stays").length, "one search page per kind of bed");
   assert.ok(fetchImpl.calls.every((call) => !call.url.includes("key=")), "no API key anywhere in the question");
+  assert.equal(fetchImpl.calls.length > googleCalls.length, true, "the map sources were asked at the same time, not after");
   const first = fetchImpl.calls[0].url;
   assert.match(first, /google\.com\/maps\/search\/hotels\/@34\.15260,77\.57710,\d+z/);
 });
 
-test("a busy mirror is skipped, and the next one answers", async () => {
+test("a busy mirror does not hold the answer up: the others are asked at the same time", async () => {
   const fetchImpl = fakeFetch((url) => {
     if (isGoogle(url)) return okHtml("<html></html>");
+    if (url.includes("photon")) throw new Error("blocked");
     return url === OVERPASS_MIRRORS[0] ? bad(504) : ok(overpassBody);
   });
   const result = await searchNearby({ kind: "stays", ...leh, fetchImpl });
@@ -257,8 +260,23 @@ test("a busy mirror is skipped, and the next one answers", async () => {
   assert.ok(result.notes.some((line) => /504/.test(line)), "the mirror's 504 is on the record");
 
   const mirrorCalls = fetchImpl.calls.filter((call) => call.url.includes("overpass"));
-  assert.equal(mirrorCalls.length, 2, "the first mirror was tried, then the second");
+  assert.equal(mirrorCalls.length, OVERPASS_MIRRORS.length, "every mirror is asked at once, not one after another");
   assert.equal(mirrorCalls[0].headers["User-Agent"].includes("pb-travel-diaries"), true, "Overpass is told who is asking");
+});
+
+test("a slow, silent source cannot hold the page: the budget ends the wait", async () => {
+  // Google and the mirrors never answer at all — a hung connection, not a
+  // refusal. The budget is what turns that into an empty answer in a second,
+  // instead of a spinner for minutes.
+  const hang = () => new Promise(() => {});
+  const fetchImpl = fakeFetch((url) => (url.includes("photon") ? ok({ features: [] }) : hang()));
+  const started = Date.now();
+  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl, budgetMs: 250, timeoutMs: 200, fallbackBudgetMs: 150 });
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.source, "none");
+  assert.ok(elapsed < 2000, `the whole question took ${elapsed}ms, not minutes`);
+  assert.deepEqual(result.tried, ["Google", "OpenStreetMap", "Photon", "Nominatim"]);
 });
 
 test("with every mirror down, the geocoder answers instead", async () => {
