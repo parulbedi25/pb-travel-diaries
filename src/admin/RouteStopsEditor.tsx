@@ -298,7 +298,14 @@ export default function RouteStopsEditor({
     return () => document.removeEventListener("pointerdown", disarm);
   }, [replaceArmed]);
 
-  /** Add to the list of changes, flipping a name that comes back. */
+  /**
+   * Add to the list of changes, flipping a name that comes back.
+   *
+   * Nothing is dropped for being old. This used to keep only the last sixteen
+   * names, which quietly cut the front off a replace that retired a long route
+   * — the red line named some of what had gone and said nothing about the rest,
+   * so a stop that had been thrown away looked like one that was still there.
+   */
   const recordChanges = useCallback((entries: { name: string; kind: "added" | "removed" }[]) => {
     setChanges((current) => {
       const next = [...current];
@@ -309,8 +316,7 @@ export default function RouteStopsEditor({
         if (seen >= 0) next.splice(seen, 1);
         next.push({ name, kind: entry.kind });
       }
-      // Long enough for a filled-in route, short enough to stay a glance.
-      return next.slice(-16);
+      return next;
     });
   }, []);
 
@@ -1196,11 +1202,23 @@ export default function RouteStopsEditor({
           <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Route changes
+              <span className="ml-2 normal-case tracking-normal text-zinc-400">
+                {[
+                  changes.filter((change) => change.kind === "removed").length
+                    ? `${changes.filter((change) => change.kind === "removed").length} removed`
+                    : "",
+                  changes.filter((change) => change.kind === "added").length
+                    ? `${changes.filter((change) => change.kind === "added").length} added`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
             </p>
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {changes.map((change) => (
+              {changes.map((change, changeIndex) => (
                 <li
-                  key={`${change.kind}-${change.name}`}
+                  key={`${change.kind}-${change.name}-${changeIndex}`}
                   className={
                     change.kind === "removed"
                       ? "rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-300 line-through"
