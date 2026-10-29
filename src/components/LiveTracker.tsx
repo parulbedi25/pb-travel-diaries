@@ -154,6 +154,20 @@ export default function LiveTracker({ data }: { data: LiveData }) {
    */
   const [selectedStop, setSelectedStop] = useState<number | null>(null);
 
+  /**
+   * The forecast list scrolls rather than growing.
+   *
+   * A route of seven checkpoints is seven rows, and seven rows pushed the card
+   * long past the map it sits beside — the two columns stopped looking like one
+   * panel. The list now keeps four rows in view and scrolls for the rest, and
+   * jumps back to the top whenever a pin is tapped, so the row that was just
+   * lifted there is the one you see.
+   */
+  const weatherListRef = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    weatherListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [selectedStop]);
+
   // The plate across the top of the map is drawn here, so how far down it
   // reaches is measured here and handed to the map. The route then starts just
   // under it instead of a guessed distance below it.
@@ -503,73 +517,88 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                         {stops.length} {stops.length === 1 ? "stop" : "stops"}
                       </p>
                     </div>
-                    <ul className="mt-2 overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
-                      {weatherOrder.map(({ stop, index }) => {
-                        const now = conditions[index];
-                        const detail = details?.[index];
-                        const today = detail?.days?.[0];
-                        const high = today?.maxC ?? null;
-                        const low = today?.minC ?? null;
-                        const selected = selectedStop === index;
-                        return (
-                          <li key={`${stop.name}-${index}`} className="border-b border-white/[0.05] last:border-0">
-                            <button
-                              type="button"
-                              data-weather-temp=""
-                              data-temp-peek=""
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openPeek(event.currentTarget, index);
-                              }}
-                              aria-expanded={peek?.index === index}
-                              aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
-                              className={cn(
-                                "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-200",
-                                selected ? "bg-saffron-400/[0.07]" : "hover:bg-white/[0.04]",
-                              )}
-                            >
-                              <WeatherIcon
-                                kind={now?.kind ?? "clear"}
-                                className={cn("h-5 w-5 shrink-0", selected ? "" : "opacity-90")}
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="truncate text-[13px] font-semibold text-white">
-                                    {stop.name}
+                    <div className="relative mt-2">
+                      <ul
+                        ref={weatherListRef}
+                        className="max-h-[15.5rem] overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.06] bg-white/[0.02]"
+                      >
+                        {weatherOrder.map(({ stop, index }) => {
+                          const now = conditions[index];
+                          const detail = details?.[index];
+                          const today = detail?.days?.[0];
+                          const high = today?.maxC ?? null;
+                          const low = today?.minC ?? null;
+                          const selected = selectedStop === index;
+                          return (
+                            <li key={`${stop.name}-${index}`} className="border-b border-white/[0.05] last:border-0">
+                              <button
+                                type="button"
+                                data-weather-temp=""
+                                data-temp-peek=""
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openPeek(event.currentTarget, index);
+                                }}
+                                aria-expanded={peek?.index === index}
+                                aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
+                                className={cn(
+                                  "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-200",
+                                  selected ? "bg-saffron-400/[0.07]" : "hover:bg-white/[0.04]",
+                                )}
+                              >
+                                <WeatherIcon
+                                  kind={now?.kind ?? "clear"}
+                                  className={cn("h-5 w-5 shrink-0", selected ? "" : "opacity-90")}
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="truncate text-[13px] font-semibold text-white">
+                                      {stop.name}
+                                    </span>
+                                    {selected && (
+                                      <span className="shrink-0 rounded-full bg-saffron-400/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-saffron-200">
+                                        On the map
+                                      </span>
+                                    )}
                                   </span>
-                                  {selected && (
-                                    <span className="shrink-0 rounded-full bg-saffron-400/20 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] text-saffron-200">
-                                      On the map
-                                    </span>
-                                  )}
+                                  <span className="mt-0.5 flex items-baseline gap-2 text-[11px] text-zinc-400">
+                                    <span className="truncate">{now?.label ?? "No reading"}</span>
+                                    {(high !== null || low !== null) && (
+                                      <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                                        H {high === null ? "—" : `${Math.round(high)}°`} · L{" "}
+                                        {low === null ? "—" : `${Math.round(low)}°`}
+                                      </span>
+                                    )}
+                                  </span>
                                 </span>
-                                <span className="mt-0.5 flex items-baseline gap-2 text-[11px] text-zinc-400">
-                                  <span className="truncate">{now?.label ?? "No reading"}</span>
-                                  {(high !== null || low !== null) && (
-                                    <span className="shrink-0 font-mono text-[10px] text-zinc-500">
-                                      H {high === null ? "—" : `${Math.round(high)}°`} · L{" "}
-                                      {low === null ? "—" : `${Math.round(low)}°`}
-                                    </span>
-                                  )}
+                                <span className="shrink-0 text-right">
+                                  <span className="block font-display text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
+                                    {now?.tempC === null || now?.tempC === undefined
+                                      ? "—"
+                                      : `${Math.round(now.tempC)}°`}
+                                  </span>
+                                  <span className="mt-1 block font-mono text-[10px] leading-none text-zinc-600">
+                                    {formatKm(totals[index] ?? 0)}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="shrink-0 text-right">
-                                <span className="block font-display text-2xl font-semibold leading-none tracking-tight text-white tabular-nums">
-                                  {now?.tempC === null || now?.tempC === undefined
-                                    ? "—"
-                                    : `${Math.round(now.tempC)}°`}
-                                </span>
-                                <span className="mt-1 block font-mono text-[10px] leading-none text-zinc-600">
-                                  {formatKm(totals[index] ?? 0)}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {/* Only when the list is longer than the box: a soft edge
+                          so the cut row looks scrollable rather than clipped. */}
+                      {weatherOrder.length > 4 && (
+                        <div
+                          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-2xl bg-gradient-to-t from-ink-950/85 to-transparent"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </div>
                     <p className="mt-2 px-1 text-[10px] leading-relaxed text-zinc-600">
-                      Tap a checkpoint on the map to lift its weather to the top.
+                      {weatherOrder.length > 4
+                        ? `Showing four of ${weatherOrder.length} — scroll for the rest, or tap a checkpoint on the map to bring it to the top.`
+                        : "Tap a checkpoint on the map to lift its weather to the top."}
                     </p>
                   </div>
                 )}
