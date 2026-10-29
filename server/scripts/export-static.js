@@ -135,7 +135,19 @@ function copyInto(from, to, { skip = new Set(), label } = {}) {
 
 async function main() {
   if (!config.hasDatabase) {
-    console.error("[export] no database configured yet — open the setup screen first.");
+    // Not an error about the export; an error about where the content is. Two
+    // things can be done about that, and the message says both, because "open
+    // the setup screen" alone leaves out the case of a database that already
+    // holds the site and merely is not the one this machine uses day to day.
+    const flags = "--db-host HOST --db-user USER --db-name NAME";
+    console.error("[export] no database is configured on this machine yet, so there is nothing to read.");
+    console.error("");
+    console.error("[export] If the content is in a MySQL database this machine can reach:");
+    console.error(`[export]   DB_PASSWORD='…' npm run export:static -- ${flags}`);
+    console.error("[export]   (add --db-port, --db-socket or --db-driver if they differ)");
+    console.error("");
+    console.error("[export] If the site has never been set up on this machine:");
+    console.error("[export]   PORT=4000 node app.cjs   → finish the setup screen → Save → export again");
     process.exit(1);
   }
   const page = path.join(config.distDir, "index.html");
@@ -153,11 +165,32 @@ async function main() {
     // wrong, and "it did not work" would send somebody to the wrong place.
     await repo.ping();
   } catch (error) {
+    const code = error?.code || "";
     console.error(`[export] could not reach ${sourceLabel()}: ${error.message}`);
-    console.error(
-      "[export] check the host, the user, the password and that the database allows " +
-        "connections from this machine. On shared hosting that is Remote MySQL in cPanel.",
-    );
+    if (code === "ER_ACCESS_DENIED_ERROR") {
+      // A server answered and refused the user. On a laptop that is almost
+      // always credentials copied from a hosting panel: that user exists on the
+      // host's MySQL, not on this machine's own.
+      console.error(
+        `[export] the MySQL on ${config.db.host} is running, and it does not know the user ` +
+          `"${config.db.user}".`,
+      );
+      console.error(
+        "[export] a database user created in cPanel exists on that hosting server, not on this " +
+          "Mac — reach it by enabling Remote MySQL in cPanel and passing the server's hostname, " +
+          "or run this command where the database actually lives.",
+      );
+    } else if (code === "ECONNREFUSED") {
+      console.error(
+        `[export] nothing is listening on ${config.db.host}:${config.db.port}. Start MySQL on this ` +
+          "machine, or point --db-host at the server that has it.",
+      );
+    } else {
+      console.error(
+        "[export] check the host, the user, the password and that the database allows " +
+          "connections from this machine. On shared hosting that is Remote MySQL in cPanel.",
+      );
+    }
     await closeRepo();
     process.exit(1);
   }

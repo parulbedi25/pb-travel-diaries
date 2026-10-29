@@ -245,3 +245,6 @@ with revalidation, so it should not need to be purged by hand on most hosts.
 | Blank page, no error | `index.html` uploaded alone; the map worker and stylesheet are separate files |
 | The host's own holding page | an old `index.htm`/`default.html` still in the document root |
 | Works on the host, stale in your browser | cache — hard-reload once, then confirm on another device |
+| `no database is configured on this machine yet` | nothing to read here: pass `--db-host/--db-user/--db-name`, or set the site up on this machine first |
+| `the MySQL on localhost is running, and it does not know the user` | those credentials were made in a hosting panel and exist on that server, not on your Mac — enable Remote MySQL in cPanel and pass the server's hostname, or run the command where the database lives |
+| `nothing is listening on …:3306` | no MySQL on this machine; point `--db-host` at the machine that has one |
