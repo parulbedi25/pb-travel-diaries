@@ -37,6 +37,7 @@ const {
   itemFromTags,
   itemsFromOverpass,
   itemsFromNominatim,
+  tagsFromNominatim,
   googleTerms,
   googleStateFrom,
   itemsFromGoogleState,
@@ -67,11 +68,31 @@ const overpassBody = {
   ],
 };
 
-/** A fetch that answers by URL, and records what it was asked for. */
-function fakeFetch(handler) {
+/** The boundary Nominatim would answer with for "Leh": a town, about 30 km. */
+const LEH_AREA_HIT = {
+  name: "Leh",
+  addresstype: "town",
+  boundingbox: ["34.00", "34.30", "77.40", "77.70"],
+  display_name: "Leh, Ladakh, India",
+  address: { town: "Leh", state: "Ladakh" },
+};
+
+/** The area lookup is a settlement search; every search needs one to answer. */
+const isAreaQuery = (url) =>
+  url.includes("nominatim.openstreetmap.org/search") && url.includes("featuretype=settlement");
+
+/**
+ * A fetch that answers by URL, and records what it was asked for.
+ *
+ * The town-boundary lookup is answered here rather than in each test: without
+ * a boundary the search deliberately answers nothing, and that is the one
+ * thing every other test does not want to think about.
+ */
+function fakeFetch(handler, { area = LEH_AREA_HIT } = {}) {
   const calls = [];
   const impl = async (url, options) => {
     calls.push({ url: String(url), body: String(options?.body ?? ""), headers: options?.headers ?? {} });
+    if (area && isAreaQuery(String(url))) return ok(area ? [area] : []);
     const answer = handler(String(url), options);
     if (answer instanceof Error) throw answer;
     return answer;
@@ -165,9 +186,9 @@ test("a town's own boundary is looked up once, and covers the whole town", async
       // Nearer the point, but a village inside the town: the town wins.
       { name: "Nangal Wetland", addresstype: "village", boundingbox: ["31.37", "31.39", "76.37", "76.39"], address: { village: "Nangal" } },
     ]);
-  });
+  }, { area: null });
 
-  const area = await areaFor({ place: "Nangal, Punjab", ...nangal, kind: "stays", fetchImpl });
+  const area = await areaFor({ place: "Nangal, Punjab", ...nangal, fetchImpl });
   assert.equal(area.city, true, "a real boundary was found");
   assert.equal(area.label, "Nangal, Punjab");
   assert.deepEqual(area.bounds, { south: 31.34, north: 31.43, west: 76.33, east: 76.42 });
@@ -175,33 +196,123 @@ test("a town's own boundary is looked up once, and covers the whole town", async
 
   // The second ask is free: a town does not move.
   const asksSoFar = fetchImpl.calls.length;
-  const again = await areaFor({ place: "Nangal, Punjab", ...nangal, kind: "stays", fetchImpl });
+  const again = await areaFor({ place: "Nangal, Punjab", ...nangal, fetchImpl });
   assert.deepEqual(again.bounds, area.bounds);
   assert.equal(fetchImpl.calls.length, asksSoFar, "the boundary was remembered");
   clearAreaCache();
 });
 
-test("a boundary that cannot be found falls back to a circle, and says so", async () => {
+test("no boundary means no list, rather than somebody else's town", async () => {
   clearAreaCache();
-  const fetchImpl = fakeFetch(() => {
+  const offline = fakeFetch(() => {
     throw new Error("offline");
-  });
-  const area = await areaFor({ place: "Somewhere", lat: 31.38, lng: 76.38, kind: "essentials", fetchImpl });
-  assert.equal(area.city, false, "the page is told this is not the town's boundary");
-  assert.equal(area.label, "Somewhere");
-  assert.ok(area.spanKm > 0);
+  }, { area: null });
 
-  // A box that does not contain the point is not the point's town.
+  const result = await searchNearby({ kind: "stays", lat: 31.38, lng: 76.38, place: "Somewhere", fetchImpl: offline });
+  assert.equal(result.reason, "no-area", "the answer says why it is empty");
+  assert.deepEqual(result.items, [], "nothing is listed rather than the wrong town's places");
+  assert.equal(result.area.city, false);
+  assert.deepEqual(result.tried, [], "no source was troubled: there is no area to ask about");
+
+  // No name at all is the same answer: guessing an area from the pin is what
+  // used to put one town's places in another town's tab.
+  const nameless = await searchNearby({ kind: "stays", lat: 31.38, lng: 76.38, fetchImpl: offline });
+  assert.equal(nameless.reason, "no-area");
+
+  // The box a boundary is checked against: a settlement is usable…
+  assert.ok(
+    boundsFromNominatim(
+      { name: "Anandpur Sahib", addresstype: "town", boundingbox: ["31.20", "31.28", "76.48", "76.56"] },
+      { lat: 31.24, lng: 76.5 },
+    ),
+  );
+  // …a district that holds two towns is not, however snugly it contains the
+  // point: that is the shape that put Nangal's hotels in Anandpur's tab.
   assert.equal(
-    boundsFromNominatim({ boundingbox: ["10", "11", "20", "21"], addresstype: "city" }, { lat: 31.38, lng: 76.38 }),
+    boundsFromNominatim(
+      { name: "Rupnagar", addresstype: "district", boundingbox: ["30.8", "31.6", "76.2", "76.8"] },
+      { lat: 31.24, lng: 76.5 },
+    ),
+    null,
+    "a district boundary is refused",
+  );
+  // Nor is a box that does not contain the point, or one wider than a city.
+  assert.equal(boundsFromNominatim({ addresstype: "city", boundingbox: ["10", "11", "20", "21"] }, { lat: 31.38, lng: 76.38 }), null);
+  assert.equal(
+    boundsFromNominatim({ addresstype: "city", boundingbox: ["29.5", "32.6", "73.8", "76.9"] }, { lat: 31.38, lng: 76.38 }),
     null,
   );
-  // Nor is a whole state, even though it does contain the point.
-  assert.equal(
-    boundsFromNominatim({ boundingbox: ["29.5", "32.6", "73.8", "76.9"], addresstype: "state" }, { lat: 31.38, lng: 76.38 }),
-    null,
-    "a box wider than a city is refused",
-  );
+  clearAreaCache();
+});
+
+test("when Nominatim has nothing, Photon's extent gives the town's box", async () => {
+  clearAreaCache();
+  const mohali = { lat: 30.7046, lng: 76.7179 };
+  const fetchImpl = fakeFetch((url) => {
+    if (url.includes("photon")) {
+      return ok({
+        features: [
+          {
+            geometry: { coordinates: [76.7, 30.7] },
+            properties: {
+              name: "Mohali",
+              osm_value: "city",
+              // `extent` is [west, north, east, south] — a box, not a point.
+              extent: [76.62, 30.79, 76.81, 30.62],
+            },
+          },
+          // A district-sized answer is refused even from Photon.
+          {
+            geometry: { coordinates: [76.5, 30.6] },
+            properties: { name: "Sahibzada Ajit Singh Nagar", osm_value: "district", extent: [76.0, 31.2, 77.0, 30.1] },
+          },
+        ],
+      });
+    }
+    throw new Error("nominatim is busy");
+  }, { area: null });
+
+  const area = await areaFor({ place: "Mohali, Punjab", ...mohali, fetchImpl });
+  assert.equal(area.city, true, "a boundary came from Photon");
+  assert.equal(area.label, "Mohali");
+  assert.deepEqual(area.bounds, { south: 30.62, north: 30.79, west: 76.62, east: 76.81 });
+
+  // And when neither source can name a boundary, still no list.
+  clearAreaCache();
+  const result = await searchNearby({
+    kind: "essentials",
+    ...mohali,
+    place: "Mohali, Punjab",
+    fetchImpl: fakeFetch(() => ok({ elements: [] }), { area: null }),
+  });
+  assert.equal(result.reason, "no-area", "with no boundary from either source, still no list");
+  assert.deepEqual(result.items, []);
+  clearAreaCache();
+});
+
+test("a town's places are its own: Anandpur does not list Nangal", async () => {
+  clearAreaCache();
+  const anandpur = { lat: 31.239, lng: 76.502 };
+  // The boundary Nominatim gives for "Anandpur Sahib" — a town of about 8 km.
+  const hit = { name: "Anandpur Sahib", addresstype: "town", boundingbox: ["31.20", "31.28", "76.46", "76.55"], address: { town: "Anandpur Sahib", state: "Punjab" } };
+  const fetchImpl = fakeFetch((url) => {
+    if (url.includes("overpass")) {
+      return ok({
+        elements: [
+          // In Anandpur Sahib itself.
+          { type: "node", id: 1, lat: 31.24, lon: 76.5, tags: { tourism: "hotel", name: "Anandpur Hotel" } },
+          // Nangal is 18 km away and a different town: it must not appear.
+          { type: "node", id: 2, lat: 31.3832, lon: 76.3766, tags: { tourism: "hotel", name: "Nangal Hotel" } },
+        ],
+      });
+    }
+    throw new Error("down");
+  }, { area: hit });
+
+  const result = await searchNearby({ kind: "stays", ...anandpur, place: "Anandpur Sahib, Punjab", fetchImpl });
+  assert.equal(result.area.city, true);
+  assert.equal(result.area.label, "Anandpur Sahib, Punjab");
+  assert.deepEqual(result.items.map((i) => i.title), ["Anandpur Hotel"], "only Anandpur's own places");
   clearAreaCache();
 });
 
@@ -280,6 +391,43 @@ test("both lists are nearest first — one order for the list and the map", () =
 
   const food = rankItems(items, "food");
   assert.deepEqual(food.map((i) => i.kind), ["eat"], "the food list is food only");
+});
+
+test("a Royal Enfield service centre is found by its craft tag, not only its name", () => {
+  // The tag the dealers actually carry: `craft=motorcycle_repair`. Asking only
+  // for `shop=motorcycle` is why they never appeared in the service tab.
+  const questions = overpassQuery("essentials", { south: 30.7, north: 30.8, west: 76.7, east: 76.8 });
+  assert.match(questions, /craft.*motorcycle_repair/);
+  assert.match(questions, /name.*Enfield/i);
+
+  const dealer = itemFromTags(
+    { craft: "motorcycle_repair", name: "Enfield Service Centre", operator: "Royal Enfield" },
+    "node/20",
+    30.74,
+    76.78,
+    { lat: 30.74, lng: 76.78 },
+  );
+  assert.equal(dealer.kind, "service");
+  assert.equal(dealer.royalEnfield, true);
+  assert.equal(dealer.detail, "Royal Enfield · service centre");
+
+  // A workshop with a plain name is still a workshop.
+  const indy = itemFromTags({ craft: "motorcycle_repair", name: "Deepak Bike Repair" }, "node/21", 30.74, 76.78, { lat: 30.74, lng: 76.78 });
+  assert.equal(indy.kind, "service");
+  assert.equal(indy.detail, "Motorcycle workshop");
+
+  // "RE Motors" and "Enfield" are how the dealers sign themselves.
+  for (const name of ["RE Motors Mohali", "Royal Enfield Chandigarh", "Enfield Care"]) {
+    const item = itemFromTags({ shop: "motorcycle", name }, "node/22", 30.74, 76.78, { lat: 30.74, lng: 76.78 });
+    assert.equal(item.royalEnfield, true, `${name} is the marque`);
+  }
+
+  // And the craft tag survives the other two sources' shapes.
+  assert.equal(tagsFromNominatim({ class: "craft", type: "motorcycle_repair", name: "X" }).craft, "motorcycle_repair");
+  assert.equal(tagsFromPhoton({ osm_key: "craft", osm_value: "motorcycle_repair", name: "X" }).craft, "motorcycle_repair");
+
+  // Google is asked about the marque by name, since its records say little else.
+  assert.ok(googleTerms("essentials").some((term) => /royal enfield service/i.test(term)));
 });
 
 test("the same place tagged twice is listed once", () => {
@@ -385,7 +533,7 @@ test("Google is asked without a key, and its answer is the one that is used", as
     throw new Error("the other sources are slower, or busy");
   });
 
-  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
   assert.equal(result.source, "google");
   assert.deepEqual(
     result.items.map((i) => i.title),
@@ -396,8 +544,8 @@ test("Google is asked without a key, and its answer is the one that is used", as
   assert.equal(googleCalls.length, googleTerms("stays").length, "one search page per kind of bed");
   assert.ok(fetchImpl.calls.every((call) => !call.url.includes("key=")), "no API key anywhere in the question");
   assert.equal(fetchImpl.calls.length > googleCalls.length, true, "the map sources were asked at the same time, not after");
-  const first = fetchImpl.calls[0].url;
-  assert.match(first, /google\.com\/maps\/search\/hotels\/@34\.15260,77\.57710,\d+z/);
+  const firstGoogle = googleCalls[0].url;
+  assert.match(firstGoogle, /google\.com\/maps\/search\/hotels\/@34\.15260,77\.57710,\d+z/);
 });
 
 test("a busy mirror does not hold the answer up: the others are asked at the same time", async () => {
@@ -406,7 +554,7 @@ test("a busy mirror does not hold the answer up: the others are asked at the sam
     if (url.includes("photon")) throw new Error("blocked");
     return url === OVERPASS_MIRRORS[0] ? bad(504) : ok(overpassBody);
   });
-  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
 
   assert.equal(result.source, "overpass");
   assert.equal(result.items.length, 2, "the two beds in the answer, and nothing else");
@@ -426,7 +574,7 @@ test("a slow, silent source cannot hold the page: the budget ends the wait", asy
   const hang = () => new Promise(() => {});
   const fetchImpl = fakeFetch((url) => (url.includes("photon") ? ok({ features: [] }) : hang()));
   const started = Date.now();
-  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl, budgetMs: 250, timeoutMs: 200, fallbackBudgetMs: 150 });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl, budgetMs: 250, timeoutMs: 200, fallbackBudgetMs: 150 });
   const elapsed = Date.now() - started;
 
   assert.equal(result.source, "none");
@@ -444,7 +592,7 @@ test("with every mirror down, the geocoder answers instead", async () => {
     ]);
   });
 
-  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl, mirrors: OVERPASS_MIRRORS });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl, mirrors: OVERPASS_MIRRORS });
   assert.equal(result.source, "nominatim");
   assert.equal(result.items.length, 2, "both terms were asked, and the two places are found once each");
   assert.equal(result.items[0].title, "Chospa Guest House", "nearest first");
@@ -456,11 +604,10 @@ test("nothing answering is an empty answer that says so, not a throw", async () 
   const fetchImpl = fakeFetch(() => {
     throw new Error("offline");
   });
-  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl });
+  const result = await searchNearby({ kind: "stays", ...leh, place: "Leh", fetchImpl });
   assert.equal(result.source, "none");
   assert.deepEqual(result.items, []);
-  assert.equal(result.area.city, false, "no boundary could be named, so a circle stood in for it");
-  assert.ok(result.area.spanKm > 0);
+  assert.equal(result.area.city, true, "the boundary was found, and every source still had nothing to say");
   assert.deepEqual(result.tried, ["Google", "OpenStreetMap", "Photon", "Nominatim"], "each source once, in the order tried");
   const notes = result.notes.join(" | ");
   for (const source of ["google", "overpass-api.de", "photon", "nominatim"]) {
@@ -484,10 +631,10 @@ test("the cache answers the second ask, and a failure is not remembered", async 
   clearNearbyCache();
   const fetchImpl = fakeFetch((url) => (isGoogle(url) ? okHtml("<html></html>") : ok(overpassBody)));
 
-  const first = await searchNearbyCached({ kind: "stays", ...leh, fetchImpl });
+  const first = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", fetchImpl });
   assert.equal(first.cached, false);
   const asksSoFar = fetchImpl.calls.length;
-  const again = await searchNearbyCached({ kind: "stays", ...leh, fetchImpl });
+  const again = await searchNearbyCached({ kind: "stays", ...leh, place: "Leh", fetchImpl });
   assert.equal(again.cached, true, "the second ask is free");
   assert.equal(fetchImpl.calls.length, asksSoFar, "nothing was asked a second time");
 
@@ -531,7 +678,7 @@ test("the whole town is searched: a bed 20 km out is in the list, if it is in th
       });
     }
     throw new Error("down");
-  });
+  }, { area: null });
 
   const result = await searchNearby({ kind: "stays", ...nangal, place: "Nangal, Punjab", fetchImpl });
   assert.equal(result.area.city, true);
@@ -564,6 +711,7 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
   globalThis.fetch = async (url, options) => {
     const href = String(url);
     if (isGoogle(href)) return okHtml("<html></html>");
+    if (isAreaQuery(href)) return ok([LEH_AREA_HIT]);
     if (href.includes("overpass") || href.includes("nominatim")) {
       return { ok: true, status: 200, async json() { return overpassBody; } };
     }
@@ -574,21 +722,22 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
   await new Promise((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const found = await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771`);
+    const found = await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771&place=Leh`);
     assert.equal(found.status, 200);
     const body = await found.json();
     assert.equal(body.source, "overpass");
     assert.equal("radiusKm" in body, false, "the answer is an area now, not a radius");
-    assert.equal(body.area.city, false, "no boundary name was given, so a circle stood in for the town");
+    assert.equal(body.area.city, true, "the name given resolves to the town's own boundary");
+    assert.equal(body.area.label, "Leh, Ladakh");
     assert.equal(body.items.length, 2, "beds only");
     assert.equal(body.items[0].title, "Grand Dragon", "nearest first");
     assert.equal("googleKey" in body, false, "there is no key to talk about");
 
-    const essentials = await (await fetch(`${base}/api/nearby?kind=essentials&lat=34.1526&lng=77.5771`)).json();
-    assert.ok(essentials.area.spanKm >= 25, "the fallback for essentials is the wider one");
+    const essentials = await (await fetch(`${base}/api/nearby?kind=essentials&lat=34.1526&lng=77.5771&place=Leh`)).json();
+    assert.ok(essentials.area.spanKm > 0, "the answer names the ground it covers");
 
     // Food is its own question, and its own answer: the cafe, not the beds.
-    const food = await (await fetch(`${base}/api/nearby?kind=food&lat=34.1526&lng=77.5771`)).json();
+    const food = await (await fetch(`${base}/api/nearby?kind=food&lat=34.1526&lng=77.5771&place=Leh`)).json();
     assert.equal(food.source, "overpass");
     assert.deepEqual(food.items.map((item) => item.kind), ["eat"]);
     assert.equal(food.items[0].title, "A cafe");
@@ -596,7 +745,7 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
 
     // A second ask is served from the cache: one more outbound call would show
     // up as a different answer, and it does not.
-    const again = await (await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771`)).json();
+    const again = await (await fetch(`${base}/api/nearby?kind=stays&lat=34.1526&lng=77.5771&place=Leh`)).json();
     assert.equal(again.cached, true);
 
     assert.equal((await fetch(`${base}/api/nearby?kind=shops&lat=34&lng=77`)).status, 400);
@@ -643,6 +792,7 @@ test("photon is asked by term, and its features read like any other map item", a
   const result = await searchNearby({
     kind: "stays",
     ...leh,
+    place: "Leh",
     fetchImpl,
     mirrors: [],
   });
@@ -667,7 +817,7 @@ test("photon is asked only after every mirror, and before nominatim", async () =
     if (url.includes("photon")) throw new Error("blocked");
     return ok([{ osm_type: "node", osm_id: 1, lat: "34.16", lon: "77.58", name: "Pump", class: "amenity", type: "fuel" }]);
   });
-  const result = await searchNearby({ kind: "essentials", ...leh, fetchImpl });
+  const result = await searchNearby({ kind: "essentials", ...leh, place: "Leh", fetchImpl });
   assert.equal(result.source, "nominatim");
   const order = fetchImpl.calls
     .filter((call) => !isGoogle(call.url))

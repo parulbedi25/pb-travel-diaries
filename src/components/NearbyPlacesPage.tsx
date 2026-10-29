@@ -316,19 +316,20 @@ export default function NearbyPlacesPage() {
   /**
    * What the list covers, in the rider's words.
    *
-   * Not a radius: the whole town the stop is in, which is what was asked for.
-   * If the town's boundary could not be looked up the server says so, and the
-   * line falls back to naming the circle it used instead.
+   * Not a radius: the whole town, and nothing outside it. If the town's
+   * boundary cannot be found there is no list to caption, and the line says
+   * that instead of inventing a circle.
    */
   const activeArea = tab === "stays" ? stays.area : tab === "food" ? food.area : tab === "essentials" ? essentials.area : null;
+  const reason = tab === "places" ? "" : active.reason;
   const coverage =
     tab === "places"
       ? `Within ${radiusKm} km of ${origin.name}`
-      : activeArea?.city
-        ? `All of ${activeArea.label}`
-        : activeArea
-          ? `Around ${origin.name} · ${activeArea.spanKm} km across`
-          : `Around ${origin.name}`;
+      : reason === "no-area"
+        ? `No boundary found for ${origin.name}`
+        : activeArea?.city
+          ? `All of ${activeArea.label}`
+          : `All of ${origin.name}`;
 
   // The pins are laid over the tiles, so the panel is measured rather than
   // assumed — and so is the list, because whatever the list covers is not map
@@ -415,7 +416,12 @@ export default function NearbyPlacesPage() {
   };
 
   const emptyCopy =
-    tab === "places"
+    reason === "no-area"
+      ? {
+          title: `Couldn't find the boundary of ${origin.name}`,
+          body: `Every place here is listed town by town, so nothing from the next town can creep in. This stop's boundary could not be looked up just now — reload, or pick another stop from the list above.`,
+        }
+      : tab === "places"
       ? {
           title: `Nothing geotagged within ${radiusKm} km`,
           body: `Wikipedia has no articles pinned this close to ${origin.name}.`,

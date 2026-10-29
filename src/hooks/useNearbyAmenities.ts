@@ -57,6 +57,14 @@ export interface Amenity {
 export type AmenitySource = "overpass" | "nominatim" | "google" | "none" | "";
 
 /**
+ * Why an empty tab is empty.
+ *
+ * `no-area` is the important one: the town's boundary could not be looked up,
+ * so nothing was searched rather than the next town being searched instead.
+ */
+export type AmenityReason = "no-area" | "";
+
+/**
  * The ground a list covers.
  *
  * Normally the town's own boundary, looked up server-side from the stop's
@@ -100,7 +108,8 @@ function overpassQuery(group: AmenityGroup, lat: number, lng: number, radiusKm: 
     `${head};(` +
     `nwr["amenity"="fuel"]${around};` +
     `nwr["amenity"~"^(hospital|clinic)$"]${around};` +
-    `nwr["shop"~"^(motorcycle|car_repair|car_parts|tyres)$"]${around};` +
+    `nwr["craft"~"^(motorcycle_repair|car_repair)$"]${around};` +
+    `nwr["shop"~"^(motorcycle|motorcycle_repair|car_repair|car_parts|tyres)$"]${around};` +
     `nwr["service:vehicle:motorcycle"="yes"]${around};` +
     `nwr["service:vehicle:car"="yes"]${around};` +
     `nwr["name"~"Royal Enfield",i]${around};` +
@@ -129,6 +138,11 @@ const EAT_COPY: Record<string, string> = {
 
 const DHABA_NAME = /dhaba|dhabha|bhojanal|bhojnal|bhojanalya/i;
 
+const CRAFT_COPY: Record<string, string> = {
+  motorcycle_repair: "Motorcycle workshop",
+  car_repair: "Automobile workshop",
+};
+
 const SHOP_COPY: Record<string, string> = {
   motorcycle: "Motorcycle workshop",
   car_repair: "Automobile workshop",
@@ -136,7 +150,7 @@ const SHOP_COPY: Record<string, string> = {
   tyres: "Tyres & puncture",
 };
 
-const RE_NAME = /royal\s*enfield/i;
+const RE_NAME = /royal\s*enfield|\benfield\b|\bRE\s+(service|motors|showroom)\b/i;
 
 /** One Overpass element as an amenity, or null when it is not one we asked for. */
 export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity | null {
@@ -173,6 +187,7 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
       tags.emergency === "yes" ? " · emergency" : ""
     }`;
   } else if (
+    CRAFT_COPY[tags.craft] ||
     SHOP_COPY[tags.shop] ||
     tags["service:vehicle:motorcycle"] === "yes" ||
     tags["service:vehicle:car"] === "yes" ||
@@ -181,7 +196,7 @@ export function amenityFrom(element: OverpassElement, origin: MapPoint): Amenity
     kind = "service";
     detail = royalEnfield
       ? "Royal Enfield · service centre"
-      : SHOP_COPY[tags.shop] ?? "Automobile workshop";
+      : CRAFT_COPY[tags.craft] ?? SHOP_COPY[tags.shop] ?? "Automobile workshop";
   }
 
   if (!kind) return null;
@@ -301,6 +316,8 @@ export interface AmenityResult {
   settled: boolean;
   /** The area the list covers, once an answer has arrived. */
   area: AmenityArea | null;
+  /** Why a tab has nothing, when the reason is not "there is nothing". */
+  reason: AmenityReason;
   loadingSource: string;
   reload: () => void;
 }
@@ -320,6 +337,7 @@ export function useNearbyAmenities({
   const [loadingSource, setLoadingSource] = useState("Google & OpenStreetMap");
   const [settled, setSettled] = useState(false);
   const [area, setArea] = useState<AmenityArea | null>(null);
+  const [reason, setReason] = useState<AmenityReason>("");
   const [attempt, setAttempt] = useState(0);
   const cache = useRef(new Map<string, Amenity[]>());
   const requestId = useRef(0);
@@ -362,6 +380,7 @@ export function useNearbyAmenities({
               source: AmenitySource;
               tried?: string[];
               area?: AmenityArea | null;
+              reason?: AmenityReason;
             }>(
               `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}${
                 place ? `&place=${encodeURIComponent(place)}` : ""
@@ -375,6 +394,7 @@ export function useNearbyAmenities({
         if (viaServer) {
           setTried(Array.isArray(viaServer.tried) ? viaServer.tried : []);
           if (viaServer.area) setArea(viaServer.area);
+          setReason(viaServer.reason ?? "");
           const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
           cache.current.set(key, ranked);
           setItems(ranked);
@@ -426,7 +446,7 @@ export function useNearbyAmenities({
     };
   }, [lat, lng, place, group, enabled, attempt]);
 
-  return { items, loading, error, source, tried, settled, area, loadingSource, reload };
+  return { items, loading, error, source, tried, settled, area, reason, loadingSource, reload };
 }
 
 interface OverpassElement {

@@ -49,9 +49,11 @@ nearbyRouter.get("/nearby", async (req, res, next) => {
     res.set("Cache-Control", "no-store");
     res.json({
       source: result.source,
-      // The area the answer covers: the town's own box, or — when its boundary
-      // could not be looked up — the radius that stood in for it.
+      // The area the answer covers: the town's own box. When its boundary
+      // could not be found there is no box and no list — `reason` says so,
+      // because a circle around the pin would answer with the next town.
       area: result.area ?? null,
+      ...(result.reason ? { reason: result.reason } : {}),
       cached: Boolean(result.cached),
       items: result.items,
       ...(result.items.length ? {} : { tried: result.tried ?? [] }),
