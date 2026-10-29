@@ -27,7 +27,34 @@ export interface RidePoint {
 
 /** Somewhere central when there is nothing to fit yet: India, wide open. */
 const EMPTY_VIEW = { lat: 22.5, lng: 79, zoom: 4 };
-const SINGLE_VIEW = 11;
+
+/**
+ * The room a pin needs, in pixels: the badge sits above its point and the name
+ * plate hangs below it, so a ride fitted to the bare coordinates puts the outer
+ * pins' plates under the frame's edge, where `overflow-hidden` cuts them off.
+ * Reserving half the plate's width either side and the badge-plus-plate above
+ * and below is what keeps every pin and every name inside the box — on the
+ * short one-pin map in the notebook as much as on the tall one in the builder.
+ */
+const PIN_PAD_X = 84;
+const PIN_PAD_Y = 58;
+
+/**
+ * How much ground a single stop is given.
+ *
+ * A one-pin map used to be drawn at a fixed zoom, which is wrong on both counts:
+ * on a 220-pixel box it showed a speck of a town, and on a tall one it was a
+ * different map altogether. It is now fitted to a small box around the point, so
+ * the zoom follows the box the way every other fit on the site does.
+ */
+const SINGLE_HALF_SPAN = 0.02;
+
+/** A stop that can actually be drawn: real numbers, on the planet. */
+const drawable = (point: { lat: number; lng: number }): boolean =>
+  Number.isFinite(point.lat) &&
+  Number.isFinite(point.lng) &&
+  Math.abs(point.lat) <= 90 &&
+  Math.abs(point.lng) <= 180;
 
 export default function RideMap({
   stops,
@@ -76,13 +103,48 @@ export default function RideMap({
   // The view is fitted to the ride, and only refitted when the ride changes —
   // not on every render, or a re-render mid-click would move the ground under
   // the pin the member just dropped.
-  const stopKey = stops.map((stop) => `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`).join("|");
+  /**
+   * The stops that can be drawn, each with the index it has in the list.
+   *
+   * The index travels with the stop rather than being counted again here: a
+   * coordinate that cannot be drawn — a blank row, a typo in the form — must
+   * leave a gap in the map, never renumber the pins above and below it, which
+   * is how a pin ends up labelled with another stop's number.
+   */
+  const pins = useMemo(
+    () =>
+      stops
+        .map((stop, index) => ({ stop, index }))
+        .filter(({ stop }) => drawable(stop)),
+    [stops],
+  );
+
+  const pinKey = pins.map(({ stop }) => `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`).join("|");
+
   const view = useMemo(() => {
-    if (stops.length === 0) return EMPTY_VIEW;
-    if (stops.length === 1) return { lat: stops[0].lat, lng: stops[0].lng, zoom: SINGLE_VIEW };
-    return fitViewExact(stops, width, drawHeight, { padX: 42, padY: 42 });
+    if (pins.length === 0) return EMPTY_VIEW;
+    if (pins.length === 1) {
+      const [only] = pins;
+      const fitted = fitViewExact(
+        [
+          { lat: only.stop.lat - SINGLE_HALF_SPAN, lng: only.stop.lng - SINGLE_HALF_SPAN },
+          { lat: only.stop.lat + SINGLE_HALF_SPAN, lng: only.stop.lng + SINGLE_HALF_SPAN },
+        ],
+        width,
+        drawHeight,
+        { padX: PIN_PAD_X, padY: PIN_PAD_Y },
+      );
+      // Centred on the stop itself, at the zoom the box was given.
+      return { lat: only.stop.lat, lng: only.stop.lng, zoom: fitted.zoom };
+    }
+    return fitViewExact(
+      pins.map(({ stop }) => stop),
+      width,
+      drawHeight,
+      { padX: PIN_PAD_X, padY: PIN_PAD_Y },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stopKey, width, drawHeight]);
+  }, [pinKey, width, drawHeight]);
 
   const projector = useMemo(
     () => makeMercatorProjector(view, width, drawHeight),
@@ -91,11 +153,11 @@ export default function RideMap({
 
   const points = useMemo(
     () =>
-      stops.map((stop) => {
+      pins.map(({ stop, index }) => {
         const projected = projector.toXY(stop);
-        return { x: (projected.x / 100) * width, y: (projected.y / 100) * drawHeight };
+        return { index, x: (projected.x / 100) * width, y: (projected.y / 100) * drawHeight };
       }),
-    [stops, projector, width, drawHeight],
+    [pins, projector, width, drawHeight],
   );
 
   const handleClick = useCallback(
@@ -162,7 +224,7 @@ export default function RideMap({
           the badge's height, so the circle lands on the stop itself and the
           name hangs below it. Centring the whole button instead would put the
           point halfway between the badge and its label. */}
-      {points.map((point, index) => (
+      {points.map(({ index, x, y }) => (
         <button
           key={`${stops[index]?.lat},${stops[index]?.lng},${index}`}
           type="button"
@@ -176,7 +238,7 @@ export default function RideMap({
             "absolute block -translate-x-1/2",
             onSelect ? "cursor-pointer" : "cursor-default",
           )}
-          style={{ left: point.x, top: point.y }}
+          style={{ left: x, top: y }}
         >
           <span
             className={cn(
