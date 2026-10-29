@@ -191,6 +191,10 @@ export interface AmenityResult {
   items: Amenity[];
   loading: boolean;
   error: string;
+  /** What was tried, in order, when nothing came back. */
+  tried: string[];
+  /** Whether the server has a Google Places key to spend. */
+  googleKey: boolean;
   /** Which service answered, or "" while nothing has. */
   source: AmenitySource;
   loadingSource: string;
@@ -207,6 +211,8 @@ export function useNearbyAmenities({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<AmenitySource>("");
+  const [tried, setTried] = useState<string[]>([]);
+  const [googleKey, setGoogleKey] = useState(false);
   const [loadingSource, setLoadingSource] = useState("OpenStreetMap");
   const [attempt, setAttempt] = useState(0);
   const cache = useRef(new Map<string, Amenity[]>());
@@ -239,18 +245,22 @@ export function useNearbyAmenities({
         // The server answers across three mirrors and Nominatim; it is the
         // route that works when a browser-to-Overpass request would not.
         const viaServer = await api
-          .get<{ items: Amenity[]; source: AmenitySource }>(
+          .get<{ items: Amenity[]; source: AmenitySource; tried?: string[]; googleKey?: boolean }>(
             `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
           )
           .catch(() => null);
         if (cancelled || mine !== requestId.current) return;
 
-        if (viaServer && (viaServer.items.length || viaServer.source !== "none")) {
-          const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
-          cache.current.set(key, ranked);
-          setItems(ranked);
-          setSource(viaServer.source);
-          return;
+        if (viaServer) {
+          setGoogleKey(Boolean(viaServer.googleKey));
+          setTried(Array.isArray(viaServer.tried) ? viaServer.tried : []);
+          if (viaServer.items.length || viaServer.source !== "none") {
+            const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
+            cache.current.set(key, ranked);
+            setItems(ranked);
+            setSource(viaServer.source);
+            return;
+          }
         }
 
         // No server, or a server that could not reach anything: ask the
@@ -293,7 +303,7 @@ export function useNearbyAmenities({
     };
   }, [lat, lng, group, enabled, attempt]);
 
-  return { items, loading, error, source, loadingSource, reload };
+  return { items, loading, error, source, tried, googleKey, loadingSource, reload };
 }
 
 interface OverpassElement {
