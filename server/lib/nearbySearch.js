@@ -29,22 +29,32 @@
  */
 
 /**
- * How wide each question is, when the city it is about cannot be named.
+ * The radius each question used to be asked over.
  *
- * The normal answer is the city's own area — every bed, pump and hospital
- * inside the boundary of the town the rider picked, however big that town is.
- * These figures are only the fallback for the rare time the boundary cannot be
- * looked up: a shape of the right order, rather than the whole district.
+ * Nothing is searched by radius any more — a question is about a town, and a
+ * circle around a pin drags in the next town, which is exactly what was wrong
+ * before. These figures survive only as the size a fallback box is drawn at,
+ * for the one case that needs one: no boundary, no list.
  */
 export const KIND_RADIUS_KM = { stays: 15, food: 12, essentials: 25 };
 
 export const KINDS = Object.keys(KIND_RADIUS_KM);
 
-/** A city, not a district and not a state. Anything wider is rejected. */
-export const MAX_AREA_SPAN_KM = 90;
+/**
+ * A city, not a district and not a state.
+ *
+ * A settlement's own boundary is what a rider means by "all of Mohali". A
+ * tehsil or district boundary — Rupnagar, which holds both Anandpur Sahib and
+ * Nangal — is not: that is the shape that put Nangal's hotels in Anandpur's
+ * list.
+ */
+export const MAX_AREA_SPAN_KM = 45;
+
+/** The kinds of place that count as a settlement, tightest first. */
+export const SETTLEMENT_RANKS = ["city", "town", "municipality", "village", "suburb", "borough"];
 
 /** The area lookup is one quick question before the real one. */
-export const AREA_TIMEOUT_MS = 2_500;
+export const AREA_TIMEOUT_MS = 3_000;
 
 /**
  * Overpass mirrors, tried in order.
@@ -123,11 +133,15 @@ export function overpassQuery(kind, bounds) {
     `${head};(` +
     `nwr["amenity"="fuel"]${box};` +
     `nwr["amenity"~"^(hospital|clinic)$"]${box};` +
-    `nwr["shop"~"^(motorcycle|car_repair|car_parts|tyres)$"]${box};` +
+    // A workshop is tagged `craft=motorcycle_repair` at least as often as
+    // `shop=motorcycle`, and the Royal Enfield service centres almost always
+    // are — that tag never being asked for is why they did not appear.
+    `nwr["craft"~"^(motorcycle_repair|car_repair)$"]${box};` +
+    `nwr["shop"~"^(motorcycle|motorcycle_repair|car_repair|car_parts|tyres)$"]${box};` +
     `nwr["service:vehicle:motorcycle"="yes"]${box};` +
     `nwr["service:vehicle:car"="yes"]${box};` +
-    `nwr["name"~"Royal Enfield",i]${box};` +
-    `);out center 240;`
+    `nwr["name"~"Royal Enfield|Enfield|RE Service|RE Motors",i]${box};` +
+    `);out center 300;`
   );
 }
 
@@ -142,12 +156,12 @@ export function boundsAround(lat, lng, radiusKm) {
   return { south: lat - dLat, north: lat + dLat, west: lng - dLng, east: lng + dLng };
 }
 
-/** How wide a box is, tip to tip, in kilometres. */
+/** How wide a box is — its longer side, in kilometres. */
 export function spanKmOf(bounds) {
   const midLat = (bounds.north + bounds.south) / 2;
   const heightKm = (bounds.north - bounds.south) * 111;
   const widthKm = (bounds.east - bounds.west) * 111 * Math.cos((midLat * Math.PI) / 180);
-  return Math.hypot(heightKm, widthKm);
+  return Math.max(heightKm, widthKm);
 }
 
 /** Overpass's box syntax: `(south,west,north,east)`. */
@@ -174,10 +188,8 @@ export function insideBounds(lat, lng, bounds, padKm = 0) {
 /** What kind of place a Nominatim answer is, read as one word. */
 function areaRankOf(hit) {
   const kind = String(hit.addresstype ?? hit.type ?? "").toLowerCase();
-  if (["city", "town", "municipality", "village", "suburb", "borough", "administrative"].includes(kind)) {
-    return kind;
-  }
-  if (["city_district", "district", "county", "state_district"].includes(kind)) return "district";
+  if (SETTLEMENT_RANKS.includes(kind)) return kind;
+  if (["city_district", "district", "county", "state_district", "administrative"].includes(kind)) return "district";
   if (["state", "region", "country"].includes(kind)) return "too-wide";
   return "other";
 }
@@ -194,6 +206,8 @@ export function boundsFromNominatim(hit, origin) {
   if (!box || box.length !== 4 || box.some((n) => !Number.isFinite(n))) return null;
   const [south, north, west, east] = box;
   if (north <= south || east <= west) return null;
+  // A settlement or nothing: a district box would swallow the next town.
+  if (!SETTLEMENT_RANKS.includes(areaRankOf(hit))) return null;
   const bounds = { south, north, west, east };
   if (spanKmOf(bounds) > MAX_AREA_SPAN_KM) return null;
   if (origin && !insideBounds(origin.lat, origin.lng, bounds, 2)) return null;
@@ -232,38 +246,122 @@ export function clearAreaCache() {
   areaInFlight.clear();
 }
 
-async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
-  const ask = async (params) => {
-    const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
+/**
+ * A settlement's box from Photon.
+ *
+ * Photon indexes the same OpenStreetMap places as Nominatim and returns each
+ * one's `extent` — `[west, north, east, south]` — which is exactly the box the
+ * search needs. It is keyless and it is a different server, so it answers on
+ * the mornings Nominatim is pacing its callers, and it is asked second rather
+ * than first only because its `extent` is not guaranteed for every place.
+ */
+async function photonAreaLookup(name, origin, { fetchImpl, timeoutMs }) {
+  if (!name) return null;
+  try {
+    const params = new URLSearchParams({ q: name, limit: "10", lang: "en" });
+    const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
       headers: { Accept: "application/json", "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return readJson(response, "Nominatim");
+    const json = await readJson(response, "Photon");
+    const wanted = name.toLowerCase();
+    const candidates = (Array.isArray(json?.features) ? json.features : [])
+      .map((feature) => {
+        const properties = feature?.properties ?? {};
+        const extent = Array.isArray(properties.extent) ? properties.extent.map(Number) : null;
+        if (!extent || extent.length !== 4 || extent.some((n) => !Number.isFinite(n))) return null;
+        const [west, north, east, south] = extent;
+        if (north <= south || east <= west) return null;
+        const bounds = { south, north, west, east };
+        const hit = {
+          name: properties.name,
+          addresstype: String(properties.osm_value ?? properties.type ?? "").toLowerCase(),
+        };
+        return { hit, bounds, span: spanKmOf(bounds) };
+      })
+      .filter(Boolean)
+      .filter((entry) => SETTLEMENT_RANKS.includes(areaRankOf(entry.hit)))
+      .filter((entry) => entry.span <= MAX_AREA_SPAN_KM)
+      .filter((entry) => insideBounds(origin.lat, origin.lng, entry.bounds, 2));
+    if (!candidates.length) return null;
+    const exact = candidates.filter((entry) => String(entry.hit.name ?? "").toLowerCase() === wanted);
+    const pool = exact.length ? exact : candidates;
+    pool.sort((a, b) => a.span - b.span);
+    const best = pool[0];
+    return { bounds: best.bounds, label: best.hit.name || name };
+  } catch {
+    return null;
+  }
+}
+
+/** The name without the qualifier: "Anandpur Sahib, Punjab" → "Anandpur Sahib". */
+function shortPlaceName(place) {
+  return String(place ?? "").split(",")[0].trim();
+}
+
+async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
+  // A refusal here is not the end of the lookup: there is a second source, and
+  // then a reverse lookup, so a pacing error reads as "no answer" rather than
+  // throwing the whole thing away.
+  const ask = async (params) => {
+    try {
+      const response = await fetchImpl(`${NOMINATIM_URL}?${params}`, {
+        headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      return await readJson(response, "Nominatim");
+    } catch {
+      return null;
+    }
   };
 
   const origin = { lat, lng };
+  const asked = shortPlaceName(place);
+
+  /**
+   * The best answer out of a list.
+   *
+   * Only settlements get this far — a district is refused inside
+   * `boundsFromNominatim` — and among them the one whose name is exactly what
+   * was asked for wins over a nearer-sounding suburb, then a town over a
+   * village, then the tightest box. That is what keeps "Anandpur Sahib" from
+   * resolving to a box that also holds Nangal.
+   */
   const usable = (hits) => {
     const scored = (Array.isArray(hits) ? hits : [])
       .map((hit) => ({ hit, bounds: boundsFromNominatim(hit, origin), rank: areaRankOf(hit) }))
       .filter((entry) => entry.bounds);
-    // City and town before district, and the tightest box within a rank.
-    const order = ["city", "town", "municipality", "village", "suburb", "borough", "administrative", "district", "other"];
-    scored.sort((a, b) => order.indexOf(a.rank) - order.indexOf(b.rank) || spanKmOf(a.bounds) - spanKmOf(b.bounds));
-    return scored[0] ?? null;
+    if (!scored.length) return null;
+    const wanted = asked.toLowerCase();
+    const exact = scored.filter((entry) => String(entry.hit.name ?? "").toLowerCase() === wanted);
+    const pool = exact.length ? exact : scored;
+    pool.sort(
+      (a, b) =>
+        SETTLEMENT_RANKS.indexOf(a.rank) - SETTLEMENT_RANKS.indexOf(b.rank) ||
+        spanKmOf(a.bounds) - spanKmOf(b.bounds),
+    );
+    return pool[0];
   };
 
-  const query = String(place ?? "").trim();
-  if (query) {
+  if (asked) {
+    // `featuretype=settlement` is Nominatim's own way of saying "a town, not a
+    // tehsil": it filters out exactly the boundary that caused the overlap.
     const params = new URLSearchParams({
       format: "jsonv2",
-      q: query,
-      limit: "6",
+      q: asked,
+      limit: "10",
       addressdetails: "1",
       countrycodes: "in",
+      featuretype: "settlement",
     });
     const found = usable(await ask(params));
-    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || query };
+    if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || asked };
   }
+
+  // Nominatim paced us or had nothing: Photon answers the same question from
+  // the same data, and hands back the settlement's `extent` — a box.
+  const fromPhoton = await photonAreaLookup(asked, origin, { fetchImpl, timeoutMs });
+  if (fromPhoton) return fromPhoton;
 
   // The name did not resolve: ask what town these coordinates are in, then
   // look that name up, which is what gives a box rather than a point.
@@ -276,9 +374,10 @@ async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
     const params = new URLSearchParams({
       format: "jsonv2",
       q: town,
-      limit: "6",
+      limit: "10",
       addressdetails: "1",
       countrycodes: "in",
+      featuretype: "settlement",
     });
     const found = usable(await ask(params));
     if (found) return { bounds: found.bounds, label: areaLabelOf(found.hit) || town };
@@ -287,27 +386,28 @@ async function nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs }) {
 }
 
 /**
- * The area a question is about, with a guaranteed answer.
+ * The area a question is about.
  *
- * `city: true` means the box is the town's own boundary; `city: false` means
- * the lookup failed and the old radius is being used, which the page says in
- * its own words rather than pretending otherwise.
+ * `bounds` is the town's own boundary box — the only shape the search will
+ * ever use. When it cannot be found `bounds` is null, and the caller answers
+ * nothing at all: a circle around the pin is precisely what put Nangal's
+ * hotels in Anandpur's list, and a wrong list is worse than an empty one that
+ * says why.
+ *
+ * `city: true` means a settlement boundary was found and the list covers the
+ * whole of it. A failure is not cached, so one bad minute for Nominatim does
+ * not blank a tab for a day; a success is cached for a day, because a town's
+ * boundary does not move.
  */
-export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AREA_TIMEOUT_MS }) {
-  const radiusKm = KIND_RADIUS_KM[kind] ?? 15;
-  const fallback = {
-    bounds: boundsAround(lat, lng, radiusKm),
-    label: String(place ?? "").trim() || "this area",
-    city: false,
-    // The width of the circle, not its diagonal: that is what the page says.
-    spanKm: Math.round(radiusKm * 2),
-  };
+export async function areaFor({ place, lat, lng, fetchImpl, timeoutMs = AREA_TIMEOUT_MS }) {
+  const label = String(place ?? "").trim();
+  const unknown = { bounds: null, label: label || "this stop", city: false, spanKm: 0 };
 
-  // Without a name there is nothing to look a boundary up by, and a reverse
-  // lookup would cost a round trip to describe a circle anyway.
-  if (!String(place ?? "").trim()) return fallback;
+  // Without a name there is nothing to look a boundary up by, and guessing one
+  // from the coordinates is how a list ends up in the wrong town.
+  if (!label) return unknown;
 
-  const key = `${String(place ?? "").trim().toLowerCase()}|${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const key = `${label.toLowerCase()}|${lat.toFixed(2)},${lng.toFixed(2)}`;
   const hit = areaCache.get(key);
   if (hit && Date.now() - hit.at < AREA_TTL_MS) return hit.value;
 
@@ -316,8 +416,8 @@ export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AR
 
   const lookup = (async () => {
     try {
-      const found = await nominatimAreaLookup(place, lat, lng, { fetchImpl, timeoutMs });
-      if (!found) return fallback;
+      const found = await nominatimAreaLookup(label, lat, lng, { fetchImpl, timeoutMs });
+      if (!found) return unknown;
       return {
         bounds: found.bounds,
         label: found.label,
@@ -325,15 +425,18 @@ export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AR
         spanKm: Math.round(spanKmOf(found.bounds)),
       };
     } catch {
-      return fallback;
+      return unknown;
     }
   })();
 
   areaInFlight.set(key, lookup);
   try {
     const value = await lookup;
-    areaCache.set(key, { at: Date.now(), value });
-    if (areaCache.size > AREA_CACHE_MAX) areaCache.delete(areaCache.keys().next().value);
+    // Only a real boundary is worth remembering.
+    if (value.city) {
+      areaCache.set(key, { at: Date.now(), value });
+      if (areaCache.size > AREA_CACHE_MAX) areaCache.delete(areaCache.keys().next().value);
+    }
     return value;
   } finally {
     areaInFlight.delete(key);
@@ -348,7 +451,14 @@ export async function areaFor({ place, lat, lng, kind, fetchImpl, timeoutMs = AR
 export function googleTerms(kind) {
   if (kind === "stays") return ["hotels", "lodges", "homestays", "guest houses", "motels"];
   if (kind === "food") return ["restaurants", "best restaurants", "dhaba", "cafes"];
-  return ["petrol pumps", "hospitals", "automobile service centre", "motorcycle repair Royal Enfield"];
+  return [
+    "petrol pumps",
+    "hospitals",
+    "automobile service centre",
+    "Royal Enfield service centre",
+    "Royal Enfield showroom",
+    "bike service centre",
+  ];
 }
 
 /** What Nominatim is asked, one free-text term per category. */
@@ -378,6 +488,7 @@ export function tagsFromPhoton(properties) {
   if (key === "amenity") tags.amenity = value;
   else if (key === "tourism") tags.tourism = value;
   else if (key === "shop") tags.shop = value;
+  else if (key === "craft") tags.craft = value;
   else if (key === "service" && value === "vehicle") tags["service:vehicle:motorcycle"] = "yes";
   const name = properties.name ?? properties.street;
   if (name) tags.name = String(name);
@@ -434,7 +545,13 @@ const SHOP_COPY = {
   tyres: "Tyres & puncture",
 };
 
-const RE_NAME = /royal\s*enfield/i;
+/** The `craft` tag a workshop carries — the one Royal Enfield dealers use. */
+const CRAFT_COPY = {
+  motorcycle_repair: "Motorcycle workshop",
+  car_repair: "Automobile workshop",
+};
+
+const RE_NAME = /royal\s*enfield|\benfield\b|\bRE\s+(service|motors|showroom)\b/i;
 
 /**
  * One OpenStreetMap element as an item, or null when it is not one we asked
@@ -467,11 +584,17 @@ export function itemFromTags(tags, id, lat, lng, origin) {
   } else if (amenity === "hospital" || amenity === "clinic") {
     kind = "hospital";
     detail = `${amenity === "hospital" ? "Hospital" : "Clinic"}${tags.emergency === "yes" ? " · emergency" : ""}`;
-  } else if (SHOP_COPY[tags.shop] || tags["service:vehicle:motorcycle"] === "yes" || tags["service:vehicle:car"] === "yes" || royalEnfield) {
+  } else if (
+    CRAFT_COPY[tags.craft] ||
+    SHOP_COPY[tags.shop] ||
+    tags["service:vehicle:motorcycle"] === "yes" ||
+    tags["service:vehicle:car"] === "yes" ||
+    royalEnfield
+  ) {
     kind = "service";
     detail = royalEnfield
       ? "Royal Enfield · service centre"
-      : SHOP_COPY[tags.shop] ?? "Automobile workshop";
+      : CRAFT_COPY[tags.craft] ?? SHOP_COPY[tags.shop] ?? "Automobile workshop";
   }
 
   if (!kind) return null;
@@ -533,6 +656,8 @@ export function tagsFromNominatim(hit) {
   else if (EAT_COPY[type] || (category === "amenity" && EAT_COPY[type])) tags.amenity = type;
   else if (["hotel", "guest_house", "hostel", "motel", "apartment", "chalet"].includes(type)) {
     tags.tourism = type;
+  } else if (category === "craft" && (type === "motorcycle_repair" || type === "car_repair")) {
+    tags.craft = type;
   } else if (["motorcycle", "car_repair", "car_parts", "tyres"].includes(type)) {
     tags.shop = type;
   } else if (type === "restaurant" || type === "cafe") {
@@ -629,6 +754,10 @@ const GOOGLE_TOKENS = {
     "garage",
     "service center",
     "service centre",
+    "motorcycle_repair",
+    "bike service",
+    "enfield",
+    "showroom",
     "automobile",
     "spare parts",
     "tyre",
@@ -1139,9 +1268,23 @@ export async function searchNearby({
   const notes = [];
   const note = (source, error) => notes.push(`${source}: ${error?.message ?? error}`);
 
-  const area = await areaFor({ place, lat, lng, kind, fetchImpl: run, timeoutMs: areaTimeoutMs });
+  const area = await areaFor({ place, lat, lng, fetchImpl: run, timeoutMs: areaTimeoutMs });
+  const areaOut = { label: area.label, spanKm: area.spanKm, city: area.city, bounds: area.bounds };
+
+  // No town boundary, no list. A circle drawn around the pin is what used to
+  // put Nangal's hotels in Anandpur's tab, so the honest answer is nothing,
+  // with the reason — not somebody else's town.
+  if (!area.bounds) {
+    return {
+      source: "none",
+      area: areaOut,
+      reason: "no-area",
+      items: [],
+      tried: [],
+      notes: ["area: no settlement boundary found"],
+    };
+  }
   const bounds = area.bounds;
-  const areaOut = { label: area.label, spanKm: area.spanKm, city: area.city, bounds };
 
   const wave = [
     {
