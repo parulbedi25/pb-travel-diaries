@@ -15,6 +15,7 @@
     "db:status": "node server/scripts/db-status.js",
     "db:migrate": "node server/scripts/db-migrate.js",
     "backup:now": "node server/scripts/backup-now.js",
+    "export:static": "node server/scripts/export-static.js",
     "hosting:check": "node server/scripts/hosting-check.js"
   },
   "dependencies": {

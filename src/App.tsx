@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { isStaticBuild } from "./utils/staticSite";
 import {
   SiteProvider,
   canEditSite,
@@ -275,7 +276,11 @@ function LandingPage() {
 }
 
 function Shell() {
-  const route = useHashRoute();
+  const rawRoute = useHashRoute();
+  // An exported site has no server behind it, so there is nothing to sign in
+  // to: the dashboard is sent home rather than opened onto a login that can
+  // only fail. Everything else is a normal page.
+  const route = isStaticBuild() && ADMIN_PATHS.has(rawRoute) ? "" : rawRoute;
   const { content, ready, loadError } = useSite();
   const [loading, setLoading] = useState(true);
 
