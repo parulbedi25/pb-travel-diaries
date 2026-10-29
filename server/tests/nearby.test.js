@@ -8,7 +8,23 @@
  * checked on their own, with the shapes the real services return.
  */
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+
+// The endpoint tests boot the real app, so the driver has to be the in-memory
+// one before anything imports the database.
+const mediaDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-nearby-media-"));
+const distDir = await fs.mkdtemp(path.join(os.tmpdir(), "pb-nearby-dist-"));
+process.env.DB_DRIVER = "memory";
+process.env.MEDIA_DIR = mediaDir;
+process.env.DIST_DIR = distDir;
+process.env.NODE_ENV = "test";
+process.env.RATE_LIMIT_PER_MINUTE = "0";
+process.env.BCRYPT_ROUNDS = "4";
+process.env.SETUP_LOCKED = "0";
+process.env.GOOGLE_PLACES_API_KEY = "";
 
 const {
   KIND_RADIUS_KM,
@@ -20,6 +36,9 @@ const {
   itemsFromNominatim,
   itemsFromGoogle,
   rankItems,
+  photonTerms,
+  tagsFromPhoton,
+  itemsFromPhoton,
   searchNearby,
   searchNearbyCached,
   clearNearbyCache,
@@ -144,7 +163,8 @@ test("a busy mirror is skipped, and the next one answers", async () => {
   assert.equal(result.source, "overpass");
   assert.equal(result.items.length, 2, "the two beds in the answer, and nothing else");
   assert.equal(fetchImpl.calls.length, 2, "the first mirror was tried, then the second");
-  assert.match(result.tried[0], /504/);
+  assert.match(result.notes[0], /504/);
+  assert.equal(result.tried[0], "OpenStreetMap", "the page is told the source, not the mirror's name");
   assert.equal(fetchImpl.calls[0].headers["User-Agent"].includes("pb-travel-diaries"), true, "Overpass is told who is asking");
 });
 
@@ -162,10 +182,11 @@ test("with every mirror down, the geocoder answers instead", async () => {
   assert.equal(result.items.length, 2, "both terms were asked, and the two places are found once each");
   assert.equal(result.items[0].title, "Chospa Guest House", "the guest house still comes first");
   assert.match(fetchImpl.calls.at(-1).url, /nominatim\.openstreetmap\.org/);
-  assert.equal(result.tried.length, 3, "all three mirrors are on the record");
+  assert.equal(result.tried.filter((line) => line.includes("around")).length, 0);
+  assert.ok(result.notes.some((line) => line.includes("overpass")), "the busy mirrors are on the record");
 });
 
-test("with nothing on the map answering, a Google key is spent on the same question", async () => {
+test("a configured key is spent first, on the same question", async () => {
   const fetchImpl = fakeFetch((url) => {
     if (url.includes("overpass") || url.includes("nominatim")) throw new Error("down");
     return ok({
@@ -188,6 +209,7 @@ test("with nothing on the map answering, a Google key is spent on the same quest
 
   const result = await searchNearby({ kind: "essentials", ...leh, fetchImpl, googleKey: "test-key" });
   assert.equal(result.source, "google");
+  assert.equal(fetchImpl.calls.every((call) => call.url.includes("googleapis")), true, "no mirror was asked first");
   assert.equal(result.items[0].title, "Royal Enfield Service Leh", "the marque still comes first");
   const googleCalls = fetchImpl.calls.filter((call) => call.url.includes("googleapis"));
   assert.ok(googleCalls.length >= 2, "fuel/hospitals and the workshop keyword were both asked");
@@ -300,6 +322,207 @@ test("the endpoint answers a page that asks for beds, and refuses nonsense", asy
     assert.equal((await fetch(`${base}/api/nearby?kind=stays&lat=34&lng=abc`)).status, 400);
   } finally {
     globalThis.fetch = realFetch;
+    clearNearbyCache();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("photon is asked by term, and its features read like any other map item", async () => {
+  const fetchImpl = fakeFetch(() => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return {
+        features: [
+          {
+            geometry: { coordinates: [77.58, 34.16] },
+            properties: { osm_type: "node", osm_id: 5, osm_key: "tourism", osm_value: "guest_house", name: "Chospa Guest House", opening_hours: "24/7" },
+          },
+          {
+            geometry: { coordinates: [77.59, 34.17] },
+            properties: { osm_type: "node", osm_id: 6, osm_key: "tourism", osm_value: "hotel", name: "Grand Dragon" },
+          },
+          {
+            geometry: { coordinates: [77.60, 34.18] },
+            properties: { osm_type: "node", osm_id: 7, osm_key: "shop", osm_value: "bakery", name: "Bakery" },
+          },
+        ],
+      };
+    },
+  }));
+
+  const result = await searchNearby({
+    kind: "stays",
+    ...leh,
+    fetchImpl,
+    mirrors: [],
+    googleKey: "",
+  });
+
+  assert.equal(result.source, "photon");
+  assert.deepEqual(result.items.map((i) => i.title), ["Chospa Guest House", "Grand Dragon"]);
+  assert.equal(result.items[0].opening, "24/7");
+  assert.ok(fetchImpl.calls.every((call) => call.url.includes("photon.komoot.io")));
+  assert.ok(fetchImpl.calls.every((call) => call.url.includes("lat=34.1526")), "the point biases every term");
+  assert.deepEqual(photonTerms("stays"), ["hotel", "guest house", "hostel"]);
+
+  assert.deepEqual(tagsFromPhoton({ osm_key: "amenity", osm_value: "fuel", name: "Pump" }), { amenity: "fuel", name: "Pump" });
+  assert.deepEqual(tagsFromPhoton({ osm_key: "tourism", osm_value: "hostel", name: "H" }), { tourism: "hostel", name: "H" });
+  assert.deepEqual(tagsFromPhoton({ osm_key: "shop", osm_value: "motorcycle", name: "RE" }), { shop: "motorcycle", name: "RE" });
+  assert.equal(itemsFromPhoton([{ geometry: { coordinates: [] } }], leh).length, 0);
+});
+
+test("photon is asked only after every mirror, and before nominatim", async () => {
+  const fetchImpl = fakeFetch((url) => {
+    if (url.includes("overpass")) throw new Error("down");
+    if (url.includes("photon")) throw new Error("blocked");
+    return ok([{ osm_type: "node", osm_id: 1, lat: "34.16", lon: "77.58", name: "Pump", class: "amenity", type: "fuel" }]);
+  });
+  const result = await searchNearby({ kind: "essentials", ...leh, fetchImpl, googleKey: "" });
+  assert.equal(result.source, "nominatim");
+  const order = fetchImpl.calls.map((call) =>
+    call.url.includes("overpass") ? "overpass" : call.url.includes("photon") ? "photon" : "nominatim",
+  );
+  assert.deepEqual(order.slice(0, 4), ["overpass", "overpass", "overpass", "photon"]);
+  assert.equal(order.at(-1), "nominatim");
+});
+
+test("an empty answer says what it tried, and whether a key was even available", async () => {
+  const fetchImpl = fakeFetch(() => {
+    throw new Error("offline");
+  });
+  const result = await searchNearby({ kind: "stays", ...leh, fetchImpl, googleKey: "" });
+  assert.equal(result.source, "none");
+  assert.equal(result.keyConfigured, false);
+  assert.deepEqual(result.tried, ["OpenStreetMap", "Photon", "Nominatim"], "each source once, in the order tried");
+  const notes = result.notes.join(" | ");
+  for (const source of ["overpass-api.de", "photon", "nominatim"]) {
+    assert.ok(notes.includes(source), `${source} is on the record`);
+  }
+});
+
+test("the owner's Google key is stored, never echoed, and used for the search", async () => {
+  const { createApp } = await import("../app.js");
+  const { getRepo } = await import("../db/index.js");
+  clearNearbyCache();
+
+  const repo = await getRepo();
+  await repo.setSetting("nearby_google_key", JSON.stringify(""));
+
+  const realFetch = globalThis.fetch;
+  const outbound = [];
+  globalThis.fetch = async (url, options) => {
+    const href = String(url);
+    if (href.includes("googleapis")) {
+      outbound.push(href);
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            results: [
+              { place_id: "g1", name: "Royal Enfield Service Leh", geometry: { location: { lat: 34.16, lng: 77.58 } }, types: ["car_repair"] },
+            ],
+          };
+        },
+      };
+    }
+    if (href.includes("overpass") || href.includes("photon") || href.includes("nominatim")) {
+      outbound.push(href);
+      return { ok: false, status: 503, async json() { return {}; } };
+    }
+    return realFetch(url, options);
+  };
+
+  const server = createApp().listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  const jar = { session: "" };
+  const call = async (method, path, body) => {
+    const headers = {};
+    if (jar.session) headers.Cookie = `pb_session=${jar.session}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const response = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    for (const line of response.headers.getSetCookie?.() ?? []) {
+      const match = /pb_session=([^;]*)/.exec(line);
+      if (match) jar.session = match[1];
+    }
+    const text = await response.text();
+    return { status: response.status, json: text ? JSON.parse(text) : null };
+  };
+
+  try {
+    // The first account is the owner; the second is a member who may not see the key.
+    assert.equal((await call("POST", "/api/auth/signup", { username: "parul", password: "ride2026" })).status, 201);
+    assert.equal((await call("PUT", "/api/settings/site", { title: "PB Travel Diaries", allowSignup: true })).status, 200);
+
+    const before = await call("GET", "/api/nearby/key");
+    assert.equal(before.status, 200);
+    assert.equal(before.json.configured, false);
+
+    const tooShort = await call("PUT", "/api/nearby/key", { key: "abc" });
+    assert.equal(tooShort.status, 400);
+
+    const key = "AIzaSyD-test-key-0123456789abcdefghij";
+    const saved = await call("PUT", "/api/nearby/key", { key });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.hint, `…${key.slice(-4)}`, "only the last four characters come back");
+    assert.ok(!JSON.stringify(saved.json).includes(key), "the key itself is never echoed");
+
+    const after = await call("GET", "/api/nearby/key");
+    assert.equal(after.json.configured, true);
+    assert.ok(!JSON.stringify(after.json).includes(key));
+
+    // With the key stored, the search uses Google and says so.
+    clearNearbyCache();
+    const search = await call("GET", "/api/nearby?kind=essentials&lat=34.1526&lng=77.5771");
+    assert.equal(search.status, 200);
+    assert.equal(search.json.source, "google");
+    assert.equal(search.json.items[0].title, "Royal Enfield Service Leh");
+    assert.equal(search.json.googleKey, true);
+    assert.ok(outbound.some((url) => url.includes("key=AIza")), "the stored key was used");
+
+    // A member is refused all three key endpoints.
+    await repo.setSetting("nearby_google_key", JSON.stringify(""));
+    const member = { session: "" };
+    await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "parul", password: "ride2026" }) });
+    const memberCall = async (method, path, body) => {
+      const headers = { Cookie: `pb_session=${member.session}` };
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      const response = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      for (const line of response.headers.getSetCookie?.() ?? []) {
+        const match = /pb_session=([^;]*)/.exec(line);
+        if (match) member.session = match[1];
+      }
+      return response.status;
+    };
+    // The owner is the only account here, so "not the owner" is a new sign-up.
+    const other = { session: "" };
+    const signup = await fetch(`${base}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "asha", password: "ride2026" }),
+    });
+    for (const line of signup.headers.getSetCookie?.() ?? []) {
+      const match = /pb_session=([^;]*)/.exec(line);
+      if (match) other.session = match[1];
+    }
+    const asMember = async (method, path, body) => {
+      const headers = { Cookie: `pb_session=${other.session}` };
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      return (await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })).status;
+    };
+    assert.equal(await asMember("GET", "/api/nearby/key"), 403);
+    assert.equal(await asMember("PUT", "/api/nearby/key", { key }), 403);
+    assert.equal(await asMember("DELETE", "/api/nearby/key"), 403);
+
+    // And the owner can take it out again.
+    assert.equal((await call("DELETE", "/api/nearby/key")).status, 200);
+    assert.equal((await call("GET", "/api/nearby/key")).json.configured, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    await repo.setSetting("nearby_google_key", JSON.stringify(""));
     clearNearbyCache();
     await new Promise((resolve) => server.close(resolve));
   }

@@ -9,16 +9,19 @@
  *
  * So the search happens here, where it can be retried and fall back:
  *
- *  1. **Overpass**, across several mirrors in turn — the main instance, then
+ *  1. **Google Places**, when a key is configured — in the dashboard's
+ *     Nearby settings, or `GOOGLE_PLACES_API_KEY` in the environment. It is
+ *     tried first because it is the most complete answer, and it costs the
+ *     owner money by the request. Google has no keyless API, so a site
+ *     without a key simply does not have this step.
+ *  2. **Overpass**, across several mirrors in turn — the main instance, then
  *     two independent community servers. One `out center` query per question,
  *     with a User-Agent naming this site, as Overpass asks.
- *  2. **Nominatim**, OpenStreetMap's own geocoder, when every Overpass mirror
- *     is down. It answers category searches inside a bounding box, which is
- *     exactly the same data asked a different way.
- *  3. **Google Places**, only when a `GOOGLE_PLACES_API_KEY` is configured.
- *     Google has no keyless API, so it cannot be a default; when a key is
- *     there it is tried last, because its terms and quota are the site
- *     owner's to spend.
+ *  3. **Photon**, a keyless geocoder built on the same OpenStreetMap data,
+ *     asked by tag around a point. Fast, and it does not share a server with
+ *     Overpass, so it answers on the evenings Overpass is loaded.
+ *  4. **Nominatim**, OpenStreetMap's own geocoder, category-searching a
+ *     bounding box: the same data asked a different way one last time.
  *
  * Whatever answers, the shape handed back is the same, and the answer is
  * cached for ten minutes so flipping between tabs costs nothing.
@@ -44,6 +47,7 @@ export const OVERPASS_MIRRORS = [
 ];
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const PHOTON_URL = "https://photon.komoot.io/api";
 const GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
 
 /** Overpass asks callers to identify themselves; this is who we are. */
@@ -85,6 +89,28 @@ export function viewboxOf(lat, lng, radiusKm) {
   const dLat = radiusKm / 111;
   const dLng = radiusKm / Math.max(0.2, 111 * Math.cos((lat * Math.PI) / 180));
   return [lng - dLng, lat + dLat, lng + dLng, lat - dLat].map((n) => n.toFixed(5)).join(",");
+}
+
+/** What Photon is asked: one free-text term per category, biased to the point. */
+export function photonTerms(kind) {
+  return kind === "stays"
+    ? ["hotel", "guest house", "hostel"]
+    : ["petrol station", "hospital", "motorcycle repair"];
+}
+
+/** Photon's `osm_key`/`osm_value` pair, read as the tags they stand for. */
+export function tagsFromPhoton(properties) {
+  const key = String(properties.osm_key ?? "");
+  const value = String(properties.osm_value ?? "");
+  const tags = {};
+  if (key === "amenity") tags.amenity = value;
+  else if (key === "tourism") tags.tourism = value;
+  else if (key === "shop") tags.shop = value;
+  else if (key === "service" && value === "vehicle") tags["service:vehicle:motorcycle"] = "yes";
+  const name = properties.name ?? properties.street;
+  if (name) tags.name = String(name);
+  if (properties.opening_hours) tags.opening_hours = String(properties.opening_hours);
+  return tags;
 }
 
 /* ------------------------------------------------------------------ *
@@ -201,6 +227,25 @@ export function tagsFromNominatim(hit) {
   if (hit.extratags?.brand) tags.brand = hit.extratags.brand;
   if (hit.extratags?.opening_hours) tags.opening_hours = hit.extratags.opening_hours;
   return tags;
+}
+
+/** Photon features as items, skipping the ones that are not what was asked for. */
+export function itemsFromPhoton(features, origin) {
+  const items = [];
+  for (const feature of Array.isArray(features) ? features : []) {
+    const coordinates = feature?.geometry?.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+    const [lng, lat] = coordinates.map(Number);
+    const item = itemFromTags(
+      tagsFromPhoton(feature.properties ?? {}),
+      `photon/${feature.properties?.osm_type ?? "node"}/${feature.properties?.osm_id ?? `${lat},${lng}`}`,
+      lat,
+      lng,
+      origin,
+    );
+    if (item) items.push(item);
+  }
+  return items;
 }
 
 /** Nominatim hits as items, skipping the ones that are not what was asked for. */
@@ -344,7 +389,31 @@ async function askNominatim(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) 
   return all;
 }
 
-/** Google Places, only with a key. One call per category. */
+/** Photon, one term at a time, around the point. */
+async function askPhoton(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs }) {
+  const all = [];
+  for (const term of photonTerms(kind)) {
+    const params = new URLSearchParams({
+      q: term,
+      lat: String(lat),
+      lon: String(lng),
+      limit: "25",
+      // A bias, not a box: Photon sorts by distance from the point, and the
+      // radius is applied here rather than left to the service.
+      lang: "en",
+    });
+    const response = await fetchImpl(`${PHOTON_URL}?${params}`, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await readJson(response, "Photon");
+    const found = itemsFromPhoton(json.features, { lat, lng }).filter((item) => item.distanceKm <= radiusKm);
+    all.push(...found);
+  }
+  return all;
+}
+
+/** Google Places, one call per category. */
 async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, key }) {
   const types = kind === "stays" ? ["lodging"] : ["gas_station", "hospital"];
   const all = [];
@@ -383,46 +452,82 @@ async function askGoogle(kind, lat, lng, radiusKm, { fetchImpl, timeoutMs, key }
 /**
  * Search around a point, trying every source that can answer.
  *
+ * The order is the answer to "which is most likely to work, and best": a
+ * configured Google key first (it is the most complete, and the owner has
+ * deliberately paid for it), then OpenStreetMap three ways — Overpass, its
+ * mirrors, Photon, and Nominatim — and nothing at all as the last resort.
+ *
  * Never throws for a busy service: the caller gets whatever the first
  * answering source found, and `source` says which one it was so the page can
- * be honest about it. `tried` is there for the log, not the page.
+ * be honest about it. `tried` is there for the log and for the page's own
+ * "what did you try" line.
  */
-export async function searchNearby({ kind, lat, lng, fetchImpl, mirrors = OVERPASS_MIRRORS, timeoutMs = 20_000, googleKey = process.env.GOOGLE_PLACES_API_KEY } = {}) {
+export async function searchNearby({
+  kind,
+  lat,
+  lng,
+  fetchImpl,
+  mirrors = OVERPASS_MIRRORS,
+  timeoutMs = 20_000,
+  googleKey = process.env.GOOGLE_PLACES_API_KEY,
+} = {}) {
   const radiusKm = KIND_RADIUS_KM[kind];
   if (!radiusKm) throw new Error(`Unknown nearby kind: ${kind}`);
   const origin = { lat, lng };
   const run = fetchImpl ?? globalThis.fetch;
+  // `tried` is what the page shows: the sources that were asked, in order,
+  // once each, in words a rider reads. `notes` keeps the technical detail —
+  // which mirror, which status — for the server log and for tests.
   const tried = [];
+  const notes = [];
+  const mark = (label, note) => {
+    if (!tried.includes(label)) tried.push(label);
+    if (note) notes.push(note);
+  };
+  const key = String(googleKey ?? "").trim();
+
+  // A configured key is used first: richer results, and the owner opted in.
+  if (key) {
+    try {
+      const items = await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs, key });
+      if (items.length) return { source: "google", radiusKm, items: rankItems(items, kind), tried, notes };
+      mark("Google Places", "google: nothing nearby");
+    } catch (error) {
+      mark("Google Places", `google: ${error.message}`);
+    }
+  }
 
   for (const mirror of mirrors) {
     try {
       const items = await askOverpass(mirror, kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
       // An empty answer from a working server is a real answer: nothing is
-      // tagged there, and asking two more servers for the same nothing only
-      // wastes a minute of the rider's time.
-      return { source: "overpass", radiusKm, items: rankItems(items, kind), tried };
+      // tagged there, and asking more servers for the same nothing only wastes
+      // a minute of the rider's time. It is only believed while the other
+      // sources have not already been found wanting.
+      if (items.length) return { source: "overpass", radiusKm, items: rankItems(items, kind), tried, notes };
+      mark("OpenStreetMap", `${new URL(mirror).host}: nothing nearby`);
     } catch (error) {
-      tried.push(`${new URL(mirror).host}: ${error.message}`);
+      mark("OpenStreetMap", `${new URL(mirror).host}: ${error.message}`);
     }
   }
 
   try {
-    const items = await askNominatim(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
-    return { source: "nominatim", radiusKm, items: rankItems(items, kind), tried };
+    const items = await askPhoton(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+    if (items.length) return { source: "photon", radiusKm, items: rankItems(items, kind), tried, notes };
+    mark("Photon", "photon: nothing nearby");
   } catch (error) {
-    tried.push(`nominatim: ${error.message}`);
+    mark("Photon", `photon: ${error.message}`);
   }
 
-  if (googleKey) {
-    try {
-      const items = await askGoogle(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs, key: googleKey });
-      return { source: "google", radiusKm, items: rankItems(items, kind), tried };
-    } catch (error) {
-      tried.push(`google: ${error.message}`);
-    }
+  try {
+    const items = await askNominatim(kind, lat, lng, radiusKm, { fetchImpl: run, timeoutMs });
+    if (items.length) return { source: "nominatim", radiusKm, items: rankItems(items, kind), tried, notes };
+    mark("Nominatim", "nominatim: nothing nearby");
+  } catch (error) {
+    mark("Nominatim", `nominatim: ${error.message}`);
   }
 
-  return { source: "none", radiusKm, items: [], tried };
+  return { source: "none", radiusKm, items: [], tried, notes, keyConfigured: Boolean(key) };
 }
 
 /** The cached answer for a point, or a fresh one. */

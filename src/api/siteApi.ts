@@ -185,6 +185,31 @@ export const siteApi = {
     await api.put("/api/settings/theme", { theme });
   },
 
+  /* ── the nearby page's Google key ──────────────────────────────────────
+   * Kept on the server and used there: the browser is only ever told whether
+   * a key is configured, and the last four characters of it.
+   */
+  googleKey(): Promise<{ configured: boolean; hint: string; source: string }> {
+    return api.get("/api/nearby/key");
+  },
+
+  saveGoogleKey(key: string): Promise<{ configured: boolean; hint: string; source: string }> {
+    return api.put("/api/nearby/key", { key });
+  },
+
+  clearGoogleKey(): Promise<{ configured: boolean; hint: string; source: string }> {
+    return api.delete("/api/nearby/key");
+  },
+
+  /** One real search, so the key can be proved rather than assumed. */
+  testNearby(lat: number, lng: number, kind: "stays" | "essentials"): Promise<{
+    source: string;
+    items: { title: string }[];
+    googleKey: boolean;
+  }> {
+    return api.get(`/api/nearby?kind=${kind}&lat=${lat}&lng=${lng}`);
+  },
+
   /* ── accounts ────────────────────────────────────────────────────────── */
 
   status: () => api.get<AuthStatus>("/api/auth/status"),

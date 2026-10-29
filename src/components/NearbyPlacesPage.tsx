@@ -85,9 +85,11 @@ const GOOGLE_TERMS: Record<TabId, string> = {
 
 /** The source each tab's list came from, in words a rider reads once. */
 const SOURCE_COPY: Record<string, string> = {
-  overpass: "OpenStreetMap",
-  nominatim: "OpenStreetMap (Nominatim)",
   google: "Google Places",
+  overpass: "OpenStreetMap (Overpass)",
+  photon: "OpenStreetMap (Photon)",
+  nominatim: "OpenStreetMap (Nominatim)",
+  none: "no source answered",
 };
 
 /**
@@ -275,6 +277,16 @@ export default function NearbyPlacesPage() {
     stays: stays.source,
     essentials: essentials.source,
   };
+  /**
+   * What the empty state is allowed to say.
+   *
+   * When every source comes back empty that is a real answer and it is said
+   * plainly. When the sources were busy the order they were tried in is
+   * printed, so "nothing here" never stands in for "nothing answered".
+   */
+  const active = tab === "stays" ? stays : essentials;
+  const activeTried = tab === "places" ? [] : active.tried;
+  const activeKey = tab === "places" ? false : active.googleKey;
   const googleSearchUrl = (which: TabId) =>
     `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       `${GOOGLE_TERMS[which]} near ${origin.name}`,
@@ -375,11 +387,15 @@ export default function NearbyPlacesPage() {
       : tab === "stays"
         ? {
             title: `No beds tagged within ${STAY_RADIUS_KM} km`,
-            body: `OpenStreetMap has no hotel, guest house or hostel mapped this close to ${origin.name}. The next town along is the likeliest place for one.`,
+            body: `Google and OpenStreetMap have no hotel, guest house or hostel mapped this close to ${origin.name}. Try a bigger town from the list above, or open the search in Google Maps.${
+              activeKey ? "" : " A Google Places key in the dashboard widens what can be found here."
+            }`,
           }
         : {
             title: `Nothing tagged within ${ESSENTIALS_RADIUS_KM} km`,
-            body: `No fuel, workshop or hospital is mapped this close to ${origin.name}. Widen your search by picking a bigger town from the list above.`,
+            body: `No fuel, workshop or hospital is mapped this close to ${origin.name}. Try a bigger town from the list above, or open the search in Google Maps.${
+              activeKey ? "" : " A Google Places key in the dashboard widens what can be found here."
+            }`,
           };
 
   const panelBody = (
@@ -543,7 +559,11 @@ export default function NearbyPlacesPage() {
       <p className="border-t border-white/[0.07] px-3.5 py-2 text-[9.5px] leading-relaxed text-zinc-500">
         {tab === "places"
           ? "Places & photos: Wikipedia · Wikimedia Commons (CC BY-SA)"
-          : `${SOURCE_COPY[source[tab]] ?? "Beds, fuel, workshops & hospitals"} · © OpenStreetMap contributors (ODbL)`}
+          : source[tab] && source[tab] !== "none"
+            ? `${SOURCE_COPY[source[tab]] ?? "OpenStreetMap"} · © OpenStreetMap contributors (ODbL)`
+            : `Tried ${activeTried.length ? activeTried.join(" → ") : "every source"}${
+                activeKey ? "" : " · no Google key set"
+              }`}
       </p>
     </>
   );
