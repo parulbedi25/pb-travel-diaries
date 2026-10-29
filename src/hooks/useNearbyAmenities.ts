@@ -168,7 +168,9 @@ async function askMirror(group: AmenityGroup, lat: number, lng: number, mirror: 
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: `data=${encodeURIComponent(overpassQuery(group, lat, lng, radius))}`,
-    signal: AbortSignal.timeout(20_000),
+    // Six seconds, not twenty: this is a fallback behind a server that already
+    // has its own deadline, and a rider is watching a spinner.
+    signal: AbortSignal.timeout(6_000),
   });
   if (!response.ok) throw new Error(`Overpass answered ${response.status}`);
   const json = (await response.json()) as { elements?: OverpassElement[] };
@@ -176,6 +178,31 @@ async function askMirror(group: AmenityGroup, lat: number, lng: number, mirror: 
   return (json.elements ?? [])
     .map((element) => amenityFrom(element, origin))
     .filter((item): item is Amenity => item !== null);
+}
+
+/**
+ * The first of several promises to come back with something in it, or null
+ * once all of them have failed or answered with nothing.
+ */
+function firstNonEmpty<T>(work: Promise<T[]>[]): Promise<T[] | null> {
+  return new Promise((resolve) => {
+    let pending = work.length;
+    if (!pending) {
+      resolve(null);
+      return;
+    }
+    for (const promise of work) {
+      promise.then(
+        (value) => {
+          if (value.length) resolve(value);
+          else if (--pending === 0) resolve(null);
+        },
+        () => {
+          if (--pending === 0) resolve(null);
+        },
+      );
+    }
+  });
 }
 
 export interface AmenityQuery {
@@ -194,6 +221,8 @@ export interface AmenityResult {
   tried: string[];
   /** Which service answered, or "" while nothing has. */
   source: AmenitySource;
+  /** False until the first attempt has finished — the tab waits for this. */
+  settled: boolean;
   loadingSource: string;
   reload: () => void;
 }
@@ -209,7 +238,8 @@ export function useNearbyAmenities({
   const [error, setError] = useState("");
   const [source, setSource] = useState<AmenitySource>("");
   const [tried, setTried] = useState<string[]>([]);
-  const [loadingSource, setLoadingSource] = useState("OpenStreetMap");
+  const [loadingSource, setLoadingSource] = useState("Google & OpenStreetMap");
+  const [settled, setSettled] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const cache = useRef(new Map<string, Amenity[]>());
   const requestId = useRef(0);
@@ -234,61 +264,71 @@ export function useNearbyAmenities({
     let cancelled = false;
     setLoading(true);
     setError("");
-    setLoadingSource("OpenStreetMap");
+    setLoadingSource("Google & OpenStreetMap");
 
     const run = async () => {
+      // A hard cap on top of the server's own: whatever happens, the tab stops
+      // waiting and says something rather than spinning.
+      const capped = <T,>(work: Promise<T>, ms: number): Promise<T | null> =>
+        Promise.race([work, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]);
+
       try {
-        // The server answers across three mirrors and Nominatim; it is the
-        // route that works when a browser-to-Overpass request would not.
-        const viaServer = await api
-          .get<{ items: Amenity[]; source: AmenitySource; tried?: string[] }>(
-            `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
-          )
-          .catch(() => null);
+        // The server asks every source at once and answers with the first that
+        // has anything; this is the route that works, and the only one needed.
+        const viaServer = await capped(
+          api
+            .get<{ items: Amenity[]; source: AmenitySource; tried?: string[] }>(
+              `/api/nearby?kind=${group}&lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`,
+            )
+            .catch(() => null),
+          12_000,
+        );
         if (cancelled || mine !== requestId.current) return;
 
         if (viaServer) {
           setTried(Array.isArray(viaServer.tried) ? viaServer.tried : []);
-          if (viaServer.items.length || viaServer.source !== "none") {
-            const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
-            cache.current.set(key, ranked);
-            setItems(ranked);
-            setSource(viaServer.source);
-            return;
+          const ranked = rankAmenities(viaServer.items, group).slice(0, 40);
+          cache.current.set(key, ranked);
+          setItems(ranked);
+          setSource(viaServer.source);
+          if (!ranked.length) {
+            setError(
+              group === "stays"
+                ? "No beds came back for this point just now. Try a bigger town, reload, or open the Google Maps search below."
+                : "No fuel, workshops or hospitals came back for this point just now. Try a bigger town, reload, or open the Google Maps search below.",
+            );
           }
+          return;
         }
 
-        // No server, or a server that could not reach anything: ask the
-        // mirrors from here, one at a time.
+        // The server itself did not answer: ask the mirrors from here, all at
+        // once, and take whichever is first with anything.
         setLoadingSource("OpenStreetMap (direct)");
-        for (const mirror of MIRRORS) {
-          try {
-            const found = await askMirror(group, lat, lng, mirror);
-            if (cancelled || mine !== requestId.current) return;
-            const ranked = rankAmenities(found, group).slice(0, 40);
-            cache.current.set(key, ranked);
-            setItems(ranked);
-            setSource("overpass");
-            return;
-          } catch {
-            // next mirror
-          }
-        }
+        const direct = await capped(
+          firstNonEmpty(MIRRORS.map((mirror) => askMirror(group, lat, lng, mirror))).catch(() => []),
+          8_000,
+        );
         if (cancelled || mine !== requestId.current) return;
+        const ranked = rankAmenities(direct ?? [], group).slice(0, 40);
+        if (ranked.length) {
+          cache.current.set(key, ranked);
+          setItems(ranked);
+          setSource("overpass");
+          return;
+        }
         setItems([]);
         setSource("none");
-        setError(
-          group === "stays"
-            ? "OpenStreetMap could not be reached for the beds around here — all three mirrors were busy. Try again in a minute, or open the Google Maps search below."
-            : "OpenStreetMap could not be reached for fuel and hospitals around here — all three mirrors were busy. Try again in a minute, or open the Google Maps search below.",
-        );
+        setError("Could not look this up just now. Try again in a minute, or open the Google Maps search below.");
       } catch {
         if (cancelled || mine !== requestId.current) return;
         setItems([]);
         setSource("none");
         setError("Could not look this up just now. Try again in a minute.");
       } finally {
-        if (!cancelled && mine === requestId.current) setLoading(false);
+        if (!cancelled && mine === requestId.current) {
+          setLoading(false);
+          setSettled(true);
+        }
       }
     };
 
@@ -298,7 +338,7 @@ export function useNearbyAmenities({
     };
   }, [lat, lng, group, enabled, attempt]);
 
-  return { items, loading, error, source, tried, loadingSource, reload };
+  return { items, loading, error, source, tried, settled, loadingSource, reload };
 }
 
 interface OverpassElement {

@@ -238,27 +238,18 @@ export default function NearbyPlacesPage() {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState({ width: 900, height: 520, insets: DEFAULT_INSETS });
 
-  // The three questions. Stays and essentials are only asked for once their tab
-  // has been opened: a rider looking for a temple should not wait on a fuel
-  // query, and Overpass should not be asked twice for nothing.
+  // The three questions. Stays and essentials are asked the moment the page
+  // knows where it is, together with the places, so a tab is ready by the time
+  // it is clicked rather than starting its search then. Both are asked at once
+  // — the server answers each from whichever source replies first.
   const placesQuery = useNearbyPlaces({
     lat: origin.lat,
     lng: origin.lng,
     radiusKm,
     count,
   });
-  const stays = useNearbyAmenities({
-    lat: origin.lat,
-    lng: origin.lng,
-    group: "stays",
-    enabled: tab === "stays",
-  });
-  const essentials = useNearbyAmenities({
-    lat: origin.lat,
-    lng: origin.lng,
-    group: "essentials",
-    enabled: tab === "essentials",
-  });
+  const stays = useNearbyAmenities({ lat: origin.lat, lng: origin.lng, group: "stays" });
+  const essentials = useNearbyAmenities({ lat: origin.lat, lng: origin.lng, group: "essentials" });
 
   const items = useMemo<PinItem[]>(() => {
     if (tab === "places") return placesToItems(placesQuery.places);
@@ -799,6 +790,10 @@ export default function NearbyPlacesPage() {
               {TABS.map((entry) => {
                 const Icon = entry.icon;
                 const active = tab === entry.id;
+                // A tab that is still being filled is shown busy and cannot be
+                // opened: clicking it would only show a half-built list.
+                const asked = entry.id === "stays" ? stays : entry.id === "essentials" ? essentials : null;
+                const busy = Boolean(asked?.loading && !asked.settled);
                 return (
                   <button
                     key={entry.id}
@@ -806,17 +801,30 @@ export default function NearbyPlacesPage() {
                     role="tab"
                     aria-selected={active}
                     aria-controls="nearby-panel"
+                    aria-busy={busy}
+                    aria-disabled={busy}
+                    disabled={busy}
                     onClick={() => changeTab(entry.id)}
-                    title={entry.label}
+                    title={busy ? `${entry.label} — searching…` : entry.label}
                     className={cn(
                       "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-semibold transition-colors",
                       active
                         ? "bg-saffron-400 text-on-gold shadow-sm"
                         : "text-zinc-400 hover:bg-white/[0.06] hover:text-white",
+                      busy && "cursor-wait opacity-60 hover:bg-transparent",
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                    ) : (
+                      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    )}
                     <span className="truncate">{entry.short}</span>
+                    {!busy && asked && asked.items.length > 0 && (
+                      <span className="shrink-0 rounded-full bg-white/15 px-1.5 text-[9px] font-bold tabular-nums">
+                        {asked.items.length}
+                      </span>
+                    )}
                   </button>
                 );
               })}
