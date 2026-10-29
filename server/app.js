@@ -12,6 +12,7 @@ import { mediaRouter } from "./routes/media.js";
 import { backupsRouter } from "./routes/backups.js";
 import { mapsRouter } from "./routes/maps.js";
 import { memberRouter } from "./routes/member.js";
+import { nearbyRouter } from "./routes/nearby.js";
 import { alertsRouter } from "./routes/alerts.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
@@ -188,6 +189,7 @@ const SITE_CSP = [
   // A member's own garage and rides. Session-scoped, owner-scoped, and
   // deliberately apart from the site's content: nothing here publishes.
   api.use(memberRouter);
+  api.use(nearbyRouter);
   api.use(alertsRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
