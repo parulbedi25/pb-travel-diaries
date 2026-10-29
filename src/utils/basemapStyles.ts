@@ -26,13 +26,17 @@ function chosenLook(settings: MapSettings, theme: Theme): MapLook {
 /**
  * The order the styles are tried in.
  *
- * One entry, or none: the chosen drawing's style document. Satellite returns
- * nothing on purpose — its tiles *are* the map, and asking for a style anyway
- * would be a request whose answer is never drawn.
+ * The chosen drawing's style document, twice. Twice because failing to fetch a
+ * style once is usually a bad moment on the network rather than a bad style,
+ * and a second try costs one request — while giving up costs the map. The map
+ * is rebuilt for the retry, so nothing half-drawn is reused.
+ *
+ * Satellite returns nothing on purpose — its tiles *are* the map, and asking
+ * for a style anyway would be a request whose answer is never drawn.
  */
 export function styleChain(settings: MapSettings, theme: Theme): string[] {
   const look = chosenLook(settings, theme);
   if (look.imagery) return [];
   const url = styleUrlFor(look, settings.geoapifyKey);
-  return url ? [url] : [];
+  return url ? [url, url] : [];
 }
