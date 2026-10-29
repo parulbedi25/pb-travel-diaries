@@ -37,6 +37,7 @@ import {
   type SavedPlace,
 } from "./memberPlaces";
 import type { MemberTheme } from "./memberTheme";
+import { resolveMapSettings, useSite } from "../store/siteContent";
 
 const inputCls =
   "w-full rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-saffron-400/60 focus:outline-none focus:ring-2 focus:ring-saffron-400/20";
@@ -55,6 +56,9 @@ export default function PlaceFinder({
   ownerId: number | null;
   theme: MemberTheme;
 }) {
+  const { content } = useSite();
+  /** The key the map is drawn with — the lookup is the same account. */
+  const geoapifyKey = resolveMapSettings(content.map).geoapifyKey;
   const [places, setPlaces] = useState<SavedPlace[]>(() => loadSavedPlaces(ownerId));
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,7 +111,7 @@ export default function PlaceFinder({
     setBusy(true);
     setError("");
     try {
-      const found = await findPlaceByName(typed);
+      const found = await findPlaceByName(typed, geoapifyKey);
       if (!found) {
         setError(
           `Could not find “${typed}”. Try the town and the state together — or save it by its coordinates.`,

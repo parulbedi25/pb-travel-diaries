@@ -66,7 +66,7 @@ import {
 } from "../api/memberApi";
 import { useAlerts } from "../hooks/useAlerts";
 import AlertBell from "../components/AlertBell";
-import { useSite } from "../store/siteContent";
+import { resolveMapSettings, useSite } from "../store/siteContent";
 import { parseRouteLink } from "../utils/mapLinks";
 import { cn } from "../utils/cn";
 import RideMap from "./RideMap";
@@ -98,19 +98,23 @@ const fileToDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-/** A place name looked up the same way the dashboard looks one up. */
-async function geocodeName(name: string): Promise<{ lat: number; lng: number } | null> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
-    name,
-  )}`;
+/** A place name looked up the same way the dashboard looks one up: Geoapify. */
+async function geocodeName(
+  name: string,
+  key: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const apiKey = key.trim();
+  if (!apiKey) return null;
+  const params = new URLSearchParams({ text: name, lang: "en", limit: "1", format: "json", apiKey });
   try {
-    const response = await fetch(url, { headers: { accept: "application/json" } });
+    const response = await fetch(`https://api.geoapify.com/v1/geocode/search?${params.toString()}`, {
+      headers: { accept: "application/json" },
+    });
     if (!response.ok) return null;
-    const rows = (await response.json()) as { lat: string; lon: string }[];
-    const first = rows?.[0];
-    if (!first) return null;
-    const lat = Number(first.lat);
-    const lng = Number(first.lon);
+    const json = (await response.json()) as { results?: { lat?: number; lon?: number }[] };
+    const first = json.results?.[0];
+    const lat = Number(first?.lat);
+    const lng = Number(first?.lon);
     return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   } catch {
     return null;
@@ -477,6 +481,8 @@ function Gallery({
 
 export default function MemberTracker() {
   const { account, content, siteTitle, theme: siteTheme } = useSite();
+  /** The key the map is drawn with — the checkpoint lookup uses the same one. */
+  const geoapifyKey = resolveMapSettings(content.map).geoapifyKey;
 
   /**
    * The member's own theme.
@@ -669,7 +675,7 @@ export default function MemberTracker() {
         let lat = point.lat;
         let lng = point.lng;
         if ((lat === undefined || lng === undefined) && point.label) {
-          const found = await geocodeName(point.label);
+          const found = await geocodeName(point.label, geoapifyKey);
           if (found) {
             lat = found.lat;
             lng = found.lng;

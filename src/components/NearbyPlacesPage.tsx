@@ -694,7 +694,7 @@ export default function NearbyPlacesPage() {
             width={width}
             height={height}
             className="absolute inset-0"
-            attributionClassName="live-map-attribution pointer-events-none absolute bottom-[calc(46%+1.5rem)] left-3 z-20 text-[9px] lg:bottom-3"
+            attributionClassName="pointer-events-none absolute bottom-[calc(46%+1.5rem)] left-3 z-20 lg:bottom-3"
           />
 
           {/* Where PB is: the same gold pin the live map uses, kept on top. */}

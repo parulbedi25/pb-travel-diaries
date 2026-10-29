@@ -1,37 +1,50 @@
 /**
  * The map looks the site can be drawn in.
  *
- * One catalogue, one answer, for the dashboard and for the maps themselves.
- * Before this, "Map look" offered a provider and then — under CARTO only — one
- * of three CARTO drawings, and whichever you picked applied to both themes. So
- * there was no way to say "Positron by day, Dark Matter by night", and no way to
- * use a drawing from anybody but CARTO.
+ * One catalogue, one provider. Every drawing here is a Geoapify style: a
+ * MapLibre style document that already carries its tiles, fonts, sprites and
+ * attribution, so a look is a single name — `osm-bright`, `positron`,
+ * `dark-matter` — plus the site's key. Spelling matters: these are Geoapify's
+ * own style ids, not names of our own inventing, and there is no style called
+ * plain "carto" (`osm-carto` is the Mapnik drawing, and it arrives as raster
+ * tiles with its place names printed into the picture).
  *
- * A look is now just a drawing: where its style comes from, whether it needs the
- * key, and which theme it was made for. The dashboard asks for one per theme;
- * this module turns each into a style URL, or reports that it is satellite
- * imagery with no style at all.
+ * A look is chosen per theme in the dashboard, so a site can be `osm-bright` by
+ * day and `dark-matter` by night. Every drawing here is a *vector* style, which
+ * matters: the map turns its place names off by hiding the style's text layers,
+ * and that only works on a drawing. Geoapify's `osm-carto` is left out for that
+ * reason — it arrives as raster tiles with the names printed into the picture.
  *
- * Nothing here is a hard dependency. Every vector look falls back to a keyless
- * style of a similar weight when its own host will not answer (see
- * styleChain in ./basemapStyles), because a map in another drawing is worth
- * more than a blank panel.
+ * Satellite is the exception the other way: a photograph of the ground rather
+ * than a style with layers to hide, so it has no names to switch off in the
+ * first place. Geoapify publishes no imagery, so it stays Esri's.
+ *
+ * Nothing here is a hard dependency on the network at import time; the key is
+ * passed in, and a missing key simply yields no style URL (the map then falls
+ * back to the raster tiles, which say in their credit that they are the map).
  */
 
 export type Theme = "light" | "dark";
 
 export type MapLookId =
-  /* CARTO — keyed vector drawings, drawn from OpenStreetMap data. */
+  /* Geoapify's drawings of OpenStreetMap data — one style name each. */
+  | "osm-bright"
+  | "osm-bright-grey"
+  | "osm-bright-smooth"
+  | "klokantech-basic"
+  | "maptiler-3d"
+  | "osm-liberty"
   | "positron"
-  | "voyager"
+  | "positron-blue"
+  | "positron-red"
+  | "toner"
+  | "toner-grey"
   | "dark-matter"
-  /* OpenFreeMap — keyless vector drawings, no account needed. */
-  | "bright"
-  | "liberty"
-  | "osm-dark"
-  /* VersaTiles — keyless vector drawings, a quieter alternative. */
-  | "gray"
-  | "colorful-dark"
+  | "dark-matter-brown"
+  | "dark-matter-dark-grey"
+  | "dark-matter-dark-purple"
+  | "dark-matter-purple-roads"
+  | "dark-matter-yellow-roads"
   /* Esri World Imagery — a photograph of the ground, not a drawing. */
   | "satellite";
 
@@ -43,11 +56,9 @@ export interface MapLook {
   /** Which theme the drawing was made for. Satellite suits both. */
   themes: Theme[];
   /** Who draws it, for the credit and for the panel. */
-  maker: "CARTO" | "OpenFreeMap" | "VersaTiles" | "Esri";
-  /** The style URL, for the keyless looks. */
-  url?: string;
-  /** CARTO's style name — the URL needs the site's key appended. */
-  carto?: "positron-gl-style" | "voyager-gl-style" | "dark-matter-gl-style";
+  maker: "Geoapify" | "Esri";
+  /** Geoapify's style name — the URL needs the site's key appended. */
+  style?: string;
   /** True for raster imagery, which has no style to draw. */
   imagery?: boolean;
 }
@@ -55,36 +66,92 @@ export interface MapLook {
 export const MAP_LOOKS: MapLook[] = [
   /* ── light ───────────────────────────────────────────────────────────── */
   {
-    id: "bright",
+    id: "osm-bright",
     label: "Bright",
     hint: "Clean and light: white ground, crisp roads, soft green",
     themes: ["light"],
-    maker: "OpenFreeMap",
-    url: "https://tiles.openfreemap.org/styles/bright",
+    maker: "Geoapify",
+    style: "osm-bright",
+  },
+  {
+    id: "osm-bright-grey",
+    label: "Bright Grey",
+    hint: "The bright drawing with the colour drained out of it",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "osm-bright-grey",
+  },
+  {
+    id: "osm-bright-smooth",
+    label: "Bright Smooth",
+    hint: "Bright, with the small detail smoothed away — calm at a glance",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "osm-bright-smooth",
+  },
+  {
+    id: "klokantech-basic",
+    label: "Basic",
+    hint: "Flat and neutral: no relief, no texture, only what matters",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "klokantech-basic",
+  },
+  {
+    id: "maptiler-3d",
+    label: "Three Dimensions",
+    hint: "Buildings lifted off the ground — the one with depth",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "maptiler-3d",
+  },
+  {
+    id: "osm-liberty",
+    label: "Liberty",
+    hint: "The modern OpenStreetMap look — bolder roads, softer land",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "osm-liberty",
   },
   {
     id: "positron",
     label: "Positron",
     hint: "Pale and quiet, almost no colour — the calmest of the light ones",
     themes: ["light"],
-    maker: "CARTO",
-    carto: "positron-gl-style",
+    maker: "Geoapify",
+    style: "positron",
   },
   {
-    id: "liberty",
-    label: "Liberty",
-    hint: "The classic OpenStreetMap look: colour, detail, roads in yellow",
+    id: "positron-blue",
+    label: "Positron Blue",
+    hint: "Positron with the water drawn in a decided blue",
     themes: ["light"],
-    maker: "OpenFreeMap",
-    url: "https://tiles.openfreemap.org/styles/liberty",
+    maker: "Geoapify",
+    style: "positron-blue",
   },
   {
-    id: "gray",
-    label: "Grey",
+    id: "positron-red",
+    label: "Positron Red",
+    hint: "Positron with the roads picked out in red",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "positron-red",
+  },
+  {
+    id: "toner",
+    label: "Toner",
+    hint: "Black ink on white paper — a printed map, not a screen",
+    themes: ["light"],
+    maker: "Geoapify",
+    style: "toner",
+  },
+  {
+    id: "toner-grey",
+    label: "Toner Grey",
     hint: "Muted grey, no colour at all — lets the route do the talking",
     themes: ["light"],
-    maker: "VersaTiles",
-    url: "https://tiles.versatiles.org/assets/styles/gray/style.json",
+    maker: "Geoapify",
+    style: "toner-grey",
   },
 
   /* ── dark ────────────────────────────────────────────────────────────── */
@@ -93,32 +160,48 @@ export const MAP_LOOKS: MapLook[] = [
     label: "Dark Matter",
     hint: "Near-black with thin bright roads — the darkest of the set",
     themes: ["dark"],
-    maker: "CARTO",
-    carto: "dark-matter-gl-style",
+    maker: "Geoapify",
+    style: "dark-matter",
   },
   {
-    id: "osm-dark",
-    label: "Dark",
-    hint: "OpenStreetMap's own dark drawing: charcoal ground, soft colour",
+    id: "dark-matter-brown",
+    label: "Dark Brown",
+    hint: "Dark Matter warmed up: brown land, cream roads",
     themes: ["dark"],
-    maker: "OpenFreeMap",
-    url: "https://tiles.openfreemap.org/styles/dark",
+    maker: "Geoapify",
+    style: "dark-matter-brown",
   },
   {
-    id: "colorful-dark",
-    label: "Colourful Dark",
-    hint: "Dark, but keeps the greens and blues of the landscape",
+    id: "dark-matter-dark-grey",
+    label: "Dark Grey",
+    hint: "Grey-on-grey, flat and matter of fact",
     themes: ["dark"],
-    maker: "VersaTiles",
-    url: "https://tiles.versatiles.org/assets/styles/colorful-dark/style.json",
+    maker: "Geoapify",
+    style: "dark-matter-dark-grey",
   },
   {
-    id: "voyager",
-    label: "Voyager",
-    hint: "Warm and earthy — the one that works in both themes",
-    themes: ["dark", "light"],
-    maker: "CARTO",
-    carto: "voyager-gl-style",
+    id: "dark-matter-dark-purple",
+    label: "Dark Purple",
+    hint: "Black land under a violet wash — the night-sky one",
+    themes: ["dark"],
+    maker: "Geoapify",
+    style: "dark-matter-dark-purple",
+  },
+  {
+    id: "dark-matter-purple-roads",
+    label: "Purple Roads",
+    hint: "Dark ground with the roads in violet — the most colourful dark",
+    themes: ["dark"],
+    maker: "Geoapify",
+    style: "dark-matter-purple-roads",
+  },
+  {
+    id: "dark-matter-yellow-roads",
+    label: "Yellow Roads",
+    hint: "Dark ground, gold roads — reads like a night highway sign",
+    themes: ["dark"],
+    maker: "Geoapify",
+    style: "dark-matter-yellow-roads",
   },
 
   /* ── both ────────────────────────────────────────────────────────────── */
@@ -146,22 +229,17 @@ export function looksFor(theme: Theme): MapLook[] {
 export function lookById(id: string | undefined, theme: Theme): MapLook {
   const found = id ? BY_ID.get(id as MapLookId) : undefined;
   if (found) return found;
-  return theme === "light" ? BY_ID.get("bright")! : BY_ID.get("osm-dark")!;
-}
-
-/** Whether the vector map should hand over to raster imagery for this look. */
-export function isImageryLook(id: string | undefined, theme: Theme): boolean {
-  return Boolean(lookById(id, theme).imagery);
+  return theme === "light" ? BY_ID.get("osm-bright")! : BY_ID.get("dark-matter")!;
 }
 
 /**
  * The style URL for a look, or `undefined` when there is nothing to fetch —
- * satellite imagery, or a CARTO drawing with no key to unlock it.
+ * satellite imagery (the tiles are the map), or a drawing with no key to unlock
+ * it. Geoapify wants the key on the style document itself.
  */
-export function styleUrlFor(look: MapLook, cartoKey: string): string | undefined {
-  if (look.url) return look.url;
-  if (!look.carto) return undefined;
-  const key = cartoKey.trim();
+export function styleUrlFor(look: MapLook, geoapifyKey: string): string | undefined {
+  if (!look.style) return undefined;
+  const key = geoapifyKey.trim();
   if (!key) return undefined;
-  return `https://basemaps.cartocdn.com/gl/${look.carto}/style.json?key=${encodeURIComponent(key)}`;
+  return `https://maps.geoapify.com/v1/styles/${look.style}/style.json?apiKey=${encodeURIComponent(key)}`;
 }

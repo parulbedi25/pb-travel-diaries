@@ -1,9 +1,8 @@
 /**
  * A vector basemap with the labels turned off.
  *
- * Raster tiles have their place names painted into the picture, which is why
- * the only way to get rid of them was to find a map that ships without them —
- * and why CARTO's raster tiles needing a key took the nameless map with them.
+ * Raster tiles have their place names painted into the picture, so a vector
+ * map is the only way to get rid of them honestly.
  *
  * Vector tiles are different. The map arrives as data plus a style that says
  * how to draw it, and every text label lives in a "symbol" layer. Switching
@@ -11,31 +10,25 @@
  * drawn, nothing is blurred, covered or watermarked, and the map underneath is
  * untouched.
  *
- * Which styles are tried, and in what order, is the dashboard's "Map look"
- * setting (see MapSettings in store/siteContent):
+ * The style comes from the dashboard's "Map look" setting — one Geoapify
+ * drawing per theme (see MapSettings in store/siteContent and utils/mapLooks).
+ * One style document per look, fetched with the site's key; the style carries
+ * its own tiles, fonts and sprites, so there is nothing else to configure and
+ * no second host to fall back to. If the style never lands — no WebGL, no key,
+ * a host having a bad day — the panel says the map is missing, because there is
+ * no second drawing to fall back to that would keep this promise.
  *
- *  - CARTO's vector basemaps, with the site's own key. They are the default.
- *  - The keyless styles the site used before CARTO — OpenFreeMap, then
- *    VersaTiles — which are also what CARTO falls back to if its key is ever
- *    refused. That way the map is never lost to a revoked or exhausted key.
+ * Every drawing is of OpenStreetMap's data rendered by OpenMapTiles, so both
+ * credits are owed whichever one answers (see MapAttribution in TileBasemap).
  *
- * All of them draw OpenStreetMap's data, so its credit is owed whichever one
- * answers (see MapAttribution in TileBasemap). Tried in order: a provider
- * having a slow day costs a few seconds rather than the map. (Maptoolkit would
- * be another, and is not here on purpose: its styles are proprietary and may
- * only be used with its own tile server.)
- *
- * Patience is the whole difficulty. Too little and a nameless map gets thrown
- * away for being slow, which is how this ended up showing labelled tiles
- * instead. Too much and the panel sits empty while it waits. So:
- *
- *  - A candidate is only abandoned when it has *stalled*. Tiles that are still
- *    arriving, however slowly, mean it is working — and throwing that away
- *    costs more than waiting for it.
- *  - While the nameless map is on its way, the raster map is shown underneath
- *    and dropped the moment tiles land. A slow connection sees a map
- *    immediately and it goes nameless when the nameless one arrives, rather
- *    than an empty panel for as long as it takes.
+ * Patience is the whole difficulty. Too little and a working map gets thrown
+ * away for being slow; too much and the panel sits empty while it waits. So a
+ * map is only abandoned when it has *stalled*: tiles that are still arriving,
+ * however slowly, mean it is working — and throwing that away costs more than
+ * waiting for it. There is deliberately nothing drawing underneath while it
+ * loads: every raster basemap Geoapify serves has its place names painted into
+ * the picture, and a named map flashing up before the nameless one arrives is
+ * the same broken promise, just harder to notice.
  *
  * Two timings in here are deliberate and easy to get wrong:
  *
@@ -44,7 +37,7 @@
  *    already on screen.
  *  - Nothing is ever judged by map.isStyleLoaded(), which waits for tile data
  *    as well as the style and so reads "not loaded" on any ordinary slow
- *    connection — that is what threw away a working map and put labels back.
+ *    connection — that is what threw away working maps.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -57,7 +50,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { resolveMapSettings, useSite, type MapSettings } from "../store/siteContent";
 import TileBasemap from "./TileBasemap";
 import { MapAttribution, type TileView } from "./TileBasemap";
-import { providerLabel, styleChain } from "../utils/basemapStyles";
+import { BASEMAP_MAKER, styleChain } from "../utils/basemapStyles";
 import { lookById, type Theme } from "../utils/mapLooks";
 
 /** How long the style gets to arrive, and then how long tiles get to show up. */
@@ -65,9 +58,6 @@ const STYLE_TIMEOUT_MS = 15000;
 const PAINT_TIMEOUT_MS = 15000;
 /** Once tiles are arriving, how long they may stop arriving for. */
 const STALL_TIMEOUT_MS = 15000;
-/** How long to hold out before putting a map you can see on the screen. */
-const PLACEHOLDER_AFTER_MS = 3000;
-
 /**
  * Turn every label off.
  *
@@ -113,12 +103,6 @@ export default function VectorBasemap({
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<MapLibreMap | null>(null);
   const [candidate, setCandidate] = useState(0);
-  /**
-   * Showing the labelled raster map until the nameless one is ready. Cleared
-   * the moment tiles land, so it also stands in for "the nameless map is what
-   * you are looking at".
-   */
-  const [placeholder, setPlaceholder] = useState(false);
   const sized = width > 1 && height > 1;
 
   const mapSettings = settings ?? resolveMapSettings(content.map);
@@ -133,7 +117,7 @@ export default function VectorBasemap({
     theme,
     mapSettings.lightLook,
     mapSettings.darkLook,
-    mapSettings.cartoKey,
+    mapSettings.geoapifyKey,
   ]);
 
   useEffect(() => {
@@ -229,7 +213,6 @@ export default function VectorBasemap({
       strip();
       if (!created.areTilesLoaded()) return;
       paintedNow = true;
-      setPlaceholder(false);
     };
 
     const onError = () => {
@@ -249,13 +232,6 @@ export default function VectorBasemap({
     created.on("error", onError);
 
     timers.push(window.setTimeout(() => !styleIn && next(), STYLE_TIMEOUT_MS));
-    // Something to look at rather than an empty panel. It is replaced, not
-    // added to, the moment the nameless map puts its first tiles on screen.
-    timers.push(
-      window.setTimeout(() => {
-        if (!paintedNow) setPlaceholder(true);
-      }, PLACEHOLDER_AFTER_MS),
-    );
 
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
@@ -284,6 +260,24 @@ export default function VectorBasemap({
     map.current?.resize();
   }, [width, height]);
 
+  // No key, no map: say so where the map would be, with the one instruction
+  // that fixes it. A blank panel looks like a bug; this is a task.
+  if (!mapSettings.geoapifyKey.trim() && !look.imagery) {
+    return (
+      <div
+        className={className}
+        role="img"
+        aria-label="The map needs a Geoapify key"
+        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
+      >
+        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
+          The map needs a key — paste one in the dashboard under{" "}
+          <span className="text-zinc-300">Settings → Map → Map API key</span>.
+        </p>
+      </div>
+    );
+  }
+
   // Satellite is a photograph of the ground, not a style with layers to draw,
   // so there is nothing for MapLibre to do: the tiles are the whole map.
   if (look.imagery) {
@@ -294,47 +288,35 @@ export default function VectorBasemap({
         height={height}
         className={className}
         attributionClassName={attributionClassName}
-        settings={settings}
-        themeOverride={themeOverride}
       />
     );
   }
 
-  const showingRaster = gaveUp || placeholder;
-  // Whichever raster ends up on screen credits itself, because only it knows
-  // whether it settled on the nameless drawing or the labelled last resort.
-  const credit = attributionClassName && !showingRaster ? (
-    <MapAttribution className={attributionClassName} source={providerLabel(styleUrl)} />
-  ) : null;
-
+  // The style would not draw — no WebGL, a revoked key, a host having a bad
+  // day. There is no labelled map behind this one any more: a place name on
+  // the map is exactly what the site promises not to show, so the panel says
+  // the map is missing instead of drawing a different one.
   if (gaveUp) {
     return (
-      <>
-        <TileBasemap
-          view={view}
-          width={width}
-          height={height}
-          className={className}
-          attributionClassName={attributionClassName}
-          settings={settings}
-        />
-      </>
+      <div
+        className={className}
+        role="img"
+        aria-label="The map could not be drawn"
+        style={{ display: "grid", placeItems: "center", background: "rgba(255,255,255,0.02)" }}
+      >
+        <p className="px-6 text-center text-[11px] leading-relaxed text-zinc-500">
+          The map could not be drawn just now. It will try again on the next visit.
+        </p>
+      </div>
     );
   }
 
+  const credit = attributionClassName ? (
+    <MapAttribution className={attributionClassName} source={BASEMAP_MAKER} />
+  ) : null;
+
   return (
     <>
-      {/* Underneath, so the nameless map covers it as soon as it arrives. */}
-      {placeholder && (
-        <TileBasemap
-          view={view}
-          width={width}
-          height={height}
-          className={className}
-          attributionClassName={attributionClassName}
-          settings={settings}
-        />
-      )}
       <div ref={host} className={className} aria-hidden="true" />
       {credit}
     </>
