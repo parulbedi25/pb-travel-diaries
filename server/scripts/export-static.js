@@ -133,7 +133,103 @@ function copyInto(from, to, { skip = new Set(), label } = {}) {
   return { files, bytes };
 }
 
+/**
+ * The folder without a database behind it.
+ *
+ * The site carries its own content — every section, the trip, the gear, the
+ * shop — and a database only ever holds *changes* to it. So an export with
+ * nothing to read is still a site: the built-in content, the same one a fresh
+ * install shows before anyone saves. That is what `--builtin` writes, and it
+ * needs no database, no setup and no credentials at all.
+ */
+function exportBuiltin(out) {
+  const page = path.join(config.distDir, "index.html");
+  if (!fs.existsSync(page)) {
+    console.error("[export] dist/index.html is missing — run `node scripts/build.mjs` first.");
+    process.exit(1);
+  }
+  writeFolder(out, page, null, { theme: "dark", title: config.siteTitle, source: "built-in content" });
+}
+
+/**
+ * The folder itself: the page, the art, the uploads, and optionally the content.
+ *
+ * `content` is null when there is nothing to write — an export of the built-in
+ * site — and then `content.json` is simply not created. The page then shows the
+ * content compiled into it, which is the same thing a fresh install shows.
+ */
+function writeFolder(out, page, content, { theme, title, source }) {
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+
+  fs.copyFileSync(page, path.join(out, "index.html"));
+  console.log(`[export] index.html: ${(fs.statSync(page).size / 1024 / 1024).toFixed(1)} MB`);
+
+  const shipped = path.join(config.root, "public");
+  for (const asset of ["images", "media"]) {
+    copyInto(path.join(shipped, asset), path.join(out, asset), { label: asset });
+  }
+  for (const file of ["mobile-layout.css", "maplibre-gl-worker.mjs"]) {
+    const from = path.join(shipped, file);
+    if (!fs.existsSync(from)) continue;
+    fs.copyFileSync(from, path.join(out, file));
+  }
+
+  // Uploads after the shipped art: the server lets an upload win, so the export
+  // must too, or a replaced photo would silently revert.
+  copyInto(config.mediaDir, path.join(out, "media"), { skip: SKIP_UPLOADS, label: "uploads" });
+
+  if (content) {
+    fs.writeFileSync(
+      path.join(out, "content.json"),
+      JSON.stringify({ exportedAt: new Date().toISOString(), theme, title, content }, null, 0),
+    );
+  }
+
+  fs.writeFileSync(
+    path.join(out, "README.txt"),
+    [
+      "PB Travel Diaries — static export",
+      "",
+      content
+        ? `Exported ${new Date().toISOString()} from ${source}.`
+        : `Exported ${new Date().toISOString()} from the built-in content: no database was used.`,
+      "",
+      "Upload the CONTENTS of this folder to the root of a website.",
+      "",
+      "It must be the root: the page refers to its art as /media/… and /images/…,",
+      "so uploading into a subfolder will show the site with no pictures.",
+      "",
+      "What works here: every page, the map and its pins, the weather, the shop,",
+      "the journey. This is the site as it stood at the moment of export.",
+      "",
+      "What does not, because there is no server: the dashboard and signing in,",
+      "editing the site, uploaded photos being added later, short map links being",
+      "expanded, nearby places, and the live tracker's shared position.",
+      "",
+      "There is no database here and no .env: " +
+        (content
+          ? "content.json IS the site's content, written when this folder was exported."
+          : "the page carries its content, and content.json was not written.") +
+        " Do not upload a .env — on a static",
+      "host every file in the web root can be downloaded by anyone, and nothing",
+      "here would read it anyway. To change the content, edit the site where the",
+      "server runs, then export again.",
+      "",
+    ].join("\n"),
+  );
+
+  const total = walk(out).reduce((sum, relative) => sum + fs.statSync(path.join(out, relative)).size, 0);
+  console.log(
+    `[export] done — ${walk(out).length} files, ${(total / 1024 / 1024).toFixed(1)} MB in ${out}`,
+  );
+}
+
 async function main() {
+  if (hasFlag("builtin") || hasFlag("no-database")) {
+    exportBuiltin(path.resolve(argValue("out", path.join(config.root, "release", "static"))));
+    return;
+  }
   if (!config.hasDatabase) {
     // Not an error about the export; an error about where the content is. Two
     // things can be done about that, and the message says both, because "open
@@ -236,77 +332,12 @@ async function main() {
   }
 
   const out = path.resolve(argValue("out", path.join(config.root, "release", "static")));
-  fs.rmSync(out, { recursive: true, force: true });
-  fs.mkdirSync(out, { recursive: true });
-
-  fs.copyFileSync(page, path.join(out, "index.html"));
-  console.log(`[export] index.html: ${(fs.statSync(page).size / 1024 / 1024).toFixed(1)} MB`);
-
-  const shipped = path.join(config.root, "public");
-  for (const asset of ["images", "media"]) {
-    copyInto(path.join(shipped, asset), path.join(out, asset), { label: asset });
-  }
-  for (const file of ["mobile-layout.css", "maplibre-gl-worker.mjs"]) {
-    const from = path.join(shipped, file);
-    if (!fs.existsSync(from)) continue;
-    fs.copyFileSync(from, path.join(out, file));
-  }
-
-  // Uploads after the shipped art: the server lets an upload win, so the export
-  // must too, or a replaced photo would silently revert.
-  copyInto(config.mediaDir, path.join(out, "media"), { skip: SKIP_UPLOADS, label: "uploads" });
-
-  fs.writeFileSync(
-    path.join(out, "content.json"),
-    JSON.stringify(
-      {
-        exportedAt: new Date().toISOString(),
-        theme: THEME_VALUES.has(theme) ? theme : "dark",
-        title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
-        content,
-      },
-      null,
-      0,
-    ),
-  );
-
-  fs.writeFileSync(
-    path.join(out, "README.txt"),
-    [
-      "PB Travel Diaries — static export",
-      "",
-      `Exported ${new Date().toISOString()} from ${
-        config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database"
-      }.`,
-      "",
-      "Upload the CONTENTS of this folder to the root of a website.",
-      "",
-      "It must be the root: the page refers to its art as /media/… and /images/…,",
-      "so uploading into a subfolder will show the site with no pictures.",
-      "",
-      "What works here: every page, the map and its pins, the weather, the shop,",
-      "the journey. This is the site as it was published at the moment of export.",
-      "",
-      "What does not, because there is no server: the dashboard and signing in,",
-      "editing the site, uploaded photos being added later, short map links being",
-      "expanded, nearby places, and the live tracker's shared position.",
-      "",
-      "There is no database here and no .env: content.json IS the site's content,",
-      "written when this folder was exported. Do not upload a .env — on a static",
-      "host every file in the web root can be downloaded by anyone, and nothing",
-      "here would read it anyway. To change the content, edit the site where the",
-      "server runs, then export again.",
-      "",
-      "To change anything, edit the site on a host running the server, or run it",
-      "locally, then export again.",
-      "",
-    ].join("\n"),
-  );
-
-  const total = walk(out).reduce((sum, relative) => sum + fs.statSync(path.join(out, relative)).size, 0);
-  console.log(
-    `[export] done — ${walk(out).length} files, ${(total / 1024 / 1024).toFixed(1)} MB in ${out}`,
-  );
+  writeFolder(out, page, content, {
+    theme: THEME_VALUES.has(theme) ? theme : "dark",
+    title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
+    source:
+      config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database",
+  });
   await closeRepo();
 }
 

@@ -62,3 +62,38 @@ export function loadBakedSite(): Promise<BakedSite | null> {
  * worse than no admin page.
  */
 export const isStaticBuild = () => baked;
+
+/**
+ * Whether this page is being served by a static host, with no API behind it.
+ *
+ * The difference matters to one sentence on the page: "could not load the saved
+ * site" is true and useful when a server exists and misbehaved, and it is
+ * noise when there is no server by design — an export with no `content.json`
+ * simply shows the content compiled into the page.
+ *
+ * Asked by shape, not by guesswork: a host running the server answers
+ * `/api/content` with JSON, a static host answers with its own page (a 200 that
+ * is not JSON, from a catch-all rewrite) or a 404. A network failure is *not*
+ * counted as static — that is a server being unreachable, and worth saying.
+ */
+let hosting: Promise<boolean> | null = null;
+
+export function isStaticHosting(): Promise<boolean> {
+  hosting ??= (async () => {
+    if (typeof fetch !== "function") return false;
+    try {
+      const response = await fetch(new URL("api/content", document.baseURI), {
+        cache: "no-store",
+        credentials: "omit",
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return response.status === 404 || response.status === 405;
+      // A catch-all static host answers with the page itself, and that is HTML.
+      await response.json();
+      return false;
+    } catch {
+      return false;
+    }
+  })();
+  return hosting;
+}

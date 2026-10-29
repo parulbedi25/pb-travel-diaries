@@ -17,7 +17,7 @@ import { setAt } from "../utils/objectPath";
 import { cascadeChild, cascadeSection } from "../admin/cascade";
 import { hasCountdownExpired } from "../utils/countdownTiming";
 import { lookById, vendorById, type MapVendorId } from "../utils/mapLooks";
-import { loadBakedSite } from "../utils/staticSite";
+import { isStaticHosting, loadBakedSite } from "../utils/staticSite";
 
 /* ═══════════════════════ Types ═══════════════════════ */
 
@@ -2552,7 +2552,13 @@ export function SiteProvider({ children }: { children: ReactNode }) {
         setContent(restored);
         setDraft(structuredClone(restored));
       } else if (contentResult.status === "rejected") {
-        setLoadError(describeApiError(contentResult.reason));
+        // No API and no exported file: on a static host that is the built-in
+        // site, not a failure, so the red banner would be a complaint about
+        // something working as intended. A real server that misbehaved still
+        // gets the banner, which is the whole point of it.
+        const staticHost = await isStaticHosting();
+        if (cancelled) return;
+        if (!staticHost) setLoadError(describeApiError(contentResult.reason));
       }
 
       if (themeResult.status === "fulfilled") {

@@ -90,6 +90,26 @@ A different folder:
 npm run export:static -- --out ~/Desktop/pb-static
 ```
 
+### With no database at all
+
+Most of this site is written in code — every section, the trip, the gear, the
+shop — and a database only ever holds *changes* to that. So a folder can be
+exported without touching a database, a setup screen or any credentials:
+
+```bash
+node scripts/build.mjs
+npm run export:static -- --builtin --out ~/Desktop/pb-static
+```
+
+That writes the same folder minus `content.json`; the page shows the content
+compiled into it. It is exactly what the whole site looked like before anyone
+saved anything in the dashboard, and it needs nothing on this machine but the
+repository.
+
+The trade is the obvious one: **anything you changed in the dashboard is not in
+it.** If `content.json` is what you want, the content has to come from somewhere
+— a database on this machine, or one it can reach (below).
+
 The export reads the database, so it stops with a message if no database is
 configured or if nothing has been published yet. That is deliberate: an export
 of an empty site looks like the real thing and would go unnoticed.
@@ -245,6 +265,6 @@ with revalidation, so it should not need to be purged by hand on most hosts.
 | Blank page, no error | `index.html` uploaded alone; the map worker and stylesheet are separate files |
 | The host's own holding page | an old `index.htm`/`default.html` still in the document root |
 | Works on the host, stale in your browser | cache — hard-reload once, then confirm on another device |
-| `no database is configured on this machine yet` | nothing to read here: pass `--db-host/--db-user/--db-name`, or set the site up on this machine first |
+| `no database is configured on this machine yet` | nothing to read here: pass `--db-host/--db-user/--db-name`, or set the site up on this machine first, or use `--builtin` and ship the content that is in the code |
 | `the MySQL on localhost is running, and it does not know the user` | those credentials were made in a hosting panel and exist on that server, not on your Mac — enable Remote MySQL in cPanel and pass the server's hostname, or run the command where the database lives |
 | `nothing is listening on …:3306` | no MySQL on this machine; point `--db-host` at the machine that has one |
