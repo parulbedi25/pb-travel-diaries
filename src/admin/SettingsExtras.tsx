@@ -385,7 +385,6 @@ function MapPreview({
         width={size.width}
         height={size.height}
         className="absolute inset-0"
-        attributionClassName="absolute bottom-2 left-2"
         onFailure={onFailure}
       />
       {/* The place the look is being judged on, and nothing else — the real
