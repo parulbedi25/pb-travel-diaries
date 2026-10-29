@@ -729,7 +729,12 @@ export default function NearbyPlacesPage() {
 
           {/* One pointer per item, numbered to match the list. Colour says what
               it is: saffron places, green beds, amber fuel, red hospitals, blue
-              workshops. */}
+              workshops.
+
+              Each badge is a circle, so its *centre* is what has to sit on the
+              coordinate — pulling it up by its own height would float every
+              petrol station twenty-eight pixels north of its forecourt, which
+              is exactly what it used to do. */}
           {items.map((item, index) => {
             const point = projector.toXY(item);
             const active = selected === item.key;
@@ -742,7 +747,7 @@ export default function NearbyPlacesPage() {
                 aria-label={`${item.title}, ${item.distanceKm.toFixed(1)} kilometres away`}
                 aria-pressed={active}
                 className={cn(
-                  "shrink-0 aspect-square group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-full place-items-center rounded-full border-2 text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
+                  "shrink-0 aspect-square group absolute z-10 grid h-7 w-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 text-[11px] font-bold shadow-lg transition-transform duration-200 hover:scale-110",
                   active ? "border-saffron-400 bg-saffron-400 text-ink-950" : cn("border-white", tone.pin),
                 )}
                 style={{ left: `${point.x}%`, top: `${point.y}%` }}
