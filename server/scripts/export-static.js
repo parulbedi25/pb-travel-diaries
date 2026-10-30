@@ -124,6 +124,8 @@ function envKeysUsed() {
 const { config } = await import("../config.js");
 const { closeRepo, getRepo } = await import("../db/index.js");
 const { visibleTo } = await import("../routes/content.js");
+const { listBikeCatalogue } = await import("../lib/bikeCatalogue.js");
+const { bundledMedia } = await import("../lib/bundledMedia.js");
 
 /** Where the content is being read from, said without the password. */
 function sourceLabel() {
@@ -221,7 +223,7 @@ function phpSettings() {
  * site — and then `content.json` is simply not created. The page then shows the
  * content compiled into it, which is the same thing a fresh install shows.
  */
-function writeFolder(out, page, content, { theme, title, source, php = null }) {
+function writeFolder(out, page, content, { theme, title, source, php = null, mediaRows = [] }) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
@@ -257,6 +259,41 @@ function writeFolder(out, page, content, { theme, title, source, php = null }) {
     const phpDir = path.join(config.root, "php");
     fs.copyFileSync(path.join(phpDir, "api.php"), path.join(out, "api.php"));
     fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
+
+    // Two lists the bridge cannot compute for itself: the bikes a member can
+    // pick, and the photographs that ship with the site. Both are data compiled
+    // into the Node build; written here as JSON so the PHP file serves the same
+    // answers instead of a second, drifting copy.
+    fs.writeFileSync(
+      path.join(out, "catalogue.json"),
+      JSON.stringify({ makers: listBikeCatalogue() }, null, 0),
+    );
+    fs.writeFileSync(path.join(out, "bundled-media.json"), JSON.stringify(bundledMedia, null, 0));
+
+    // The uploads themselves are copied into media/ above, and their rows live
+    // in the database the export read. A PHP host that creates its own database
+    // has no rows yet, so the shelf would come up empty for photos that are
+    // plainly sitting in the folder. This is those rows, written out, for
+    // `api.php` to insert once — a no-op when the database already knows them.
+    fs.writeFileSync(
+      path.join(out, "media-index.json"),
+      JSON.stringify(
+        (mediaRows ?? []).map((row) => ({
+          id: row.id,
+          filename: row.filename,
+          originalName: row.originalName,
+          mime: row.mime,
+          size: row.size,
+          kind: row.kind,
+          ext: row.ext,
+          tags: row.tags ?? "",
+          createdAt: row.createdAt,
+          createdBy: row.createdBy ?? null,
+        })),
+        null,
+        0,
+      ),
+    );
     fs.writeFileSync(
       path.join(out, "php-config.php"),
       [
@@ -301,18 +338,41 @@ function writeFolder(out, page, content, { theme, title, source, php = null }) {
       "What works here: every page, the map and its pins, the weather, the shop,",
       "the journey. This is the site as it stood at the moment of export.",
       "",
-      "What does not, because there is no server: the dashboard and signing in,",
-      "editing the site, uploaded photos being added later, short map links being",
-      "expanded, nearby places, and the live tracker's shared position.",
-      "",
-      "There is no database here and no .env: " +
-        (content
-          ? "content.json IS the site's content, written when this folder was exported."
-          : "the page carries its content, and content.json was not written.") +
-        " Do not upload a .env — on a static",
-      "host every file in the web root can be downloaded by anyone, and nothing",
-      "here would read it anyway. To change the content, edit the site where the",
-      "server runs, then export again.",
+      php
+        ? [
+            "A PHP host gets the whole API: api.php answers every /api/… call, so the",
+            "setup screen, signing in, editing and saving, photo uploads, backups,",
+            "alerts, the member garage and journeys all work. The database details are",
+            "in php-config.php — uploaded as-is, never opened in a browser.",
+            "",
+            "Not available on PHP: the scheduled weather sweep (alerts are posted by an",
+            "editor), and restoring a backup zip from the setup screen.",
+            "",
+          ].join("\n")
+        : [
+            "What does not, because there is no server: the dashboard and signing in,",
+            "editing the site, uploaded photos being added later, short map links being",
+            "expanded, nearby places, and the live tracker's shared position.",
+            "",
+          ].join("\n"),
+      php
+        ? [
+            "Do not upload a .env: on a PHP host every plain file in the web root can be",
+            "downloaded by anyone, while php-config.php is executed and never served.",
+            content
+              ? "content.json is the site's content at the moment of export."
+              : "content.json was not written: the page carries its content.",
+          ].join("\n")
+        : [
+            "There is no database here and no .env: " +
+              (content
+                ? "content.json IS the site's content, written when this folder was exported."
+                : "the page carries its content, and content.json was not written.") +
+              " Do not upload a .env — on a static",
+            "host every file in the web root can be downloaded by anyone, and nothing",
+            "here would read it anyway. To change the content, edit the site where the",
+            "server runs, then export again.",
+          ].join("\n"),
       "",
     ].join("\n"),
   );
@@ -459,12 +519,23 @@ async function main() {
   }
 
   const out = path.resolve(argValue("out", path.join(config.root, "release", "static")));
+  let mediaRows = [];
+  if (hasFlag("php")) {
+    // Only the bridge needs them: a static folder has no database to put them in.
+    try {
+      mediaRows = await repo.listMedia();
+    } catch {
+      mediaRows = [];
+    }
+  }
+
   writeFolder(out, page, content, {
     theme: THEME_VALUES.has(theme) ? theme : "dark",
     title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
     source:
       config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database",
     php: phpSettings(),
+    mediaRows,
   });
   await closeRepo();
 }

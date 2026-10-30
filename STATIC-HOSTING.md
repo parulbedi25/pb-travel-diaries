@@ -78,13 +78,16 @@ carry a small API of its own, and the site behaves like the Node version.
 npm run export:static -- --php --out ~/Desktop/pb-static
 ```
 
-That adds three files to the folder:
+That adds five files to the folder:
 
 | File | What it is |
 | --- | --- |
-| `api.php` | the whole API: setup, sign-in, content, settings |
+| `api.php` | the whole API — every endpoint the dashboard calls |
 | `php-config.php` | the database details from your `.env`, including the password |
 | `.htaccess` | sends every `/api/…` request to `api.php`; hides `php-config.php` |
+| `catalogue.json` | the bikes and their mileage, so the garage picker matches the Node build |
+| `bundled-media.json` | the photographs that ship with the site, so the media shelf is not empty |
+| `media-index.json` | the rows for the uploads in `media/`, inserted once so the shelf shows them |
 
 **Why the password can live in `php-config.php` but never in a `.env`:** PHP is
 *executed* by the server, so its source is never downloaded — a `.env` is a
@@ -98,17 +101,61 @@ extension; renaming it to `.txt` publishes your password.
    user already filled in** from your `.env`. The password is not sent to the
    browser; leave that field blank and the server uses the stored one.
 3. **Test connection** really connects and names the server version.
-4. **Create tables** really creates them in your MariaDB.
+4. **Create tables** really creates them — **all of them**: users, sessions,
+   content, revisions, settings, media, the auth log, member bikes and journeys,
+   route alerts and their read marks. A database that was created by an earlier,
+   partial version of this file is repaired on the next request, because every
+   request runs the same idempotent `CREATE TABLE IF NOT EXISTS` set.
 5. The owner account step creates the super admin, and it is stored with
    `password_hash()` — never in plain text.
 6. The site opens, and the dashboard can sign in and save: content is kept in
    `site_content` in your own database.
 
-### What it does not do
+### What it serves
 
-Media uploads, backups, revisions history and member tracking remain Node-only
-features. Content editing, sign-in and settings work. If a plan offers Node, the
-Node deployment is the complete one.
+Every endpoint the dashboard calls, with the same JSON shapes as the Node server:
+
+| Area | Endpoints |
+| --- | --- |
+| setup | `setup/status`, `setup/test`, `setup/database`, `setup/owner` |
+| accounts | `auth/status`, `auth/me`, `auth/signup`, `auth/login`, `auth/logout`, `auth/password`, `auth/users` (+ create, patch, delete), `auth/events` |
+| the site | `content`, `revisions` (+ delete), `settings/theme`, `settings/site` |
+| media | list (uploads already in the folder are put on the shelf on the first request), upload, re-tag, replace the pixels, delete |
+| backups | list, create (a JSON snapshot of the content), download |
+| alerts | list, read marks, post, delete |
+| member | `member/catalogue`, `member/garage`, bikes and journeys (create, edit, delete), `member/link` |
+| maps | `maps/resolve` (expands a short link), `maps/health` |
+| nearby | `nearby?kind=…` — reads OpenStreetMap directly |
+
+The tables are the Node server's own — same names, same columns — so a database
+created by the bridge is one the Node app can take over, and the other way round.
+
+### What it still does not do
+
+- **No scheduled forecast sweep.** Alerts appear when an editor posts them;
+  `alerts/refresh` answers `ok` and inserts nothing. That needs the Node
+  scheduler and a weather key.
+- **Backups are JSON snapshots of the content, not zips**, and they are not
+  restored by the setup screen (`restoreAllowed: false`).
+- Members-only content is protected by a PHP session cookie; the Node
+  deployment adds the same checks, no stronger.
+
+If the plan offers Node, the Node deployment is the complete one — the bridge is
+what makes the PHP plan behave the same way.
+
+### If the dashboard says "This deployment has no such endpoint"
+
+`api.php` on the server is an older copy that only knew a handful of routes.
+Export again and upload these four files over the ones there — the database and
+`php-config.php` are untouched:
+
+```
+api.php  catalogue.json  bundled-media.json  media-index.json
+```
+
+The next request also repairs a database that an earlier, partial setup left
+behind: missing tables are created and missing columns added, automatically, on
+the first request after the upload.
 
 ### If the setup screen does not appear
 
@@ -284,6 +331,25 @@ one.
    one is left there, Apache serves that instead and the site looks untouched.
 4. Do **not** use **Setup Node.js App** for this. It is not needed and it will
    fight the static files for the domain.
+
+### If the plan has Node (cPanel → **Setup Node.js App**)
+
+The Node app is the complete server, and it is what serves these same endpoints
+in development: the weather sweep, zip backups and the restore screen only exist
+there. If the panel offers **Setup Node.js App**, the whole repository can run
+instead of the exported folder:
+
+1. Upload the repository (not `release/static/`), then `npm install` in the
+   application root — the folder holding `package.json`.
+2. **Application startup file:** `app.cjs`. **Node version:** 22 or newer.
+3. Add `DB_DRIVER=mysql`, `DB_HOST`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` as
+   environment variables in that panel. This is the one deployment where a
+   `.env` in the web root would be a mistake: the panel already holds them.
+4. Restart the app and open the domain — the same setup screen appears, and
+   every `/api/…` request is answered by Node.
+
+In that case do not upload `api.php`: two APIs answering `/api/…` in one folder
+is one too many, and Apache would answer first.
 
 ### Netlify
 
