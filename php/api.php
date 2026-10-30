@@ -596,18 +596,62 @@ function password_hash_for_node(string $password): string
 $route = route();
 $verb = method();
 
-/** A property of the deployment, not of a session: there is no session here. */
+/**
+ * A runtime request arrived here, which means it belongs to the Node API.
+ *
+ * PHP does three things — create the database, the tables and the owner — and
+ * nothing else, so a request for `/api/content` on this file is a page that is
+ * talking to the wrong program. That is not the visitor's fault and it is not
+ * worth an error page: send the request where it should have gone.
+ *
+ * This happens for a page served from an older export, or one whose baked-in
+ * API address has not loaded yet. A 307 (or 308 for a write) keeps the method
+ * and the body, and because the API is on the same domain here, the browser
+ * does not even treat it as cross-origin.
+ *
+ * If the request already arrived under the API's own path, a redirect would
+ * only come back to this file, so it refuses with an explanation instead.
+ */
 function refusal(string $route): void
 {
   global $cfg;
-  fail(
-    sprintf(
+  $api = rtrim((string) $cfg['apiUrl'], '/');
+  $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+
+  if ($api !== '') {
+    $apiPath = (string) parse_url($api, PHP_URL_PATH);
+    $alreadyUnderApi = $apiPath !== '' && $apiPath !== '/' && str_starts_with($path, $apiPath . '/');
+
+    // The runtime address for this same request: keep the path it asked for,
+    // whether it arrived as /api/content or /api.php?route=content.
+    $target = $api . '/api/' . ltrim($route, '/');
+    if (!$alreadyUnderApi) {
+      header('Cache-Control: no-store');
+      header('Content-Type: application/json; charset=utf-8');
+      http_response_code(in_array(method(), ['GET', 'HEAD'], true) ? 307 : 308);
+      header('Location: ' . $target);
+      echo json_encode([
+        'error' => 'The site\'s API is the Node server. This file only creates the database.',
+        'code' => 'setup-only',
+        'apiUrl' => $api,
+        'redirectedTo' => $target,
+      ]);
+      exit;
+    }
+  }
+
+  http_response_code(410);
+  header('Content-Type: application/json; charset=utf-8');
+  header('Cache-Control: no-store');
+  echo json_encode([
+    'error' => sprintf(
       'This file only creates the database. The site\'s API is the Node server%s — nothing else is served from PHP on this deployment.',
-      ' (' . (string) $cfg['apiUrl'] . ')'
+      $api !== '' ? ' (' . $api . ')' : ''
     ),
-    410,
-    'setup-only'
-  );
+    'code' => 'setup-only',
+    'apiUrl' => $api,
+  ]);
+  exit;
 }
 
 /**

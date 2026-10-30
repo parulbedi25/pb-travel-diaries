@@ -1,6 +1,6 @@
 import type { SiteContent } from "../store/siteContent";
 import type { MediaItem } from "../admin/mediaLibrary";
-import { api, hasApiBase, setupCall } from "./client";
+import { api, apiBase, hasApiBase, setupCall } from "./client";
 
 /** The dashboard as the server knows it. */
 export interface Account {
@@ -394,21 +394,27 @@ export const siteApi = {
   /* ── first-run setup ─────────────────────────────────────────────────── */
 
   /**
-   * The first question every deployment asks — and the last one PHP ever sees.
+   * The first question every deployment asks, and the only one PHP answers.
    *
-   * Once the page knows where the API is (`__PB_API_BASE__`, baked in by the
-   * export), the API answers this and PHP is not asked at all. That is the rule
-   * for the whole deployment: PHP creates the database on the first visit and
-   * never touches a request again.
-   *
-   * Before that — a folder of files with no API configured — it goes through
-   * `setupCall`, because the bootstrap must answer even on a host that ignores
-   * `.htaccess`: the rewrite-free spellings are tried when the tidy one does not.
+   * Order matters, and getting it wrong is what left a deployment with no
+   * tables and a 410 where the wizard should have been. The bootstrap in this
+   * folder is asked first: it is the one program that exists before a database
+   * does, and it answers even on a host that ignores `.htaccess`. Only if there
+   * is no bootstrap here does the API get asked — which is the Node deployment
+   * (the app answers at the root) and a static folder whose Node app lives in a
+   * subfolder with no `api.php` beside the page.
    */
-  setupStatus: () =>
-    hasApiBase()
-      ? api.get<SetupStatus>("/api/setup/status")
-      : setupCall<SetupStatus>("GET", "/api/setup/status"),
+  setupStatus: async (): Promise<SetupStatus> => {
+    try {
+      return await setupCall<SetupStatus>("GET", "/api/setup/status");
+    } catch (bootstrapError) {
+      if (!hasApiBase()) throw bootstrapError;
+      // Setup addresses are deliberately same-origin (they are the bootstrap in
+      // this folder), so the API has to be named in full here — otherwise this
+      // would ask the same folder a fourth time and hear the same 404.
+      return api.get<SetupStatus>(`${apiBase()}/api/setup/status`);
+    }
+  },
 
   async testDatabase(input: SetupDatabaseInput): Promise<SetupTestResult> {
     return setupCall<SetupTestResult>("POST", "/api/setup/test", input);
