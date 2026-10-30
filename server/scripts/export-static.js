@@ -41,7 +41,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { phpSchemaBlock } from "../db/phpSchema.js";
 
 const THEME_VALUES = new Set(["dark", "light"]);
 const SKIP_UPLOADS = new Set(["README.md", ".DS_Store", "Thumbs.db"]);
@@ -189,37 +188,8 @@ function exportBuiltin(out) {
     theme: "dark",
     title: config.siteTitle,
     source: "built-in content",
-    php: phpSettings(),
     api: apiBase(),
   });
-}
-
-/**
- * The database details to bake into the folder's PHP bridge.
- *
- * Asked for with `--php`. Carrying the settings into the upload is what makes
- * the first visit show a setup screen already describing this database, instead
- * of an empty one. Without the flag the folder stays purely static: no PHP, no
- * credentials, nothing to configure.
- */
-function phpSettings() {
-  if (!hasFlag("php")) return null;
-  // Nothing configured on this machine: leave the credentials blank rather than
-  // baking in the defaults the app falls back to. `pb_travel_diaries` and `pb`
-  // are placeholders, not this site's database, and a wrong value that looks
-  // real is worse than an empty one — the setup screen asks for it and says so.
-  const known = config.hasDatabase;
-  return {
-    driver: config.dbDriver === "sqlite" ? "sqlite" : "mysql",
-    host: known ? config.db.host : "localhost",
-    port: config.db.port,
-    database: known ? config.db.database : "",
-    user: known ? config.db.user : "",
-    password: known ? (config.db.password ?? "") : "",
-    socket: known ? (config.db.socketPath ?? "") : "",
-    siteTitle: config.siteTitle,
-    apiUrl: apiBase(),
-  };
 }
 
 /**
@@ -230,32 +200,13 @@ function phpSettings() {
  * domain) bakes that address into the exported page; without it the folder is
  * exactly what it looks like — a site with no API, and no dashboard.
  *
- * `--php` defaults it to `/server`, the usual place for the Node app under
- * cPanel's "Setup Node.js App": PHP creates the database, then stops.
+ * There is no second program in this deployment: the Node app is the API, and
+ * the folder is files. A folder that is served by the Node app itself needs
+ * nothing here — `npm start` answers `/api/…` and the page.
  */
 function apiBase() {
   const given = argValue("api", process.env.API_URL ?? "");
-  if (given) return String(given).replace(/\/+$/, "");
-  return hasFlag("php") ? "/server" : "";
-}
-
-/**
- * `api.php`, with the generated schema inside it.
- *
- * The file in `php/` carries an empty `$SCHEMA = [];` between two markers; the
- * export replaces everything between them with the statements from
- * `server/db/phpSchema.js`. Keeping the schema in the same file rather than a
- * `schema.sql` beside it means there is nothing extra to forget to upload.
- */
-function withSchema(source) {
-  const start = "/* PB-SCHEMA:START";
-  const end = "/* PB-SCHEMA:END */";
-  const from = source.indexOf(start);
-  const to = source.indexOf(end);
-  if (from < 0 || to < 0) {
-    throw new Error("php/api.php has lost its PB-SCHEMA markers — the bootstrap cannot be exported.");
-  }
-  return `${source.slice(0, from)}${phpSchemaBlock()}${source.slice(to + end.length)}`;
+  return given ? String(given).replace(/\/+$/, "") : "";
 }
 
 /**
@@ -268,16 +219,9 @@ function withSchema(source) {
  * prefixes every request with it — so the same build works at the root of a
  * Node deployment and beside one.
  */
-function bakePage(html, { api = "", setup = "" } = {}) {
-  if (!api && !setup) return html;
-  const parts = [];
-  if (api) parts.push(`window.__PB_API_BASE__=${JSON.stringify(api)};`);
-  // The folder is *supposed* to have a PHP bootstrap in it. The page says so,
-  // so a bootstrap that does not answer is reported as a fault instead of being
-  // mistaken for "a folder of files with no server" — which is how a site whose
-  // `api.php` never ran quietly skipped its own setup.
-  if (setup) parts.push(`window.__PB_SETUP__=${JSON.stringify(setup)};`);
-  const tag = `<script>${parts.join("")}</script>`;
+function bakePage(html, { api = "" } = {}) {
+  if (!api) return html;
+  const tag = `<script>window.__PB_API_BASE__=${JSON.stringify(api)};</script>`;
   // Before the bundle, which reads it on first render. `</head>` is where the
   // single-file build puts its inline script, so this lands just ahead of it.
   return html.includes("</head>") ? html.replace("</head>", `${tag}</head>`) : `${tag}${html}`;
@@ -290,13 +234,13 @@ function bakePage(html, { api = "", setup = "" } = {}) {
  * site — and then `content.json` is simply not created. The page then shows the
  * content compiled into it, which is the same thing a fresh install shows.
  */
-function writeFolder(out, page, content, { theme, title, source, php = null, api = "" }) {
+function writeFolder(out, page, content, { theme, title, source, api = "" }) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
   fs.writeFileSync(
     path.join(out, "index.html"),
-    bakePage(fs.readFileSync(page, "utf8"), { api, setup: php ? "php" : "" }),
+    bakePage(fs.readFileSync(page, "utf8"), { api }),
   );
   console.log(`[export] index.html: ${(fs.statSync(page).size / 1024 / 1024).toFixed(1)} MB`);
 
@@ -321,55 +265,6 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
     );
   }
 
-  // The bootstrap: the one job PHP has on a static deployment. It creates the
-  // database, the tables and the owner — and then refuses everything else, so
-  // no sign-in, no content and no uploads ever pass through PHP. The API is the
-  // Node app at `--api`. The database password is written into
-  // `php-config.php`, which is safe here and would not be in a `.env`: PHP's
-  // source is never served, a plain file's is.
-  if (php) {
-    const phpDir = path.join(config.root, "php");
-    // The schema PHP creates is generated here from the Node server's own
-    // migrations, so the two can never disagree: whatever tables the site needs
-    // today are the tables the bootstrap writes.
-    fs.writeFileSync(
-      path.join(out, "api.php"),
-      withSchema(fs.readFileSync(path.join(phpDir, "api.php"), "utf8")),
-    );
-    fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
-    fs.writeFileSync(
-      path.join(out, "php-config.php"),
-      [
-        "<?php",
-        "/**",
-        " * Written by `npm run export:static -- --php`. Do not edit by hand: export again.",
-        " *",
-        " * The database password is in this file on purpose. PHP is executed by the",
-        " * server, so this source is never downloaded; a .env beside it would be.",
-        " *",
-        " * `apiUrl` is where the Node API lives — the address the setup screen sends",
-        " * the owner to once the database exists.",
-        " */",
-        "return [",
-        `  'driver' => ${JSON.stringify(php.driver)},`,
-        `  'host' => ${JSON.stringify(php.host)},`,
-        `  'port' => ${JSON.stringify(php.port)},`,
-        `  'database' => ${JSON.stringify(php.database)},`,
-        `  'user' => ${JSON.stringify(php.user)},`,
-        `  'password' => ${JSON.stringify(php.password)},`,
-        `  'socket' => ${JSON.stringify(php.socket)},`,
-        `  'siteTitle' => ${JSON.stringify(php.siteTitle)},`,
-        `  'apiUrl' => ${JSON.stringify(php.apiUrl)},`,
-        // The semicolon is not decoration: without it this file is a parse
-        // error, `api.php` fatals while requiring it, and with display_errors
-        // off the browser gets an empty response — which reads as "api.php is
-        // missing" and sent us hunting for a file that was there all along.
-        "];",
-      ].join("\n"),
-    );
-    console.log(`[export] api.php (setup only), .htaccess and php-config.php written — API at ${php.apiUrl || "(none)"}`);
-  }
-
   fs.writeFileSync(
     path.join(out, "README.txt"),
     [
@@ -387,56 +282,30 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
       "What works here: every page, the map and its pins, the weather, the shop,",
       "the journey. This is the site as it stood at the moment of export.",
       "",
-      php
+      api
         ? [
-            "api.php is the FIRST-RUN BOOTSTRAP and nothing else: it creates the",
-            "database, the tables and the owner account, then refuses every other",
-            "request (410) for good. No sign-in, no saves and no uploads ever pass",
-            "through PHP; deleting api.php after setup is safe.",
+            "The API for the dashboard lives at " + api + " — the Node app. Upload the",
+            "files here, run the app there, and signing in, saving, uploads, alerts and",
+            "the member garage all work. There is no PHP anywhere in this deployment.",
             "",
-            "The site's API is the Node app: `npm start` in the project root, mounted",
-            "in a subfolder (this folder expects " + api + "). Point the host's",
-            "\"Setup Node.js App\" at app.cjs and that subfolder, and the dashboard,",
-            "sign-in, saving, uploads, alerts and the member garage all work there.",
-            "",
-            "The database details are in php-config.php — uploaded as-is, never opened",
-            "in a browser.",
-            "",
-            "It works even if .htaccess is not uploaded: open",
-            "/api.php?route=setup/status and a line of JSON should appear. If that",
-            "downloads instead, PHP is not running for this folder.",
-          ].join("\n")
-        : api
-          ? [
-              "The API for the dashboard lives at " + api + " (the Node app). Upload the",
-              "files here, run the Node app there, and signing in, saving, uploads and",
-              "the member garage all work.",
-              "",
-            ].join("\n")
-          : [
-              "What does not, because there is no server: the dashboard and signing in,",
-              "editing the site, uploaded photos being added later, short map links being",
-              "expanded, nearby places, and the live tracker's shared position.",
-              "",
-            ].join("\n"),
-      php
-        ? [
-            "Do not upload a .env: on a PHP host every plain file in the web root can be",
-            "downloaded by anyone, while php-config.php is executed and never served.",
-            content
-              ? "content.json is the site's content at the moment of export."
-              : "content.json was not written: the page carries its content.",
           ].join("\n")
         : [
-            "There is no database here and no .env: " +
-              (content
-                ? "content.json IS the site's content, written when this folder was exported."
-                : "the page carries its content, and content.json was not written.") +
-              " Do not upload a .env — on a static",
-            "host every file in the web root can be downloaded by anyone, and nothing",
-            "here would read it anyway. To change the content, edit the site where the",
-            "server runs, then export again.",
+            "What does not, because there is no server: the dashboard and signing in,",
+            "editing the site, uploaded photos being added later, short map links being",
+            "expanded, nearby places, and the live tracker's shared position.",
+            "",
+            "To have all of that, run the Node app instead of uploading this folder:",
+            "`npm start` serves the site and the API together from one process.",
+            "",
           ].join("\n"),
+      "There is no database here and no .env: " +
+        (content
+          ? "content.json IS the site's content, written when this folder was exported."
+          : "the page carries its content, and content.json was not written.") +
+        " Do not upload a .env — on a static",
+      "host every file in the web root can be downloaded by anyone, and nothing",
+      "here would read it anyway. To change the content, edit the site where the",
+      "server runs, then export again.",
       "",
     ].join("\n"),
   );
@@ -459,7 +328,7 @@ async function main() {
   // database of its own can still produce the release. This is the normal case:
   // the site's database lives on the server, not on the laptop that builds it.
   const api = apiBase();
-  if (!config.hasDatabase && (hasFlag("php") || api !== "")) {
+  if (!config.hasDatabase && api !== "") {
     console.log(
       "[export] no database here — baking the built-in content as the offline fallback.",
     );
@@ -609,7 +478,6 @@ async function main() {
     title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
     source:
       config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database",
-    php: phpSettings(),
     api: apiBase(),
   });
   await closeRepo();

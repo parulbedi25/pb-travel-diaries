@@ -75,7 +75,7 @@ import MemberTracker from "./members/MemberTracker";
 import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
-import { apiBase, apiReachable, describeApiError, hasApiBase, hasPhpSetup, phpDiagnosis } from "./api/client";
+import { apiBase, describeApiError, hasApiBase } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -377,238 +377,6 @@ function DatabaseProblem({ message, onRetry }: { message: string; onRetry: () =>
 }
 
 /**
- * The bootstrap is in this folder and did not answer.
- *
- * An export made with `--php` carries `api.php` on purpose; if `/api/setup/…`
- * comes back as HTML or not at all, the file is missing, PHP is not running, or
- * the host is not serving it. The one thing that must not happen is the site
- * opening as though it were a finished deployment with no database behind it —
- * which is a table-less site that looks fine until the dashboard is opened.
- */
-/** What the file itself reported, when it ran at all. */
-interface Diagnosis {
-  ok?: boolean;
-  what?: string;
-  php?: string;
-  sapi?: string;
-  server?: string;
-  installed?: boolean;
-  configFile?: { present?: boolean; readable?: boolean };
-  extensions?: Record<string, boolean>;
-  folderWritable?: boolean;
-  database?: {
-    driver?: string;
-    host?: string;
-    database?: string;
-    connect?: { ok?: boolean; detail?: string };
-    tables?: Record<string, boolean>;
-  };
-}
-
-function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: () => void }) {
-  // The page can reach this server; the setup step cannot. So the page asks the
-  // file directly and shows the answer — a fatal error, a missing file and a
-  // database that will not connect read completely differently here.
-  const [diag, setDiag] = useState<Diagnosis | null>(null);
-  const [checking, setChecking] = useState(true);
-  const [probe, setProbe] = useState<string | null>(null);
-
-  /** The API, asked only when the bootstrap could not answer at all. */
-  const [api, setApi] = useState<{ ok: boolean; detail: string } | null>(null);
-
-  const check = async () => {
-    setChecking(true);
-    setProbe(null);
-    const answer = await phpDiagnosis<Diagnosis>();
-    setDiag(answer);
-    setApi(answer ? null : await apiReachable());
-    if (!answer) {
-      // Nothing answered at all: say what one plain request came back with.
-      try {
-        const response = await fetch("/api.php?route=diag", { cache: "no-store" });
-        const text = await response.text();
-        setProbe(
-          `${response.status} ${response.headers.get("content-type") ?? "no content type"} · ${
-            text.trim() ? text.slice(0, 200) : "empty body"
-          }`,
-        );
-      } catch (failure) {
-        setProbe(describeApiError(failure));
-      }
-    }
-    setChecking(false);
-  };
-
-  useEffect(() => {
-    void check();
-  }, []);
-
-  const tables = diag?.database?.tables ?? {};
-  const missing = Object.entries(tables).filter(([, present]) => !present).map(([name]) => name);
-  const extensionProblem = diag?.extensions
-    ? !diag.extensions.pdo || !(diag.extensions.pdo_mysql || diag.extensions.pdo_sqlite)
-    : false;
-
-  return (
-    <div className="grid min-h-dvh place-items-center bg-ink-950 px-6 text-white">
-      <div className="w-full max-w-xl rounded-3xl glass p-8">
-        <h1 className="font-display text-xl font-semibold">The setup file is not answering</h1>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-          This folder was exported with the PHP bootstrap, so it should create its database on the
-          first visit — but <span className="font-mono text-xs text-zinc-300">api.php</span> did not
-          answer, and no tables were created.
-        </p>
-        {error && (
-          <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-white/[0.04] p-3 font-mono text-[11px] leading-relaxed text-amber-200/90">
-            {error}
-          </pre>
-        )}
-
-        {/* What the file itself says, when it answered at all. */}
-        <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              What the server says
-            </p>
-            <button
-              type="button"
-              onClick={() => void check()}
-              disabled={checking}
-              className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
-            >
-              {checking ? "Checking…" : "Check again"}
-            </button>
-          </div>
-
-          {checking && <p className="mt-3 text-sm text-zinc-500">Asking api.php…</p>}
-
-          {!checking && diag && (
-            <div className="mt-3 space-y-1.5 font-mono text-[11px] leading-relaxed text-zinc-300">
-              <p className="text-emerald-300">{diag.what ?? "The PHP setup file is running."}</p>
-              <p>PHP {diag.php} · {diag.sapi}</p>
-              {diag.server && <p>{diag.server}</p>}
-              <p>
-                php-config.php: {diag.configFile?.present ? "present" : "MISSING"} ·{" "}
-                {diag.configFile?.readable ? "readable" : "not readable"}
-              </p>
-              <p>
-                extensions:{" "}
-                {Object.entries(diag.extensions ?? {})
-                  .map(([name, on]) => `${name} ${on ? "✓" : "✗"}`)
-                  .join(" · ")}
-              </p>
-              {diag.database && (
-                <p>
-                  database: {diag.database.driver} {diag.database.host ?? ""} ·{" "}
-                  {diag.database.connect?.ok ? "connected" : `failed — ${diag.database.connect?.detail ?? "no detail"}`}
-                </p>
-              )}
-              {missing.length > 0 && (
-                <p className="text-amber-200/90">tables missing: {missing.join(", ")}</p>
-              )}
-              {diag.installed && <p className="text-emerald-300">The database is installed.</p>}
-            </div>
-          )}
-
-          {!checking && !diag && api?.ok && (
-            <div className="mt-3 space-y-2 text-sm text-zinc-400">
-              <p className="text-emerald-300">
-                The API is answering — so the database was set up and this file has finished its job.
-              </p>
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                <span className="font-mono">api.php</span> is either gone (deleting it after setup is
-                safe and recommended) or not being run by this folder. Nothing is wrong with the
-                site: carry on and it will load.
-              </p>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="rounded-xl bg-saffron-400 px-5 py-2.5 text-sm font-semibold text-on-gold"
-              >
-                Go to the site
-              </button>
-            </div>
-          )}
-
-          {!checking && !diag && api && !api.ok && (
-            <div className="mt-3 space-y-1.5 text-sm text-zinc-400">
-              <p className="text-amber-200/90">Neither PHP nor the API is answering.</p>
-              {probe && <p className="font-mono text-[11px] text-zinc-400">{probe}</p>}
-              <p className="font-mono text-[11px] text-zinc-500">{api.detail}</p>
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                If the tables were already created, start the Node app (cPanel → Setup Node.js App)
-                and reload. If they were not, upload <span className="font-mono">api.php</span> and{" "}
-                <span className="font-mono">php-config.php</span> beside{" "}
-                <span className="font-mono">index.html</span>.
-              </p>
-            </div>
-          )}
-
-          {!checking && !diag && !api && (
-            <div className="mt-3 space-y-1.5 text-sm text-zinc-400">
-              <p className="text-amber-200/90">api.php did not answer with JSON.</p>
-              {probe && <p className="font-mono text-[11px] text-zinc-400">{probe}</p>}
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                An <span className="font-mono">empty</span> answer usually means PHP ran the file and
-                it hit a fatal error — check the host&apos;s PHP error log. A{" "}
-                <span className="font-mono">404</span> means api.php is not in this folder. Downloaded
-                source means PHP is not enabled for it. Re-exporting with{" "}
-                <span className="font-mono">--php</span> and uploading{" "}
-                <span className="font-mono">api.php</span> fixes the last two.
-              </p>
-            </div>
-          )}
-
-          {!checking && diag && extensionProblem && (
-            <p className="mt-3 rounded-xl bg-amber-400/10 p-3 text-[11px] leading-relaxed text-amber-200/90">
-              The database extension is missing. In cPanel → <strong>Select PHP Version</strong>, tick{" "}
-              <span className="font-mono">pdo_mysql</span>, then try again.
-            </p>
-          )}
-        </div>
-
-        <ul className="mt-4 space-y-2 text-sm text-zinc-400">
-          <li>
-            <span className="text-white">1.</span> Is{" "}
-            <span className="font-mono text-xs text-zinc-300">api.php</span> in the same folder as{" "}
-            <span className="font-mono text-xs text-zinc-300">index.html</span>? Some file managers
-            skip it when a ZIP is extracted.
-          </li>
-          <li>
-            <span className="text-white">2.</span> Open{" "}
-            <a className="text-saffron-300 underline" href="/api.php?route=setup/status">
-              /api.php?route=setup/status
-            </a>{" "}
-            — it should show a line of JSON. If it downloads as a file instead, PHP is not running
-            for this folder.
-          </li>
-          <li>
-            <span className="text-white">3.</span> PHP 8.0 or newer, and{" "}
-            <span className="font-mono text-xs text-zinc-300">php-config.php</span> present with the
-            database details.
-          </li>
-        </ul>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-xl bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold"
-          >
-            Try again
-          </button>
-          <a
-            href="/?skip-setup=1"
-            className="rounded-xl border border-white/15 px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
-          >
-            Show the website anyway
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
  * Boot gate.
  *
  * A freshly deployed copy has no database and no owner yet. The setup screen
@@ -618,11 +386,9 @@ function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: (
 function SetupGate() {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** The folder promised a PHP bootstrap and it did not answer. */
-  const [setupProblem, setSetupProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Set when there is no API to ask — an export uploaded to a plain file host.
-  // `?skip-setup=1` is the deliberate escape from the bootstrap screen below.
+  // `?skip-setup=1` is the deliberate way to look at such a folder anyway.
   const [staticHost, setStaticHost] = useState(
     () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("skip-setup"),
   );
@@ -630,7 +396,6 @@ function SetupGate() {
   useEffect(() => {
     let alive = true;
     setError(null);
-    setSetupProblem(null);
     /**
      * Both a refusal and a host that answers with the page itself mean the same
      * thing here — unless this page was exported pointing at an API, in which
@@ -650,12 +415,6 @@ function SetupGate() {
         // parse that, and the result is nothing shaped like a setup status.
         if (!next || typeof next !== "object" || typeof next.installed !== "boolean") {
           if (await noServer()) {
-            if (hasPhpSetup() && alive) {
-              setSetupProblem(
-                "The address answered, but not with the setup status — it is probably the website itself. Check that api.php is in this folder and that PHP runs for it.",
-              );
-              return;
-            }
             if (alive) setStaticHost(true);
             return;
           }
@@ -670,18 +429,8 @@ function SetupGate() {
         // files, which is exactly what the static export produces. Asking any
         // further question of it would only produce more of the same 404.
         if (await noServer()) {
-          // A folder exported with `--php` promised a bootstrap. Falling back to
-          // the site here is what let a deployment open with no tables and no
-          // setup screen, so it is reported instead.
-          if (hasPhpSetup() && alive) {
-            // The bootstrap promised itself in the page, and it did not answer.
-            // That screen also asks the API, so it can tell "setup never
-            // happened" apart from "setup is done and Node is simply not up".
-            setSetupProblem(describeApiError(err));
-            return;
-          }
-          // No bootstrap here, and the host answers like a folder of files.
-          // That is a plain static export: show the site.
+          // The host answers like a folder of files, and that is a plain static
+          // export: show the site.
           if (alive) setStaticHost(true);
           return;
         }
@@ -714,18 +463,6 @@ function SetupGate() {
       <SiteProvider>
         <Shell />
       </SiteProvider>
-    );
-  }
-
-  if (setupProblem) {
-    return (
-      <BootstrapProblem
-        error={setupProblem}
-        onRetry={() => {
-          setStatus(null);
-          setAttempt((n) => n + 1);
-        }}
-      />
     );
   }
 

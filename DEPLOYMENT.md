@@ -178,10 +178,9 @@ root, and works either way; the page is handed the same address on the way out
 subfolder. A request outside the prefix answers `404` with the prefix named,
 instead of the site's HTML.
 
-This is the only arrangement in which PHP is involved at all — and then only for
-creating the database and the owner, never afterwards. See
-[STATIC-HOSTING.md](STATIC-HOSTING.md#the-php-bootstrap--setup-only). Running at
-the root needs no PHP at any point.
+Nothing else is needed: the app answers the site and `/server/api/…` from one
+process, and it creates its own tables on first visit. See
+[STATIC-HOSTING.md](STATIC-HOSTING.md) for the file-hosting variant.
 
 ---
 

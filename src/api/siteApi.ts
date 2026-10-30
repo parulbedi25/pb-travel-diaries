@@ -1,6 +1,6 @@
 import type { SiteContent } from "../store/siteContent";
 import type { MediaItem } from "../admin/mediaLibrary";
-import { api, apiBase, hasApiBase, setupCall } from "./client";
+import { api } from "./client";
 
 /** The dashboard as the server knows it. */
 export interface Account {
@@ -29,8 +29,8 @@ export interface SetupStatus {
     user: string;
     socketPath: string;
     /**
-     * A password is already stored on the server (the PHP bridge reads one from
-     * `php-config.php`). The password itself is never sent to a browser, so the
+     * A password is already stored on the server (in its environment or its
+     * install file). The password itself is never sent to a browser, so the
      * field may be left blank and the server will use the stored one.
      */
     passwordStored?: boolean;
@@ -38,13 +38,9 @@ export interface SetupStatus {
   setupLocked: boolean;
   /** The "Restore a backup" tab: only while the site has no database yet. */
   restoreAllowed?: boolean;
-  /**
-   * Which program is answering. `php-setup` is the bootstrap on a static
-   * deployment: it creates the database and then stops, so the screen says so
-   * instead of pretending the site is ready here.
-   */
-  engine?: "installer" | "env" | "memory" | "php-setup";
-  /** Where the Node API lives, when this folder is not it (`--api`). */
+  /** Which program is answering. */
+  engine?: "installer" | "env" | "memory";
+  /** Where the API lives, when this folder is not it (`--api`). */
   apiUrl?: string;
   error?: string | null;
   mode: "installer" | "env" | "memory";
@@ -394,30 +390,16 @@ export const siteApi = {
   /* ── first-run setup ─────────────────────────────────────────────────── */
 
   /**
-   * The first question every deployment asks, and the only one PHP answers.
+   * The first question every deployment asks.
    *
-   * Order matters, and getting it wrong is what left a deployment with no
-   * tables and a 410 where the wizard should have been. The bootstrap in this
-   * folder is asked first: it is the one program that exists before a database
-   * does, and it answers even on a host that ignores `.htaccess`. Only if there
-   * is no bootstrap here does the API get asked — which is the Node deployment
-   * (the app answers at the root) and a static folder whose Node app lives in a
-   * subfolder with no `api.php` beside the page.
+   * One program answers it. Before the database exists the Node app still
+   * starts — that is how it offers the installer at all — so there is no second
+   * server to try and nothing to fall back to.
    */
-  setupStatus: async (): Promise<SetupStatus> => {
-    try {
-      return await setupCall<SetupStatus>("GET", "/api/setup/status");
-    } catch (bootstrapError) {
-      if (!hasApiBase()) throw bootstrapError;
-      // Setup addresses are deliberately same-origin (they are the bootstrap in
-      // this folder), so the API has to be named in full here — otherwise this
-      // would ask the same folder a fourth time and hear the same 404.
-      return api.get<SetupStatus>(`${apiBase()}/api/setup/status`);
-    }
-  },
+  setupStatus: () => api.get<SetupStatus>("/api/setup/status"),
 
   async testDatabase(input: SetupDatabaseInput): Promise<SetupTestResult> {
-    return setupCall<SetupTestResult>("POST", "/api/setup/test", input);
+    return api.post<SetupTestResult>("/api/setup/test", input);
   },
 
   async setupDatabase(input: SetupDatabaseInput): Promise<{
@@ -428,7 +410,7 @@ export const siteApi = {
     needsOwner: boolean;
     next: "owner" | "login";
   }> {
-    return setupCall("POST", "/api/setup/database", input);
+    return api.post("/api/setup/database", input);
   },
 
   /** Upload a backup and read it, without changing anything. */
@@ -452,19 +434,14 @@ export const siteApi = {
   /**
    * Create the owner account.
    *
-   * On the PHP bootstrap this does **not** sign anybody in — PHP has no
-   * session and never will — and the answer says where the API is instead, so
-   * the screen can send the person there to sign in for real.
+   * The app signs that account in as it creates it — there is no handover to
+   * anywhere else, because there is nowhere else.
    */
   async setupOwner(input: {
     username: string;
     password: string;
     email?: string;
-  }): Promise<{ user: Account; apiUrl?: string; signInAt?: string }> {
-    return setupCall<{ user: Account; apiUrl?: string; signInAt?: string }>(
-      "POST",
-      "/api/setup/owner",
-      input,
-    );
+  }): Promise<{ user: Account }> {
+    return api.post<{ user: Account }>("/api/setup/owner", input);
   },
 };
