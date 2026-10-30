@@ -68,6 +68,58 @@ panel's environment (or a `.env` **outside** `public_html`). See
 
 ---
 
+## The PHP bridge — when the host runs PHP but not Node
+
+A plain static folder cannot open a database. Shared hosting, though, almost
+always runs **PHP**, and PHP is code the server executes — so the folder can
+carry a small API of its own, and the site behaves like the Node version.
+
+```bash
+npm run export:static -- --php --out ~/Desktop/pb-static
+```
+
+That adds three files to the folder:
+
+| File | What it is |
+| --- | --- |
+| `api.php` | the whole API: setup, sign-in, content, settings |
+| `php-config.php` | the database details from your `.env`, including the password |
+| `.htaccess` | sends every `/api/…` request to `api.php`; hides `php-config.php` |
+
+**Why the password can live in `php-config.php` but never in a `.env`:** PHP is
+*executed* by the server, so its source is never downloaded — a `.env` is a
+plain file, and anything a browser can reach, anyone can read. Keep the `.php`
+extension; renaming it to `.txt` publishes your password.
+
+### What happens on the first visit
+
+1. The site asks `/api/setup/status`, which is PHP now, and gets an answer.
+2. Nothing is set up yet, so the setup screen opens — **host, port, database and
+   user already filled in** from your `.env`. The password is not sent to the
+   browser; leave that field blank and the server uses the stored one.
+3. **Test connection** really connects and names the server version.
+4. **Create tables** really creates them in your MariaDB.
+5. The owner account step creates the super admin, and it is stored with
+   `password_hash()` — never in plain text.
+6. The site opens, and the dashboard can sign in and save: content is kept in
+   `site_content` in your own database.
+
+### What it does not do
+
+Media uploads, backups, revisions history and member tracking remain Node-only
+features. Content editing, sign-in and settings work. If a plan offers Node, the
+Node deployment is the complete one.
+
+### If the setup screen does not appear
+
+- `.htaccess` was not uploaded (some file managers hide dotfiles) — upload it,
+  or ask the host to enable pretty URLs.
+- The API answers 404: the folder is not at the domain root.
+- Apache 500 on every request: check the host's PHP version (8.0 or newer) and
+  its error log.
+
+---
+
 ## 2. Make the export
 
 Run this on the machine that has your saved site — the one where the dashboard

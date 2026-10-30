@@ -184,7 +184,34 @@ function exportBuiltin(out) {
     console.error("[export] dist/index.html is missing — run `node scripts/build.mjs` first.");
     process.exit(1);
   }
-  writeFolder(out, page, null, { theme: "dark", title: config.siteTitle, source: "built-in content" });
+  writeFolder(out, page, null, {
+    theme: "dark",
+    title: config.siteTitle,
+    source: "built-in content",
+    php: phpSettings(),
+  });
+}
+
+/**
+ * The database details to bake into the folder's PHP bridge.
+ *
+ * Asked for with `--php`. Carrying the settings into the upload is what makes
+ * the first visit show a setup screen already describing this database, instead
+ * of an empty one. Without the flag the folder stays purely static: no PHP, no
+ * credentials, nothing to configure.
+ */
+function phpSettings() {
+  if (!hasFlag("php")) return null;
+  return {
+    driver: config.dbDriver === "sqlite" ? "sqlite" : "mysql",
+    host: config.db.host,
+    port: config.db.port,
+    database: config.db.database,
+    user: config.db.user,
+    password: config.db.password ?? "",
+    socket: config.db.socketPath ?? "",
+    siteTitle: config.siteTitle,
+  };
 }
 
 /**
@@ -194,7 +221,7 @@ function exportBuiltin(out) {
  * site — and then `content.json` is simply not created. The page then shows the
  * content compiled into it, which is the same thing a fresh install shows.
  */
-function writeFolder(out, page, content, { theme, title, source }) {
+function writeFolder(out, page, content, { theme, title, source, php = null }) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
@@ -220,6 +247,41 @@ function writeFolder(out, page, content, { theme, title, source }) {
       path.join(out, "content.json"),
       JSON.stringify({ exportedAt: new Date().toISOString(), theme, title, content }, null, 0),
     );
+  }
+
+  // The PHP bridge: the only way a folder of files can open a database, because
+  // PHP is executed by the server and a static file is not. The database
+  // password is written into `php-config.php`, which is safe here and would
+  // not be in a `.env`: PHP's source is never served, a plain file's is.
+  if (php) {
+    const phpDir = path.join(config.root, "php");
+    fs.copyFileSync(path.join(phpDir, "api.php"), path.join(out, "api.php"));
+    fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
+    fs.writeFileSync(
+      path.join(out, "php-config.php"),
+      [
+        "<?php",
+        "/**",
+        " * Written by `npm run export:static -- --php`. Do not edit by hand: export again.",
+        " *",
+        " * The database password is in this file on purpose. PHP is executed by the",
+        " * server, so this source is never downloaded; a .env beside it would be.",
+        " */",
+        "return [",
+        `  'driver' => ${JSON.stringify(php.driver)},`,
+        `  'host' => ${JSON.stringify(php.host)},`,
+        `  'port' => ${JSON.stringify(php.port)},`,
+        `  'database' => ${JSON.stringify(php.database)},`,
+        `  'user' => ${JSON.stringify(php.user)},`,
+        `  'password' => ${JSON.stringify(php.password)},`,
+        `  'socket' => ${JSON.stringify(php.socket)},`,
+        `  'siteTitle' => ${JSON.stringify(php.siteTitle)},`,
+        "  'sessionName' => 'pb_session',",
+        "];",
+        "",
+      ].join("\n"),
+    );
+    console.log("[export] api.php, .htaccess and php-config.php written (PHP bridge)");
   }
 
   fs.writeFileSync(
@@ -402,6 +464,7 @@ async function main() {
     title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
     source:
       config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database",
+    php: phpSettings(),
   });
   await closeRepo();
 }

@@ -567,6 +567,12 @@ export default function SetupWizard({
                     className={cn(inputCls, "pl-10 pr-12")}
                     autoComplete="off"
                   />
+                  {status.db?.passwordStored && (
+                    <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
+                      Leave this blank to use the password already saved on the server — it is
+                      never sent to a browser.
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}

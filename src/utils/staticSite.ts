@@ -61,7 +61,19 @@ export function loadBakedSite(): Promise<BakedSite | null> {
  * nothing a sign-in could sign in to, and an admin page that can only fail is
  * worse than no admin page.
  */
-export const isStaticBuild = () => baked;
+export const isStaticBuild = () => baked && !apiSeen;
+
+/**
+ * Called by the API client whenever a request is actually answered.
+ *
+ * An export can carry `content.json` *and* a PHP bridge; in that case the file
+ * is a fallback, not the source, and treating the page as a static build would
+ * lock the dashboard out of a deployment that has a real database behind it.
+ */
+let apiSeen = false;
+export const markApiSeen = () => {
+  apiSeen = true;
+};
 
 /**
  * Whether this page is being served by a static host, with no API behind it.
