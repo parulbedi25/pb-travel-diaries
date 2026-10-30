@@ -38,6 +38,14 @@ export interface SetupStatus {
   setupLocked: boolean;
   /** The "Restore a backup" tab: only while the site has no database yet. */
   restoreAllowed?: boolean;
+  /**
+   * Which program is answering. `php-setup` is the bootstrap on a static
+   * deployment: it creates the database and then stops, so the screen says so
+   * instead of pretending the site is ready here.
+   */
+  engine?: "installer" | "env" | "memory" | "php-setup";
+  /** Where the Node API lives, when this folder is not it (`--api`). */
+  apiUrl?: string;
   error?: string | null;
   mode: "installer" | "env" | "memory";
 }
@@ -420,12 +428,21 @@ export const siteApi = {
     return api.post<RestoreResult>("/api/setup/restore", input);
   },
 
+  /**
+   * Create the owner account.
+   *
+   * On the PHP bootstrap this does **not** sign anybody in — PHP has no
+   * session and never will — and the answer says where the API is instead, so
+   * the screen can send the person there to sign in for real.
+   */
   async setupOwner(input: {
     username: string;
     password: string;
     email?: string;
-  }): Promise<Account> {
-    const { user } = await api.post<{ user: Account }>("/api/setup/owner", input);
-    return user;
+  }): Promise<{ user: Account; apiUrl?: string; signInAt?: string }> {
+    return api.post<{ user: Account; apiUrl?: string; signInAt?: string }>(
+      "/api/setup/owner",
+      input,
+    );
   },
 };

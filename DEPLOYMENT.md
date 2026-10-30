@@ -147,6 +147,7 @@ install file.
 | `SESSION_DAYS` | `7` | How long a sign-in lasts |
 | `COOKIE_SECURE` | `auto` | Marks the cookie `Secure` over HTTPS |
 | `TRUST_PROXY` | `true` | Required behind Passenger/nginx for real IPs and HTTPS detection |
+| `BASE_PATH` | *(root)* | The subfolder this app answers under, e.g. `/server` — see below |
 | `BCRYPT_ROUNDS` | `10` | Password hashing cost |
 | `MAX_UPLOAD_MB` | `25` | Upload ceiling |
 | `MAX_RESTORE_MB` | `2048` | Largest backup the restore screen accepts |
@@ -161,6 +162,26 @@ install file.
 If the panel already supplies `DB_*`, the setup screen skips the database step
 and comes straight to the owner account. If those credentials do not work, the
 site says so instead of letting you overwrite them from the browser.
+
+### Running in a subfolder (`BASE_PATH`)
+
+A static deployment keeps the website as files in the document root and runs
+this app beside it, at `/server`:
+
+```
+BASE_PATH=/server   # this app answers /server/api/…
+```
+
+The prefix is stripped on the way in, so every route is written once, for the
+root, and works either way; the page is handed the same address on the way out
+(`window.__PB_API_BASE__`), so the same build works at the domain root and in a
+subfolder. A request outside the prefix answers `404` with the prefix named,
+instead of the site's HTML.
+
+This is the only arrangement in which PHP is involved at all — and then only for
+creating the database and the owner, never afterwards. See
+[STATIC-HOSTING.md](STATIC-HOSTING.md#the-php-bootstrap--setup-only). Running at
+the root needs no PHP at any point.
 
 ---
 

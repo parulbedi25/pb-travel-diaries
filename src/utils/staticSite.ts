@@ -13,6 +13,23 @@
  * which is why the parse is strict rather than trusting a 200.
  */
 
+/**
+ * The API this page was exported to talk to, if it is not its own folder.
+ *
+ * `npm run export:static -- --api /server` writes the address into the page;
+ * a Node deployment writes nothing. Read here rather than through the API
+ * client so the two answers — "is this a static build?" and "where is the
+ * server?" — come from one place and cannot disagree.
+ */
+const apiBase = (): string => {
+  if (typeof window === "undefined") return "";
+  const base = (window as { __PB_API_BASE__?: unknown }).__PB_API_BASE__;
+  return typeof base === "string" ? base.replace(/\/+$/, "") : "";
+};
+
+/** The address of a runtime endpoint, honouring that API base. */
+const withBase = (path: string): string => (apiBase() ? `${apiBase()}${path}` : new URL(path, document.baseURI).href);
+
 export interface BakedSite {
   /** The published content, as a visitor sees it. */
   content: unknown;
@@ -61,7 +78,7 @@ export function loadBakedSite(): Promise<BakedSite | null> {
  * nothing a sign-in could sign in to, and an admin page that can only fail is
  * worse than no admin page.
  */
-export const isStaticBuild = () => baked && !apiSeen;
+export const isStaticBuild = () => baked && !apiSeen && !apiBase();
 
 /**
  * Called by the API client whenever a request is actually answered.
@@ -94,7 +111,7 @@ export function isStaticHosting(): Promise<boolean> {
   hosting ??= (async () => {
     if (typeof fetch !== "function") return false;
     try {
-      const response = await fetch(new URL("api/content", document.baseURI), {
+      const response = await fetch(withBase("/api/content"), {
         cache: "no-store",
         credentials: "omit",
         headers: { accept: "application/json" },

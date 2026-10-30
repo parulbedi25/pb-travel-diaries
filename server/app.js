@@ -31,6 +31,33 @@ export function createApp() {
   // cookies are never set.
   if (config.trustProxy) app.set("trust proxy", 1);
   app.disable("x-powered-by");
+
+  /**
+   * Serving from a subfolder.
+   *
+   * A static deployment keeps the website in Apache's document root and runs
+   * this app beside it, at `BASE_PATH` (`/server` by default in the docs).
+   * Stripping the prefix here — before anything else looks at the path — means
+   * the routes, the cookie path, the `/api/…` mount and the media handler are
+   * all written once, for the root, and work either way. A request that is not
+   * under the prefix is not this app's: it answers 404 rather than the site's
+   * HTML, so a wrong URL is obvious instead of confusing.
+   */
+  if (config.basePath) {
+    const prefix = config.basePath;
+    app.use((req, res, next) => {
+      const url = req.url ?? "/";
+      if (url === prefix || url === `${prefix}/`) {
+        req.url = "/";
+        return next();
+      }
+      if (url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`)) {
+        req.url = url.slice(prefix.length) || "/";
+        return next();
+      }
+      res.status(404).json({ error: `This app answers under ${prefix}. Nothing here.` });
+    });
+  }
   // Defense in depth: private install/SQLite directories are never HTTP assets.
   app.use(["/server/data", "/data"], (_req, res) => res.status(404).end());
 
@@ -259,7 +286,7 @@ const SITE_CSP = [
 
   const indexFile = path.join(config.distDir, "index.html");
   if (fs.existsSync(config.distDir)) {
-    const sendDocument = siteDocument(indexFile);
+    const sendDocument = siteDocument(indexFile, { apiBase: config.basePath });
     app.get(["/", "/index.html"], sendDocument);
     app.use(
       express.static(config.distDir, {

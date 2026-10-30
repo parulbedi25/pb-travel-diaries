@@ -68,104 +68,88 @@ panel's environment (or a `.env` **outside** `public_html`). See
 
 ---
 
-## The PHP bridge — when the host runs PHP but not Node
+## The PHP bootstrap — setup only
 
-A plain static folder cannot open a database. Shared hosting, though, almost
-always runs **PHP**, and PHP is code the server executes — so the folder can
-carry a small API of its own, and the site behaves like the Node version.
+A folder of files cannot open a database: nothing on the server executes, and a
+browser has no MySQL client. PHP does execute, so the export carries **one** PHP
+file whose only job is the first five minutes: create the database's tables and
+the owner account. After that it refuses everything.
 
 ```bash
-npm run export:static -- --php --out ~/Desktop/pb-static
+npm run export:static -- --php --api https://your-site.com/server
 ```
-
-That adds five files to the folder:
 
 | File | What it is |
 | --- | --- |
-| `api.php` | the whole API — every endpoint the dashboard calls |
-| `php-config.php` | the database details from your `.env`, including the password |
-| `.htaccess` | sends every `/api/…` request to `api.php`; hides `php-config.php` |
-| `catalogue.json` | the bikes and their mileage, so the garage picker matches the Node build |
-| `bundled-media.json` | the photographs that ship with the site, so the media shelf is not empty |
-| `media-index.json` | the rows for the uploads in `media/`, inserted once so the shelf shows them |
+| `api.php` | the bootstrap: `setup/status`, `setup/test`, `setup/database`, `setup/owner`. **Nothing else, ever.** |
+| `php-config.php` | the database details from your `.env`, including the password, plus where the API lives |
+| `.htaccess` | sends `/api/…` to `api.php`; hides `php-config.php`; blocks dotfiles |
+
+**`--api` is where the site's API lives** — the Node app, normally mounted in a
+subfolder such as `/server`. The export writes that address into the page, so
+every request after setup goes there. Without `--api`, a `--php` export points at
+`/server` by default.
+
+### What PHP does, in full
+
+1. `/api/setup/status` — is the database reachable, is the site installed, what
+   are this server's details (prefilled into the setup screen).
+2. `/api/setup/test` — really connect and name the server version.
+3. `/api/setup/database` — create every table, in the Node server's own shape,
+   and repair a database an older setup left half-created.
+4. `/api/setup/owner` — create the owner account, with a bcrypt hash the Node
+   app verifies.
+
+Every other request — `/api/auth/login`, `/api/content`, `/api/media`,
+`/api/alerts`, the lot — answers **410 Gone** with `code: "setup-only"`. There is
+no session in PHP, no cookie, no password check, no upload, no content read.
+Once the installer is done you can delete `api.php` from the folder and nothing
+stops working: it has no further part to play.
 
 **Why the password can live in `php-config.php` but never in a `.env`:** PHP is
 *executed* by the server, so its source is never downloaded — a `.env` is a
 plain file, and anything a browser can reach, anyone can read. Keep the `.php`
 extension; renaming it to `.txt` publishes your password.
 
-### What happens on the first visit
+### Where the API comes from
 
-1. The site asks `/api/setup/status`, which is PHP now, and gets an answer.
-2. Nothing is set up yet, so the setup screen opens — **host, port, database and
-   user already filled in** from your `.env`. The password is not sent to the
-   browser; leave that field blank and the server uses the stored one.
-3. **Test connection** really connects and names the server version.
-4. **Create tables** really creates them — **all of them**: users, sessions,
-   content, revisions, settings, media, the auth log, member bikes and journeys,
-   route alerts and their read marks. A database that was created by an earlier,
-   partial version of this file is repaired on the next request, because every
-   request runs the same idempotent `CREATE TABLE IF NOT EXISTS` set.
-5. The owner account step creates the super admin, and it is stored with
-   `password_hash()` — never in plain text.
-6. The site opens, and the dashboard can sign in and save: content is kept in
-   `site_content` in your own database.
+The Node app, in a subfolder of the same domain:
 
-### What it serves
+1. cPanel → **Setup Node.js App** → application root = the project folder,
+   startup file `app.cjs`.
+2. Add `BASE_PATH=/server` (and `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`)
+   as environment variables. `BASE_PATH` is what makes the app answer under the
+   subfolder, so the page's calls to `/server/api/content` land on it.
+3. Restart the app, then upload `release/static` to the document root.
 
-Every endpoint the dashboard calls, with the same JSON shapes as the Node server:
+Sign-in, the dashboard, saving, uploads, backups, alerts and the member garage
+are all served by that Node app. PHP never sees any of them.
 
-| Area | Endpoints |
+### If I run the Node app at the domain root
+
+Then there is no static folder and no PHP at all — not even for the database.
+`npm start`, open the site, and the setup screen is the Node app's own, storing
+what it learns in `data/install.json`. **A Node deployment never runs PHP.**
+
+### After setup: the check
+
+```
+curl -i https://your-site.com/api/content
+# HTTP/1.1 410 Gone
+# {"error":"This file only creates the database. …","code":"setup-only"}
+```
+
+That 410 is the guarantee working: PHP is out of the way, and the dashboard is
+talking to Node.
+
+### If something looks wrong
+
+| What you see | What it means |
 | --- | --- |
-| setup | `setup/status`, `setup/test`, `setup/database`, `setup/owner` |
-| accounts | `auth/status`, `auth/me`, `auth/signup`, `auth/login`, `auth/logout`, `auth/password`, `auth/users` (+ create, patch, delete), `auth/events` |
-| the site | `content`, `revisions` (+ delete), `settings/theme`, `settings/site` |
-| media | list (uploads already in the folder are put on the shelf on the first request), upload, re-tag, replace the pixels, delete |
-| backups | list, create (a JSON snapshot of the content), download |
-| alerts | list, read marks, post, delete |
-| member | `member/catalogue`, `member/garage`, bikes and journeys (create, edit, delete), `member/link` |
-| maps | `maps/resolve` (expands a short link), `maps/health` |
-| nearby | `nearby?kind=…` — reads OpenStreetMap directly |
-
-The tables are the Node server's own — same names, same columns — so a database
-created by the bridge is one the Node app can take over, and the other way round.
-
-### What it still does not do
-
-- **No scheduled forecast sweep.** Alerts appear when an editor posts them;
-  `alerts/refresh` answers `ok` and inserts nothing. That needs the Node
-  scheduler and a weather key.
-- **Backups are JSON snapshots of the content, not zips**, and they are not
-  restored by the setup screen (`restoreAllowed: false`).
-- Members-only content is protected by a PHP session cookie; the Node
-  deployment adds the same checks, no stronger.
-
-If the plan offers Node, the Node deployment is the complete one — the bridge is
-what makes the PHP plan behave the same way.
-
-### If the dashboard says "This deployment has no such endpoint"
-
-`api.php` on the server is an older copy that only knew a handful of routes.
-Export again and upload these four files over the ones there — the database and
-`php-config.php` are untouched:
-
-```
-api.php  catalogue.json  bundled-media.json  media-index.json
-```
-
-The next request also repairs a database that an earlier, partial setup left
-behind: missing tables are created and missing columns added, automatically, on
-the first request after the upload.
-
-### If the setup screen does not appear
-
-- `.htaccess` was not uploaded (some file managers hide dotfiles) — upload it,
-  or ask the host to enable pretty URLs.
-- The API answers 404: the folder is not at the domain root.
-- Apache 500 on every request: check the host's PHP version (8.0 or newer) and
-  its error log.
-
----
+| "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
+| The setup screen appears, then the site shows content but no dashboard | `--api` was not given (or is wrong). Export again with the right address |
+| Every API call 404s after setup | the Node app is not running, or `BASE_PATH` does not match `--api` |
+| The setup screen does not appear | `.htaccess` was not uploaded (some file managers hide dotfiles), or the folder is not at the domain root |
 
 ## 2. Make the export
 
@@ -329,27 +313,21 @@ one.
 2. ZIP the **contents** of `release/static/`, upload, then **Extract**.
 3. Delete any `index.htm`, `index.html` or `default.html` the host created. If
    one is left there, Apache serves that instead and the site looks untouched.
-4. Do **not** use **Setup Node.js App** for this. It is not needed and it will
-   fight the static files for the domain.
+4. The API is a second, separate thing: **Setup Node.js App** in the same panel,
+   pointed at the repository, with `BASE_PATH=/server`. Both live at one
+   address — Apache serves the files, Node answers `/server/api/…`. See
+   [The PHP bootstrap](#the-php-bootstrap--setup-only) above.
 
-### If the plan has Node (cPanel → **Setup Node.js App**)
+### If the plan has Node and it can be the whole site
 
-The Node app is the complete server, and it is what serves these same endpoints
-in development: the weather sweep, zip backups and the restore screen only exist
-there. If the panel offers **Setup Node.js App**, the whole repository can run
-instead of the exported folder:
+Then skip the export entirely: upload the repository, `npm install`,
+application startup file `app.cjs`, `npm start`, and let it answer at the domain
+root with no `BASE_PATH`. The setup screen is the Node app's own, it writes
+`data/install.json`, and **PHP is never installed, never uploaded, never run** —
+not even for the database. The Node server creates its own tables.
 
-1. Upload the repository (not `release/static/`), then `npm install` in the
-   application root — the folder holding `package.json`.
-2. **Application startup file:** `app.cjs`. **Node version:** 22 or newer.
-3. Add `DB_DRIVER=mysql`, `DB_HOST`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` as
-   environment variables in that panel. This is the one deployment where a
-   `.env` in the web root would be a mistake: the panel already holds them.
-4. Restart the app and open the domain — the same setup screen appears, and
-   every `/api/…` request is answered by Node.
-
-In that case do not upload `api.php`: two APIs answering `/api/…` in one folder
-is one too many, and Apache would answer first.
+In that case do not upload `api.php` or `php-config.php`: two APIs answering
+`/api/…` in one folder is one too many, and Apache would answer first.
 
 ### Netlify
 

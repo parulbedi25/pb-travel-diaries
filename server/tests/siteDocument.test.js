@@ -49,3 +49,43 @@ test("missing document yields to the next handler", () => {
   siteDocument(new URL("./not-present.html", import.meta.url))({}, {}, () => { called = true; });
   assert.equal(called, true);
 });
+
+/**
+ * A Node app mounted in a subfolder (`BASE_PATH=/server`) serves the same page,
+ * so the page has to be told: its calls are root-relative and would otherwise
+ * go to the domain root — Apache's business — instead of the app.
+ */
+test("a document served under BASE_PATH carries that address", async () => {
+  const app = express();
+  app.get("/", siteDocument(file, { apiBase: "/server" }));
+  const server = app.listen(0);
+  await new Promise(resolve => server.once("listening", resolve));
+  try {
+    const port = server.address().port;
+    const plain = await request(port, "identity");
+    const html = plain.body.toString("utf8");
+    assert.match(html, /<script>window\.__PB_API_BASE__="\/server";<\/script><\/head>/);
+    // Exactly once, and nothing else changed: the same build still works at the
+    // domain root, where the injection is simply absent.
+    assert.equal(html.split("__PB_API_BASE__").length - 1, 1);
+    assert.equal(
+      html.replace('<script>window.__PB_API_BASE__="/server";</script>', ""),
+      fs.readFileSync(file, "utf8"),
+    );
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test("no address is injected when the app is at the root", async () => {
+  const app = express();
+  app.get("/", siteDocument(file, { apiBase: "" }));
+  const server = app.listen(0);
+  await new Promise(resolve => server.once("listening", resolve));
+  try {
+    const plain = await request(server.address().port, "identity");
+    assert.deepEqual(plain.body, fs.readFileSync(file));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

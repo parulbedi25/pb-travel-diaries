@@ -96,6 +96,14 @@ export default function SetupWizard({
 
   /* Step 2 — the owner */
   const [owner, setOwner] = useState({ username: "", password: "", confirm: "", email: "" });
+  /**
+   * Set when the owner was created by the PHP bootstrap on a static folder.
+   *
+   * PHP creates the database, the tables and the account, and then stops: it
+   * has no session and never signs anybody in. So the last thing this screen
+   * does is say where the API is and hand the person over to it.
+   */
+  const [handoff, setHandoff] = useState<{ apiUrl: string; username: string } | null>(null);
   const [showOwnerPassword, setShowOwnerPassword] = useState(false);
 
   useEffect(() => {
@@ -238,11 +246,19 @@ export default function SetupWizard({
     }
     setBusy(true);
     try {
-      await siteApi.setupOwner({
+      const result = await siteApi.setupOwner({
         username: owner.username.trim(),
         password: owner.password,
         email: owner.email.trim() || undefined,
       });
+      if (result.apiUrl) {
+        // The bootstrap has done its three jobs. There is no session here to
+        // carry, so the sign-in happens on the API — which is the only program
+        // that ever authenticates on this deployment.
+        setHandoff({ apiUrl: result.apiUrl, username: owner.username.trim() });
+        setBusy(false);
+        return;
+      }
       onDone();
     } catch (err) {
       setError(describeApiError(err));
@@ -250,6 +266,54 @@ export default function SetupWizard({
     }
   };
 
+
+  if (handoff) {
+    const dashboard = `${handoff.apiUrl.replace(/\/+$/, "")}/#/admin`;
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-ink-950 px-5 py-10 text-white sm:py-16">
+        <div className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" aria-hidden />
+        <div className="relative mx-auto w-full max-w-2xl">
+          <div className="rounded-3xl glass p-6 sm:p-8">
+            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-300">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Database ready
+            </span>
+            <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight text-white">
+              The database is set up
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              The tables and the owner account <span className="text-white">{handoff.username}</span> are
+              created. This is where PHP stops: it created the database and nothing else, and it
+              refuses every other request from here on — no sign-in, no saves, no uploads.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+              The website&apos;s API is the Node app at{" "}
+              <span className="font-mono text-xs text-saffron-300">{handoff.apiUrl}</span>. Sign in there
+              with the account you just made; the dashboard, saving and uploads all happen there.
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <a
+                href={dashboard}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all hover:brightness-110 active:scale-95"
+              >
+                Open the dashboard <ArrowRight className="h-4 w-4" />
+              </a>
+              <a
+                href={`${handoff.apiUrl.replace(/\/+$/, "")}/#/members`}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
+              >
+                <User className="h-4 w-4 text-saffron-300" /> Sign in
+              </a>
+            </div>
+            <p className="mt-5 text-[11px] leading-relaxed text-zinc-600">
+              If that address is wrong, export again with{" "}
+              <span className="font-mono">--api https://your-site/server</span>. You can also delete{" "}
+              <span className="font-mono">api.php</span> from the folder now — it has finished its work.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-ink-950 px-5 py-10 text-white sm:py-16">
