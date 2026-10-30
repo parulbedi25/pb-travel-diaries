@@ -131,6 +131,22 @@ Then there is no static folder and no PHP at all — not even for the database.
 `npm start`, open the site, and the setup screen is the Node app's own, storing
 what it learns in `data/install.json`. **A Node deployment never runs PHP.**
 
+### After setup: the site stays put, the API is checked
+
+The bootstrap finishes by handing the person back to the **site** — not to the
+API's address. Signing in happens on the site itself and goes through the API,
+because the session cookie is set for the whole domain (`Path=/`), so a page at
+the root is signed in by a request made to `/server`.
+
+Before it lets you go, that screen asks the API's health check. If the Node app
+is not running yet it says so, names the address, and waits — it does not
+navigate into a 404 and it does not hide the fact that the tables are already
+created and safe.
+
+The front page never depends on that check. The pages are files: if the API is
+not answering, the site is still served from `content.json` beside them, and
+only the dashboard and signing in need the server.
+
 ### You do not need a database to export
 
 The site's database lives on the server, so the machine that builds the release

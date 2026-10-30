@@ -267,6 +267,45 @@ async function request<T>(
   return payload as T;
 }
 
+/**
+ * Is the Node app actually up?
+ *
+ * The bootstrap hands the person to the site, which then needs the API for
+ * everything beyond reading. Asking this before navigating means a deployment
+ * whose Node app has not been started says so on a page with the address in it,
+ * instead of dumping the new owner on a 404 with no explanation.
+ *
+ * Resolves rather than throwing: "not running" is an answer here, not a fault.
+ */
+export async function apiReachable(timeoutMs = 6000): Promise<{ ok: boolean; detail: string }> {
+  // Relative when this page is served by the app itself (a Node deployment), so
+  // it asks its own server rather than a domain that would be cross-origin.
+  const base = apiBase();
+  const url = base ? `${base}/api/health` : "/api/health";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      credentials: "omit",
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) return { ok: false, detail: `${url} answered ${response.status}.` };
+    const payload = (await response.json()) as { ok?: boolean };
+    return payload?.ok
+      ? { ok: true, detail: `${url} is answering.` }
+      : { ok: false, detail: `${url} answered, but not like the API.` };
+  } catch (error) {
+    const detail = error instanceof Error && error.name === "AbortError"
+      ? `${url} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`
+      : `${url} could not be reached.`;
+    return { ok: false, detail };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const api = {
   get: <T>(url: string) => request<T>("GET", url),
   post: <T>(url: string, body?: unknown) => request<T>("POST", url, body),
