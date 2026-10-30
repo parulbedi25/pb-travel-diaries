@@ -131,6 +131,51 @@ Then there is no static folder and no PHP at all — not even for the database.
 `npm start`, open the site, and the setup screen is the Node app's own, storing
 what it learns in `data/install.json`. **A Node deployment never runs PHP.**
 
+### You do not need a database to export
+
+The site's database lives on the server, so the machine that builds the release
+usually has none. `--php` (or `--api`) with nothing configured exports anyway: it
+bakes the built-in content as the offline fallback, writes `php-config.php` with
+the credentials left blank for the setup screen, and says so:
+
+```
+npm run export:static -- --php --api https://your-site.com/server
+[export] no database here — baking the built-in content as the offline fallback.
+[export] the site's own content comes from the API at https://your-site.com/server
+```
+
+The pages take their content from the API, so what ships as `content.json` is
+only what a visitor sees if the API is down. To bake the *live* content instead,
+pass `--db-host/--db-user/--db-name` from a machine that can reach the database.
+
+### What the bootstrap creates, and why it cannot drift
+
+`api.php` has no schema of its own. The export bakes in the statements from
+`server/db/schema.js`, `migrations.js` and `sqliteMigrations.js` — the same SQL
+the Node app would run — together with the ledger rows that say the database is
+fully upgraded. So the tables PHP creates are the tables Node expects, including
+every column a feature added later needs.
+
+That is why the Node app opens a PHP-created database as "installed, nothing
+pending" and serves every endpoint, rather than reporting a schema that needs
+migrating. If you add a feature and a migration, export again; the bootstrap
+picks the new statements up automatically. `server/tests/phpSchema.test.js`
+fails the build if the two ever disagree.
+
+### When the setup screen cannot reach the file
+
+`api.php` answers a question about itself, which is what the "setup file is not
+answering" screen uses. Open it directly in a browser:
+
+```
+https://your-site.com/api.php?route=diag
+```
+
+It replies with JSON naming the PHP version, which extensions are loaded,
+whether `php-config.php` is present, whether the database connects and which
+tables exist. No password is ever in it, and no host or user once the site is
+installed.
+
 ### After setup: the check
 
 ```
@@ -147,7 +192,11 @@ talking to Node.
 | What you see | What it means |
 | --- | --- |
 | The website opens and the setup screen never appears | the bootstrap did not answer, so nothing was created. Open `/api.php?route=setup/status` — a line of JSON means it is alive and the page will find it on reload; a download or an HTML page means PHP is not running for this folder, or `api.php` was not uploaded |
-| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. Check it is beside `index.html`; `?skip-setup=1` shows the site anyway |
+| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. The screen now probes the file itself and prints PHP version, extensions, `php-config.php` and the database answer — read that panel first. `?skip-setup=1` shows the site anyway |
+| The page says **api.php did not answer with JSON** and the probe shows an **empty** body | PHP ran the file and it hit a fatal error. The bootstrap no longer needs PHP 8 (it carries its own `str_*`/`mb_*` fallbacks), so the usual causes left are a missing `pdo_mysql` extension, a partial upload, or a `php-config.php` from an **old export** — releases before this fix shipped one with no closing `;`, which is a parse error and therefore a blank page. Export again and replace both files |
+| The screen asks for the database details | the export was made on a machine with no database configured, so `php-config.php` was written blank on purpose rather than with placeholder values. Type the host, database, user and password from cPanel |
+| The probe shows **404** | `api.php` is not in this folder — re-extract the ZIP, or upload it beside `index.html` |
+| The probe shows **downloaded source** | PHP is not enabled for this folder: cPanel → **Select PHP Version** / **MultiPHP Manager**, then try again |
 | "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
 | The setup screen appears, then the site shows content but no dashboard | `--api` was not given (or is wrong). Export again with the right address |
 | Every API call 404s after setup | the Node app is not running, or `BASE_PATH` does not match `--api` |

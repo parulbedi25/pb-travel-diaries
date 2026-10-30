@@ -41,6 +41,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { phpSchemaBlock } from "../db/phpSchema.js";
 
 const THEME_VALUES = new Set(["dark", "light"]);
 const SKIP_UPLOADS = new Set(["README.md", ".DS_Store", "Thumbs.db"]);
@@ -203,14 +204,19 @@ function exportBuiltin(out) {
  */
 function phpSettings() {
   if (!hasFlag("php")) return null;
+  // Nothing configured on this machine: leave the credentials blank rather than
+  // baking in the defaults the app falls back to. `pb_travel_diaries` and `pb`
+  // are placeholders, not this site's database, and a wrong value that looks
+  // real is worse than an empty one — the setup screen asks for it and says so.
+  const known = config.hasDatabase;
   return {
     driver: config.dbDriver === "sqlite" ? "sqlite" : "mysql",
-    host: config.db.host,
+    host: known ? config.db.host : "localhost",
     port: config.db.port,
-    database: config.db.database,
-    user: config.db.user,
-    password: config.db.password ?? "",
-    socket: config.db.socketPath ?? "",
+    database: known ? config.db.database : "",
+    user: known ? config.db.user : "",
+    password: known ? (config.db.password ?? "") : "",
+    socket: known ? (config.db.socketPath ?? "") : "",
     siteTitle: config.siteTitle,
     apiUrl: apiBase(),
   };
@@ -231,6 +237,25 @@ function apiBase() {
   const given = argValue("api", process.env.API_URL ?? "");
   if (given) return String(given).replace(/\/+$/, "");
   return hasFlag("php") ? "/server" : "";
+}
+
+/**
+ * `api.php`, with the generated schema inside it.
+ *
+ * The file in `php/` carries an empty `$SCHEMA = [];` between two markers; the
+ * export replaces everything between them with the statements from
+ * `server/db/phpSchema.js`. Keeping the schema in the same file rather than a
+ * `schema.sql` beside it means there is nothing extra to forget to upload.
+ */
+function withSchema(source) {
+  const start = "/* PB-SCHEMA:START";
+  const end = "/* PB-SCHEMA:END */";
+  const from = source.indexOf(start);
+  const to = source.indexOf(end);
+  if (from < 0 || to < 0) {
+    throw new Error("php/api.php has lost its PB-SCHEMA markers — the bootstrap cannot be exported.");
+  }
+  return `${source.slice(0, from)}${phpSchemaBlock()}${source.slice(to + end.length)}`;
 }
 
 /**
@@ -304,7 +329,13 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
   // source is never served, a plain file's is.
   if (php) {
     const phpDir = path.join(config.root, "php");
-    fs.copyFileSync(path.join(phpDir, "api.php"), path.join(out, "api.php"));
+    // The schema PHP creates is generated here from the Node server's own
+    // migrations, so the two can never disagree: whatever tables the site needs
+    // today are the tables the bootstrap writes.
+    fs.writeFileSync(
+      path.join(out, "api.php"),
+      withSchema(fs.readFileSync(path.join(phpDir, "api.php"), "utf8")),
+    );
     fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
     fs.writeFileSync(
       path.join(out, "php-config.php"),
@@ -329,7 +360,11 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
         `  'socket' => ${JSON.stringify(php.socket)},`,
         `  'siteTitle' => ${JSON.stringify(php.siteTitle)},`,
         `  'apiUrl' => ${JSON.stringify(php.apiUrl)},`,
-        "]",
+        // The semicolon is not decoration: without it this file is a parse
+        // error, `api.php` fatals while requiring it, and with display_errors
+        // off the browser gets an empty response — which reads as "api.php is
+        // missing" and sent us hunting for a file that was there all along.
+        "];",
       ].join("\n"),
     );
     console.log(`[export] api.php (setup only), .htaccess and php-config.php written — API at ${php.apiUrl || "(none)"}`);
@@ -413,8 +448,26 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
 }
 
 async function main() {
+  const target = path.resolve(argValue("out", path.join(config.root, "release", "static")));
   if (hasFlag("builtin") || hasFlag("no-database")) {
-    exportBuiltin(path.resolve(argValue("out", path.join(config.root, "release", "static"))));
+    exportBuiltin(target);
+    return;
+  }
+  // Exported against a live API: there is nothing to read here, and nothing to
+  // miss. The pages take their content from that API — `content.json` is only
+  // the fallback for a server that has stopped answering — so a machine with no
+  // database of its own can still produce the release. This is the normal case:
+  // the site's database lives on the server, not on the laptop that builds it.
+  const api = apiBase();
+  if (!config.hasDatabase && (hasFlag("php") || api !== "")) {
+    console.log(
+      "[export] no database here — baking the built-in content as the offline fallback.",
+    );
+    console.log(
+      `[export] the site's own content comes from the API at ${api || "(this folder)"}; ` +
+        "to bake the live content instead, pass --db-host/--db-user/--db-name.",
+    );
+    exportBuiltin(target);
     return;
   }
   if (!config.hasDatabase) {
@@ -431,6 +484,9 @@ async function main() {
     console.error("[export] or put DB_HOST, DB_USER, DB_NAME and DB_PASSWORD in .env — this");
     console.error("[export] command reads it too. The .env is not copied into the folder: what");
     console.error("[export] ships is content.json, because a static site cannot hold a connection.");
+    console.error("");
+    console.error("[export] Or ship the built-in content and let the live API supply the rest:");
+    console.error("[export]   npm run export:static -- --builtin");
     console.error("");
     console.error("[export] If the site has never been set up on this machine:");
     console.error("[export]   PORT=4000 node app.cjs   → finish the setup screen → Save → export again");

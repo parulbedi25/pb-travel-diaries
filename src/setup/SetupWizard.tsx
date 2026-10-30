@@ -105,6 +105,25 @@ export default function SetupWizard({
    */
   const [handoff, setHandoff] = useState<{ apiUrl: string; username: string } | null>(null);
   const [showOwnerPassword, setShowOwnerPassword] = useState(false);
+  /** Set when the person asks to stay on the handover screen. */
+  const [holdOn, setHoldOn] = useState(false);
+  const [countdown, setCountdown] = useState(5);
+
+  // The handover is a step, not a decision. Sign-in happens on the API — PHP
+  // has no session to give — so the browser goes there by itself once the
+  // tables exist, and the page above simply says so.
+  useEffect(() => {
+    if (!handoff || holdOn) return;
+    const target = `${handoff.apiUrl.replace(/\/+$/, "")}/#/members`;
+    const tick = setInterval(() => setCountdown((n) => Math.max(0, n - 1)), 1000);
+    const go = setTimeout(() => {
+      window.location.href = target;
+    }, 5000);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(go);
+    };
+  }, [handoff, holdOn]);
 
   useEffect(() => {
     document.title = step === 1 ? "Set up your website" : "Create the owner account";
@@ -268,7 +287,8 @@ export default function SetupWizard({
 
 
   if (handoff) {
-    const dashboard = `${handoff.apiUrl.replace(/\/+$/, "")}/#/admin`;
+    const root = handoff.apiUrl.replace(/\/+$/, "");
+    const dashboard = `${root}/#/admin`;
     return (
       <div className="relative min-h-screen overflow-hidden bg-ink-950 px-5 py-10 text-white sm:py-16">
         <div className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" aria-hidden />
@@ -292,22 +312,35 @@ export default function SetupWizard({
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <a
-                href={dashboard}
+                href={`${root}/#/members`}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all hover:brightness-110 active:scale-95"
+              >
+                <User className="h-4 w-4" /> Sign in and carry on
+              </a>
+              <a
+                href={dashboard}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
               >
                 Open the dashboard <ArrowRight className="h-4 w-4" />
               </a>
-              <a
-                href={`${handoff.apiUrl.replace(/\/+$/, "")}/#/members`}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
-              >
-                <User className="h-4 w-4 text-saffron-300" /> Sign in
-              </a>
             </div>
+            {!holdOn && (
+              <p className="mt-4 text-[11px] text-zinc-500">
+                Taking you to sign in in {countdown}s ·{" "}
+                <button
+                  type="button"
+                  onClick={() => setHoldOn(true)}
+                  className="underline decoration-zinc-600 underline-offset-2 hover:text-zinc-300"
+                >
+                  stay on this page
+                </button>
+              </p>
+            )}
             <p className="mt-5 text-[11px] leading-relaxed text-zinc-600">
-              If that address is wrong, export again with{" "}
-              <span className="font-mono">--api https://your-site/server</span>. You can also delete{" "}
-              <span className="font-mono">api.php</span> from the folder now — it has finished its work.
+              Signing in happens on that address, because PHP has no session to hand over and never
+              will. Once you are in, the whole site — pages, saves, uploads — is served by Node.
+              You can delete <span className="font-mono">api.php</span> from this folder now; it has
+              finished its work.
             </p>
           </div>
         </div>
