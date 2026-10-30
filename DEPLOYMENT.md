@@ -223,6 +223,12 @@ The owner signs in at `#/admin` (aliases `#/pb-control`, `#/login`).
 - **Sections** has a **Public / Members** switch on every section. Visitors see a
   locked card with the section's name; the server strips the content from the
   anonymous response, so it is not in the page source.
+- The **header menu follows the lock**, one way and with nothing stored: a link
+  to a members-only section is left out of the header for anybody who is not
+  signed in, and is back in the same moment an account signs in (a reader or the
+  owner — signing up is what unlocks it). Signing out puts it away again. The
+  section itself stays on the page with its sign-in card, so there is always a
+  way in; the Menu tab marks such links **After sign-in**.
 - Every sign-up, sign-in, sign-out, failed attempt, password change and account
   creation is stored in `auth_events` with the address and browser.
 

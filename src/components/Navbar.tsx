@@ -72,10 +72,18 @@ export default function Navbar() {
   // Either way only the link is affected; the section itself is untouched by
   // anything the menu does (see utils/navSections).
   const showDormant = isAdmin && !previewAsVisitor;
+  // "Preview as User" is an honest preview: it drops the account for the same
+  // reason the page shows the locked card, so a members-only link leaves the
+  // menu exactly as it does for a visitor.
+  const signedIn = Boolean(account) && !previewAsVisitor;
   const nav = content.nav
     .filter((l) => l.enabled)
-    .map((link) => ({ link, state: navItemState(content, link) }))
-    .filter(({ state }) => state.available || showDormant);
+    .map((link) => ({ link, state: navItemState(content, link, { signedIn }) }))
+    // A locked link is not shown at all — not struck through, not disabled.
+    // The section is still on the page with its sign-in card; the menu simply
+    // does not offer a place this visitor cannot open. Signing in brings it
+    // back on the next render.
+    .filter(({ state }) => !state.locked && (state.available || showDormant));
   const ctas = resolveHeaderButtons(content.headerButtons)
     .filter((b) => b.enabled && b.label.trim())
     .slice(0, 2);

@@ -14,6 +14,12 @@
  * The rule is derived, never stored, so it cannot drift: turning the section
  * back on restores the link by itself, with no second edit and no migration of
  * saved content.
+ *
+ * The same one-way logic covers the lock. A members-only section is shut to
+ * anybody who is not signed in, so its menu item is not offered to them either —
+ * a menu of places you cannot go is worse than a short menu. Signing in (or
+ * creating a read-only account) opens the section and brings its link back in
+ * the same moment, because both read the same state rather than a stored copy.
  */
 
 import type { NavItem, SectionEntry, SiteContent } from "../store/siteContent";
@@ -47,31 +53,63 @@ export function anchorTarget(href: string): string | null {
 }
 
 export interface NavItemState {
-  /** The link is switched on and its section is too — show it as a working link. */
+  /** The link is switched on, its section is too, and this visitor may open it. */
   shown: boolean;
   /** False when the link points at a section that is switched off. */
   available: boolean;
+  /**
+   * True when the section behind the link is members-only and nobody is signed
+   * in — the place it points at is not open to this visitor yet.
+   */
+  locked: boolean;
   /** The section it points at, when it points at one. */
   section?: SectionEntry;
 }
 
+/** Whether a section asks for an account before it will show its content. */
+function needsAccount(entry: SectionEntry): boolean {
+  // `membersOnly` is the stored decision; `locked` is what the server stamps on
+  // an anonymous copy. Either one means the same thing to a visitor.
+  return Boolean(entry.membersOnly || entry.locked);
+}
+
+export interface NavViewer {
+  /** Somebody is signed in, so members-only sections are open to them. */
+  signedIn?: boolean;
+}
+
 /** What a header link should look like right now, given the sections behind it. */
-export function navItemState(content: SiteContent, item: NavItem): NavItemState {
+export function navItemState(
+  content: SiteContent,
+  item: NavItem,
+  viewer: NavViewer = {},
+): NavItemState {
+  const signedIn = viewer.signedIn === true;
   const target = anchorTarget(item.href);
   const matches = target
     ? content.sections.filter((entry) => anchorsOf(entry).includes(target))
     : [];
   // A link to something that is not a section is the operator's own business.
-  if (!matches.length) return { shown: item.enabled, available: true };
+  if (!matches.length) return { shown: item.enabled, available: true, locked: false };
+  const section = matches.find((entry) => entry.enabled) ?? matches[0];
   const on = matches.some((entry) => entry.enabled);
+  // Signing in is what unlocks a members-only section, and the menu follows it
+  // one way: the link is not there for a visitor who cannot open it, and it is
+  // there again — with no second edit, and nothing written to the content — the
+  // moment an account is signed in.
+  const locked = on && !signedIn && needsAccount(section);
   return {
-    shown: item.enabled && on,
+    shown: item.enabled && on && !locked,
     available: on,
-    section: matches.find((entry) => entry.enabled) ?? matches[0],
+    locked,
+    section,
   };
 }
 
 /** Every link's state in one pass, for a component that renders them all. */
-export function navStates(content: SiteContent): Map<string, NavItemState> {
-  return new Map(content.nav.map((item) => [item.id, navItemState(content, item)]));
+export function navStates(
+  content: SiteContent,
+  viewer: NavViewer = {},
+): Map<string, NavItemState> {
+  return new Map(content.nav.map((item) => [item.id, navItemState(content, item, viewer)]));
 }
