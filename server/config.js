@@ -125,6 +125,19 @@ export const config = {
   maxRestoreMb: int(process.env.MAX_RESTORE_MB, 2048),
   /** Behind Passenger/Plesk/Nginx the real IP and protocol arrive in headers. */
   trustProxy: bool(process.env.TRUST_PROXY, true),
+  /**
+   * The folder this app answers under, when it is not the domain root.
+   *
+   * On a static deployment the website is a folder of files served by Apache
+   * and this app answers `/api/…` from a subfolder — `BASE_PATH=/server`. The
+   * prefix is stripped on the way in, so every route, every cookie path and
+   * every link is written as if the app were at the root; empty means it is.
+   */
+  basePath: (() => {
+    const raw = String(process.env.BASE_PATH ?? "").trim().replace(/\/+$/, "");
+    if (!raw) return "";
+    return raw.startsWith("/") ? raw : `/${raw}`;
+  })(),
   /** Requests per minute per IP across the whole API. 0 turns it off. */
   rateLimitPerMinute: int(process.env.RATE_LIMIT_PER_MINUTE, 240),
   /**

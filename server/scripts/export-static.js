@@ -124,8 +124,6 @@ function envKeysUsed() {
 const { config } = await import("../config.js");
 const { closeRepo, getRepo } = await import("../db/index.js");
 const { visibleTo } = await import("../routes/content.js");
-const { listBikeCatalogue } = await import("../lib/bikeCatalogue.js");
-const { bundledMedia } = await import("../lib/bundledMedia.js");
 
 /** Where the content is being read from, said without the password. */
 function sourceLabel() {
@@ -191,6 +189,7 @@ function exportBuiltin(out) {
     title: config.siteTitle,
     source: "built-in content",
     php: phpSettings(),
+    api: apiBase(),
   });
 }
 
@@ -213,7 +212,43 @@ function phpSettings() {
     password: config.db.password ?? "",
     socket: config.db.socketPath ?? "",
     siteTitle: config.siteTitle,
+    apiUrl: apiBase(),
   };
+}
+
+/**
+ * Where the site's API lives, if it is not this folder.
+ *
+ * A folder of files cannot answer `/api/…`, so the page has to be told which
+ * server does. `--api https://example.com/server` (or `/server` for the same
+ * domain) bakes that address into the exported page; without it the folder is
+ * exactly what it looks like — a site with no API, and no dashboard.
+ *
+ * `--php` defaults it to `/server`, the usual place for the Node app under
+ * cPanel's "Setup Node.js App": PHP creates the database, then stops.
+ */
+function apiBase() {
+  const given = argValue("api", process.env.API_URL ?? "");
+  if (given) return String(given).replace(/\/+$/, "");
+  return hasFlag("php") ? "/server" : "";
+}
+
+/**
+ * The built page, told where the API is.
+ *
+ * Every call the page makes is relative (`/api/content`), which is right when
+ * the same server answers the page and the API. On a static deployment the two
+ * are different programs: the files come from Apache, the API from the Node app
+ * in a subfolder. One small script before the bundle says so, and the client
+ * prefixes every request with it — so the same build works at the root of a
+ * Node deployment and beside one.
+ */
+function withApiBase(html, api) {
+  if (!api) return html;
+  const tag = `<script>window.__PB_API_BASE__=${JSON.stringify(api)};</script>`;
+  // Before the bundle, which reads it on first render. `</head>` is where the
+  // single-file build puts its inline script, so this lands just ahead of it.
+  return html.includes("</head>") ? html.replace("</head>", `${tag}</head>`) : `${tag}${html}`;
 }
 
 /**
@@ -223,11 +258,11 @@ function phpSettings() {
  * site — and then `content.json` is simply not created. The page then shows the
  * content compiled into it, which is the same thing a fresh install shows.
  */
-function writeFolder(out, page, content, { theme, title, source, php = null, mediaRows = [] }) {
+function writeFolder(out, page, content, { theme, title, source, php = null, api = "" }) {
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
-  fs.copyFileSync(page, path.join(out, "index.html"));
+  fs.writeFileSync(path.join(out, "index.html"), withApiBase(fs.readFileSync(page, "utf8"), api));
   console.log(`[export] index.html: ${(fs.statSync(page).size / 1024 / 1024).toFixed(1)} MB`);
 
   const shipped = path.join(config.root, "public");
@@ -251,49 +286,16 @@ function writeFolder(out, page, content, { theme, title, source, php = null, med
     );
   }
 
-  // The PHP bridge: the only way a folder of files can open a database, because
-  // PHP is executed by the server and a static file is not. The database
-  // password is written into `php-config.php`, which is safe here and would
-  // not be in a `.env`: PHP's source is never served, a plain file's is.
+  // The bootstrap: the one job PHP has on a static deployment. It creates the
+  // database, the tables and the owner — and then refuses everything else, so
+  // no sign-in, no content and no uploads ever pass through PHP. The API is the
+  // Node app at `--api`. The database password is written into
+  // `php-config.php`, which is safe here and would not be in a `.env`: PHP's
+  // source is never served, a plain file's is.
   if (php) {
     const phpDir = path.join(config.root, "php");
     fs.copyFileSync(path.join(phpDir, "api.php"), path.join(out, "api.php"));
     fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
-
-    // Two lists the bridge cannot compute for itself: the bikes a member can
-    // pick, and the photographs that ship with the site. Both are data compiled
-    // into the Node build; written here as JSON so the PHP file serves the same
-    // answers instead of a second, drifting copy.
-    fs.writeFileSync(
-      path.join(out, "catalogue.json"),
-      JSON.stringify({ makers: listBikeCatalogue() }, null, 0),
-    );
-    fs.writeFileSync(path.join(out, "bundled-media.json"), JSON.stringify(bundledMedia, null, 0));
-
-    // The uploads themselves are copied into media/ above, and their rows live
-    // in the database the export read. A PHP host that creates its own database
-    // has no rows yet, so the shelf would come up empty for photos that are
-    // plainly sitting in the folder. This is those rows, written out, for
-    // `api.php` to insert once — a no-op when the database already knows them.
-    fs.writeFileSync(
-      path.join(out, "media-index.json"),
-      JSON.stringify(
-        (mediaRows ?? []).map((row) => ({
-          id: row.id,
-          filename: row.filename,
-          originalName: row.originalName,
-          mime: row.mime,
-          size: row.size,
-          kind: row.kind,
-          ext: row.ext,
-          tags: row.tags ?? "",
-          createdAt: row.createdAt,
-          createdBy: row.createdBy ?? null,
-        })),
-        null,
-        0,
-      ),
-    );
     fs.writeFileSync(
       path.join(out, "php-config.php"),
       [
@@ -303,6 +305,9 @@ function writeFolder(out, page, content, { theme, title, source, php = null, med
         " *",
         " * The database password is in this file on purpose. PHP is executed by the",
         " * server, so this source is never downloaded; a .env beside it would be.",
+        " *",
+        " * `apiUrl` is where the Node API lives — the address the setup screen sends",
+        " * the owner to once the database exists.",
         " */",
         "return [",
         `  'driver' => ${JSON.stringify(php.driver)},`,
@@ -313,12 +318,11 @@ function writeFolder(out, page, content, { theme, title, source, php = null, med
         `  'password' => ${JSON.stringify(php.password)},`,
         `  'socket' => ${JSON.stringify(php.socket)},`,
         `  'siteTitle' => ${JSON.stringify(php.siteTitle)},`,
-        "  'sessionName' => 'pb_session',",
-        "];",
-        "",
+        `  'apiUrl' => ${JSON.stringify(php.apiUrl)},`,
+        "]",
       ].join("\n"),
     );
-    console.log("[export] api.php, .htaccess and php-config.php written (PHP bridge)");
+    console.log(`[export] api.php (setup only), .htaccess and php-config.php written — API at ${php.apiUrl || "(none)"}`);
   }
 
   fs.writeFileSync(
@@ -340,21 +344,32 @@ function writeFolder(out, page, content, { theme, title, source, php = null, med
       "",
       php
         ? [
-            "A PHP host gets the whole API: api.php answers every /api/… call, so the",
-            "setup screen, signing in, editing and saving, photo uploads, backups,",
-            "alerts, the member garage and journeys all work. The database details are",
-            "in php-config.php — uploaded as-is, never opened in a browser.",
+            "api.php is the FIRST-RUN BOOTSTRAP and nothing else: it creates the",
+            "database, the tables and the owner account, then refuses every other",
+            "request (410) for good. No sign-in, no saves and no uploads ever pass",
+            "through PHP; deleting api.php after setup is safe.",
             "",
-            "Not available on PHP: the scheduled weather sweep (alerts are posted by an",
-            "editor), and restoring a backup zip from the setup screen.",
+            "The site's API is the Node app: `npm start` in the project root, mounted",
+            "in a subfolder (this folder expects " + api + "). Point the host's",
+            "\"Setup Node.js App\" at app.cjs and that subfolder, and the dashboard,",
+            "sign-in, saving, uploads, alerts and the member garage all work there.",
             "",
+            "The database details are in php-config.php — uploaded as-is, never opened",
+            "in a browser.",
           ].join("\n")
-        : [
-            "What does not, because there is no server: the dashboard and signing in,",
-            "editing the site, uploaded photos being added later, short map links being",
-            "expanded, nearby places, and the live tracker's shared position.",
-            "",
-          ].join("\n"),
+        : api
+          ? [
+              "The API for the dashboard lives at " + api + " (the Node app). Upload the",
+              "files here, run the Node app there, and signing in, saving, uploads and",
+              "the member garage all work.",
+              "",
+            ].join("\n")
+          : [
+              "What does not, because there is no server: the dashboard and signing in,",
+              "editing the site, uploaded photos being added later, short map links being",
+              "expanded, nearby places, and the live tracker's shared position.",
+              "",
+            ].join("\n"),
       php
         ? [
             "Do not upload a .env: on a PHP host every plain file in the web root can be",
@@ -519,23 +534,13 @@ async function main() {
   }
 
   const out = path.resolve(argValue("out", path.join(config.root, "release", "static")));
-  let mediaRows = [];
-  if (hasFlag("php")) {
-    // Only the bridge needs them: a static folder has no database to put them in.
-    try {
-      mediaRows = await repo.listMedia();
-    } catch {
-      mediaRows = [];
-    }
-  }
-
   writeFolder(out, page, content, {
     theme: THEME_VALUES.has(theme) ? theme : "dark",
     title: typeof savedTitle === "string" && savedTitle.trim() ? savedTitle : config.siteTitle,
     source:
       config.dbDriver === "sqlite" ? "the local SQLite database" : "the site's database",
     php: phpSettings(),
-    mediaRows,
+    api: apiBase(),
   });
   await closeRepo();
 }

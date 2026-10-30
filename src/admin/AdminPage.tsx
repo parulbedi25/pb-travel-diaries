@@ -3013,7 +3013,9 @@ export function MenuPanel() {
   const { draft, updateDraft, logAction } = useSite();
   // Section-first, one way: a link whose section is switched off reads as
   // disabled in the header. Hiding a link here never touches its section.
-  const states = navStates(draft);
+  // The editor is signed in, so a members-only section is open to them: its
+  // link counts as shown here even though a visitor would not see it yet.
+  const states = navStates(draft, { signedIn: true });
   const shownCount = draft.nav.filter((n) => states.get(n.id)?.shown).length;
   const restingCount = draft.nav.filter((n) => !states.get(n.id)?.available).length;
 
@@ -3061,6 +3063,11 @@ export function MenuPanel() {
               </span>
             )}{" "}
             Hiding a link here never hides its section on the site — a menu is not the page.
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            A link to a <span className="text-saffron-300">members-only</span> section is left
+            out of the header for visitors who are not signed in, and appears by itself the
+            moment an account signs in — nothing to switch on here.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -3122,6 +3129,15 @@ export function MenuPanel() {
                 title="Its section is switched off, so the header link is disabled until the section is on again. This switch does not touch the section."
               >
                 Section off
+              </span>
+            )}
+            {state?.available && state.section && (state.section.membersOnly || state.section.locked) && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-saffron-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300"
+                title="The section this link opens is members-only. Visitors who are not signed in do not get the link; it appears as soon as someone signs in."
+              >
+                <Lock className="h-3 w-3" />
+                After sign-in
               </span>
             )}
             <Switch on={n.enabled} onChange={(v) => setItem(n.id, { enabled: v })} label={`Show ${n.label}`} />
