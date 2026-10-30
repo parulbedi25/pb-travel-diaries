@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { isStaticBuild } from "./utils/staticSite";
+import { isStaticBuild, isStaticHosting } from "./utils/staticSite";
 import {
   SiteProvider,
   canEditSite,
@@ -387,18 +387,59 @@ function SetupGate() {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Set when there is no API to ask — an export uploaded to a plain file host.
+  const [staticHost, setStaticHost] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setError(null);
+    /** Both a refusal and a host that answers with the page itself mean the same thing here. */
+    const noServer = async (): Promise<boolean> => {
+      if (await isStaticHosting()) return true;
+      return false;
+    };
     siteApi
       .setupStatus()
-      .then((next) => alive && setStatus(next))
-      .catch((err) => alive && setError(describeApiError(err)));
+      .then(async (next) => {
+        if (!alive) return;
+        // A catch-all host answers 200 with its own HTML; the client cannot
+        // parse that, and the result is nothing shaped like a setup status.
+        if (!next || typeof next !== "object" || typeof next.installed !== "boolean") {
+          if (await noServer()) {
+            if (alive) setStaticHost(true);
+            return;
+          }
+          if (alive) setError("The server answered something that is not the setup status.");
+          return;
+        }
+        setStatus(next);
+      })
+      .catch(async (err) => {
+        if (!alive) return;
+        // A 404 from a file host is not a broken server: it is a folder of
+        // files, which is exactly what the static export produces. Asking any
+        // further question of it would only produce more of the same 404.
+        if (await noServer()) {
+          if (alive) setStaticHost(true);
+          return;
+        }
+        if (alive) setError(describeApiError(err));
+      });
     return () => {
       alive = false;
     };
   }, [attempt]);
+
+  // No server behind this page: the content is compiled in, or in
+  // `content.json` beside it. The site mounts; the dashboard stays out of reach
+  // on its own, because `isStaticBuild()` refuses the admin paths.
+  if (staticHost) {
+    return (
+      <SiteProvider>
+        <Shell />
+      </SiteProvider>
+    );
+  }
 
   if (error) {
     return (
