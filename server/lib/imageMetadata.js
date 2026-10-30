@@ -161,11 +161,3 @@ export function stripImageMetadata(input, mime = "") {
   return { buffer: cleaned, stripped: cleaned !== buffer };
 }
 
-/** Whether the bytes look like personal-data-bearing metadata could be inside. */
-export function isCleanableImage(buffer) {
-  if (!Buffer.isBuffer(buffer) || !buffer.length) return false;
-  if (buffer[0] === 0xff && buffer[1] === 0xd8) return true;
-  if (buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return true;
-  if (buffer.length >= 12 && buffer.toString("latin1", 0, 4) === "RIFF") return true;
-  return false;
-}

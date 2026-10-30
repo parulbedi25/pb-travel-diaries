@@ -196,7 +196,10 @@ setup screen:
 2. **Step 2 — Super admin.** The owner's username, password and optionally
    email. This account can never be deleted and is the only one the installer
    creates.
-3. The site opens signed in as the owner.
+3. **Step 3 — Confirmation.** "Database connected successfully", with two
+   buttons: **Open the dashboard** (you are already signed in as the super
+   admin) and **Visit the website**. Signing in later is `#/admin` with the
+   same username and password.
 
 Once step 1 succeeds the setup endpoints lock: a visitor can no longer repoint
 the site at another database. Do this immediately after the first deploy.

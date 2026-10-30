@@ -26,7 +26,6 @@ import { execFileSync } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import tls from "node:tls";
-import dns from "node:dns";
 
 /** The usual suspects, in the order curl and npm read them. */
 const PROXY_VARS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
@@ -142,9 +141,6 @@ export function proxyFor(url) {
     return null;
   }
 }
-
-/** Whether this process was told about a proxy at all, for the dashboard. */
-export const proxyConfigured = () => Boolean(proxyFor("https://example.com/"));
 
 /**
  * A Mac's PAC file, when it has one and we cannot follow it.
@@ -550,8 +546,3 @@ export async function request(url, options = {}) {
   return { status: 0, headers: new Map(), text: "", error: "ETOOMANYHOPS" };
 }
 
-/** Whether this process can reach the network at all, for the dashboard. */
-export const egressSummary = () => ({
-  proxy: proxyConfigured() ? proxyFor("https://example.com/")?.host ?? "configured" : "",
-  node: process.version,
-});

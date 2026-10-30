@@ -38,8 +38,6 @@ export interface SetupStatus {
   setupLocked: boolean;
   /** The "Restore a backup" tab: only while the site has no database yet. */
   restoreAllowed?: boolean;
-  /** Which program is answering. */
-  engine?: "installer" | "env" | "memory";
   /** Where the API lives, when this folder is not it (`--api`). */
   apiUrl?: string;
   error?: string | null;
@@ -229,15 +227,6 @@ export const siteApi = {
 
   async setTheme(theme: "dark" | "light"): Promise<void> {
     await api.put("/api/settings/theme", { theme });
-  },
-
-  /** One real nearby search, so the sources can be proved rather than assumed. */
-  testNearby(lat: number, lng: number, kind: "stays" | "essentials"): Promise<{
-    source: string;
-    items: { title: string; distanceKm: number }[];
-    tried?: string[];
-  }> {
-    return api.get(`/api/nearby?kind=${kind}&lat=${lat}&lng=${lng}`);
   },
 
   /* ── accounts ────────────────────────────────────────────────────────── */
