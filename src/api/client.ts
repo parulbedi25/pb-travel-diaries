@@ -65,6 +65,96 @@ export function apiUrl(url: string): string {
 /** Whether this page has an API somewhere other than its own folder. */
 export const hasApiBase = (): boolean => apiBase() !== "";
 
+/** The setup marker the export writes: `"php"` when the folder carries api.php. */
+const setupEngine = (): string => {
+  if (typeof window === "undefined") return "";
+  const engine = (window as { __PB_SETUP__?: unknown }).__PB_SETUP__;
+  return typeof engine === "string" ? engine : "";
+};
+
+/** Whether this folder is supposed to have a PHP bootstrap in it. */
+export const hasPhpSetup = (): boolean => setupEngine() === "php";
+
+/**
+ * Calls the setup step, on whichever spelling of the address this host gives.
+ *
+ * Setup is the one thing PHP does, and it must work on a host whose Apache
+ * ignores `.htaccess` — a shared plan with `AllowOverride` off, or a file
+ * manager that hid the dotfile and never uploaded it. So the tidy address is
+ * tried first and the two rewrite-free spellings after it; the one that answered
+ * is remembered, so the remaining steps go straight there.
+ *
+ * Nothing else uses this. The site's API is the Node app, and it is reached
+ * through the `API_BASE` address the export baked in.
+ */
+let setupSpelling: string | null = null;
+
+const setupCandidates = (path: string): string[] => {
+  const step = path.replace(/^\/api\//, "");
+  const listed = [path, `/api.php?route=${step}`, `/api.php/${step}`];
+  if (setupSpelling) return [setupSpelling.replace("{step}", step), ...listed];
+  return listed;
+};
+
+export async function setupCall<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  let lastError: unknown = null;
+  for (const url of setupCandidates(path)) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        credentials: "same-origin",
+        headers: body === undefined ? { accept: "application/json" } : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+
+    const text = await response.text();
+    let payload: unknown = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = null;
+    }
+
+    // A host without PHP answers with its own HTML, or with nothing: try the
+    // next spelling rather than reporting "the server said 200".
+    if (!payload || typeof payload !== "object") {
+      lastError = new ApiError(`The setup step at ${url} did not answer with JSON.`, response.status);
+      continue;
+    }
+
+    // Remember which spelling worked, as a template: `/api/setup/status`,
+    // `/api.php?route=setup/status` and `/api.php/setup/status` all end in
+    // `setup/<step>`, so one replacement covers the three.
+    setupSpelling = url.replace(/setup\/[^/?]+$/, "setup/{step}");
+
+    if (!response.ok) {
+      const answer = payload as { error?: string; code?: string };
+      throw new ApiError(
+        answer.error ?? `The setup step answered ${response.status}.`,
+        response.status,
+        answer.code,
+      );
+    }
+    return payload as T;
+  }
+
+  throw lastError instanceof ApiError
+    ? lastError
+    : new ApiError(
+        "The PHP setup file did not answer. Check that api.php was uploaded beside index.html.",
+        0,
+      );
+}
+
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   url: string,

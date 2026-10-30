@@ -75,7 +75,7 @@ import MemberTracker from "./members/MemberTracker";
 import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
-import { describeApiError } from "./api/client";
+import { describeApiError, hasPhpSetup } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -377,6 +377,67 @@ function DatabaseProblem({ message, onRetry }: { message: string; onRetry: () =>
 }
 
 /**
+ * The bootstrap is in this folder and did not answer.
+ *
+ * An export made with `--php` carries `api.php` on purpose; if `/api/setup/…`
+ * comes back as HTML or not at all, the file is missing, PHP is not running, or
+ * the host is not serving it. The one thing that must not happen is the site
+ * opening as though it were a finished deployment with no database behind it —
+ * which is a table-less site that looks fine until the dashboard is opened.
+ */
+function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-ink-950 px-6 text-white">
+      <div className="w-full max-w-xl rounded-3xl glass p-8">
+        <h1 className="font-display text-xl font-semibold">The setup file is not answering</h1>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          This folder was exported with the PHP bootstrap, so it should create its database on the
+          first visit — but <span className="font-mono text-xs text-zinc-300">api.php</span> did not
+          answer, and no tables were created.
+        </p>
+        {error && <p className="mt-3 rounded-xl bg-white/[0.04] p-3 text-xs text-amber-200/90">{error}</p>}
+        <ul className="mt-4 space-y-2 text-sm text-zinc-400">
+          <li>
+            <span className="text-white">1.</span> Is{" "}
+            <span className="font-mono text-xs text-zinc-300">api.php</span> in the same folder as{" "}
+            <span className="font-mono text-xs text-zinc-300">index.html</span>? Some file managers
+            skip it when a ZIP is extracted.
+          </li>
+          <li>
+            <span className="text-white">2.</span> Open{" "}
+            <a className="text-saffron-300 underline" href="/api.php?route=setup/status">
+              /api.php?route=setup/status
+            </a>{" "}
+            — it should show a line of JSON. If it downloads as a file instead, PHP is not running
+            for this folder.
+          </li>
+          <li>
+            <span className="text-white">3.</span> PHP 8.0 or newer, and{" "}
+            <span className="font-mono text-xs text-zinc-300">php-config.php</span> present with the
+            database details.
+          </li>
+        </ul>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-xl bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold"
+          >
+            Try again
+          </button>
+          <a
+            href="/?skip-setup=1"
+            className="rounded-xl border border-white/15 px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
+          >
+            Show the website anyway
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Boot gate.
  *
  * A freshly deployed copy has no database and no owner yet. The setup screen
@@ -386,13 +447,19 @@ function DatabaseProblem({ message, onRetry }: { message: string; onRetry: () =>
 function SetupGate() {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The folder promised a PHP bootstrap and it did not answer. */
+  const [setupProblem, setSetupProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Set when there is no API to ask — an export uploaded to a plain file host.
-  const [staticHost, setStaticHost] = useState(false);
+  // `?skip-setup=1` is the deliberate escape from the bootstrap screen below.
+  const [staticHost, setStaticHost] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("skip-setup"),
+  );
 
   useEffect(() => {
     let alive = true;
     setError(null);
+    setSetupProblem(null);
     /** Both a refusal and a host that answers with the page itself mean the same thing here. */
     const noServer = async (): Promise<boolean> => {
       if (await isStaticHosting()) return true;
@@ -406,6 +473,12 @@ function SetupGate() {
         // parse that, and the result is nothing shaped like a setup status.
         if (!next || typeof next !== "object" || typeof next.installed !== "boolean") {
           if (await noServer()) {
+            if (hasPhpSetup() && alive) {
+              setSetupProblem(
+                "The address answered, but not with the setup status — it is probably the website itself. Check that api.php is in this folder and that PHP runs for it.",
+              );
+              return;
+            }
             if (alive) setStaticHost(true);
             return;
           }
@@ -420,6 +493,13 @@ function SetupGate() {
         // files, which is exactly what the static export produces. Asking any
         // further question of it would only produce more of the same 404.
         if (await noServer()) {
+          // A folder exported with `--php` promised a bootstrap. Falling back to
+          // the site here is what let a deployment open with no tables and no
+          // setup screen, so it is reported instead.
+          if (hasPhpSetup() && alive) {
+            setSetupProblem(describeApiError(err));
+            return;
+          }
           if (alive) setStaticHost(true);
           return;
         }
@@ -438,6 +518,18 @@ function SetupGate() {
       <SiteProvider>
         <Shell />
       </SiteProvider>
+    );
+  }
+
+  if (setupProblem) {
+    return (
+      <BootstrapProblem
+        error={setupProblem}
+        onRetry={() => {
+          setStatus(null);
+          setAttempt((n) => n + 1);
+        }}
+      />
     );
   }
 

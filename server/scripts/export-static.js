@@ -243,9 +243,16 @@ function apiBase() {
  * prefixes every request with it — so the same build works at the root of a
  * Node deployment and beside one.
  */
-function withApiBase(html, api) {
-  if (!api) return html;
-  const tag = `<script>window.__PB_API_BASE__=${JSON.stringify(api)};</script>`;
+function bakePage(html, { api = "", setup = "" } = {}) {
+  if (!api && !setup) return html;
+  const parts = [];
+  if (api) parts.push(`window.__PB_API_BASE__=${JSON.stringify(api)};`);
+  // The folder is *supposed* to have a PHP bootstrap in it. The page says so,
+  // so a bootstrap that does not answer is reported as a fault instead of being
+  // mistaken for "a folder of files with no server" — which is how a site whose
+  // `api.php` never ran quietly skipped its own setup.
+  if (setup) parts.push(`window.__PB_SETUP__=${JSON.stringify(setup)};`);
+  const tag = `<script>${parts.join("")}</script>`;
   // Before the bundle, which reads it on first render. `</head>` is where the
   // single-file build puts its inline script, so this lands just ahead of it.
   return html.includes("</head>") ? html.replace("</head>", `${tag}</head>`) : `${tag}${html}`;
@@ -262,7 +269,10 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
-  fs.writeFileSync(path.join(out, "index.html"), withApiBase(fs.readFileSync(page, "utf8"), api));
+  fs.writeFileSync(
+    path.join(out, "index.html"),
+    bakePage(fs.readFileSync(page, "utf8"), { api, setup: php ? "php" : "" }),
+  );
   console.log(`[export] index.html: ${(fs.statSync(page).size / 1024 / 1024).toFixed(1)} MB`);
 
   const shipped = path.join(config.root, "public");
@@ -356,6 +366,10 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
             "",
             "The database details are in php-config.php — uploaded as-is, never opened",
             "in a browser.",
+            "",
+            "It works even if .htaccess is not uploaded: open",
+            "/api.php?route=setup/status and a line of JSON should appear. If that",
+            "downloads instead, PHP is not running for this folder.",
           ].join("\n")
         : api
           ? [

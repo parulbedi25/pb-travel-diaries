@@ -83,7 +83,7 @@ npm run export:static -- --php --api https://your-site.com/server
 | --- | --- |
 | `api.php` | the bootstrap: `setup/status`, `setup/test`, `setup/database`, `setup/owner`. **Nothing else, ever.** |
 | `php-config.php` | the database details from your `.env`, including the password, plus where the API lives |
-| `.htaccess` | sends `/api/…` to `api.php`; hides `php-config.php`; blocks dotfiles |
+| `.htaccess` | sends `/api/…` to `api.php`; hides `php-config.php`; blocks dotfiles — **optional**: the setup screen also reaches `api.php` through `/api.php?route=…`, which needs no rewrite |
 
 **`--api` is where the site's API lives** — the Node app, normally mounted in a
 subfolder such as `/server`. The export writes that address into the page, so
@@ -146,6 +146,8 @@ talking to Node.
 
 | What you see | What it means |
 | --- | --- |
+| The website opens and the setup screen never appears | the bootstrap did not answer, so nothing was created. Open `/api.php?route=setup/status` — a line of JSON means it is alive and the page will find it on reload; a download or an HTML page means PHP is not running for this folder, or `api.php` was not uploaded |
+| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. Check it is beside `index.html`; `?skip-setup=1` shows the site anyway |
 | "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
 | The setup screen appears, then the site shows content but no dashboard | `--api` was not given (or is wrong). Export again with the right address |
 | Every API call 404s after setup | the Node app is not running, or `BASE_PATH` does not match `--api` |

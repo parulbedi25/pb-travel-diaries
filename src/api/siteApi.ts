@@ -1,6 +1,6 @@
 import type { SiteContent } from "../store/siteContent";
 import type { MediaItem } from "../admin/mediaLibrary";
-import { api } from "./client";
+import { api, setupCall } from "./client";
 
 /** The dashboard as the server knows it. */
 export interface Account {
@@ -393,10 +393,18 @@ export const siteApi = {
 
   /* ── first-run setup ─────────────────────────────────────────────────── */
 
-  setupStatus: () => api.get<SetupStatus>("/api/setup/status"),
+  /**
+   * The first question every deployment asks.
+   *
+   * It goes through `setupCall` rather than the ordinary client because setup is
+   * the PHP bootstrap on a static deployment, and that must answer even on a
+   * host that ignores `.htaccess` — the rewrite-free spellings are tried when
+   * the tidy one does not answer.
+   */
+  setupStatus: () => setupCall<SetupStatus>("GET", "/api/setup/status"),
 
   async testDatabase(input: SetupDatabaseInput): Promise<SetupTestResult> {
-    return api.post<SetupTestResult>("/api/setup/test", input);
+    return setupCall<SetupTestResult>("POST", "/api/setup/test", input);
   },
 
   async setupDatabase(input: SetupDatabaseInput): Promise<{
@@ -407,7 +415,7 @@ export const siteApi = {
     needsOwner: boolean;
     next: "owner" | "login";
   }> {
-    return api.post("/api/setup/database", input);
+    return setupCall("POST", "/api/setup/database", input);
   },
 
   /** Upload a backup and read it, without changing anything. */
@@ -440,7 +448,8 @@ export const siteApi = {
     password: string;
     email?: string;
   }): Promise<{ user: Account; apiUrl?: string; signInAt?: string }> {
-    return api.post<{ user: Account; apiUrl?: string; signInAt?: string }>(
+    return setupCall<{ user: Account; apiUrl?: string; signInAt?: string }>(
+      "POST",
       "/api/setup/owner",
       input,
     );
