@@ -25,6 +25,95 @@
 
 declare(strict_types=1);
 
+/* ── it has to run everywhere ───────────────────────────────────────────── */
+
+/**
+ * This file is deployed to whatever PHP the host happens to run, so it uses
+ * nothing newer than 7.2 and nothing that needs an extension to be installed.
+ *
+ * Two things made an older or leaner server answer with a *blank page* rather
+ * than an error — which reads as "the file is not there" and is impossible to
+ * diagnose from a browser:
+ *
+ *  - `str_starts_with` / `str_ends_with` / `str_contains` are PHP 8.0. Calling
+ *    one on 7.4 is a fatal error, and shared hosting turns `display_errors`
+ *    off, so the response body is empty.
+ *  - `mb_strlen` / `mb_strtolower` need the mbstring extension, which a minimal
+ *    PHP build may not have.
+ *
+ * Both are answered here, once, so the rest of the file can use them freely.
+ */
+if (!function_exists('str_starts_with')) {
+  function str_starts_with(string $haystack, string $needle): bool
+  {
+    return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+  }
+}
+if (!function_exists('str_ends_with')) {
+  function str_ends_with(string $haystack, string $needle): bool
+  {
+    if ($needle === '') return true;
+    return substr($haystack, -strlen($needle)) === $needle;
+  }
+}
+if (!function_exists('str_contains')) {
+  function str_contains(string $haystack, string $needle): bool
+  {
+    return $needle === '' || strpos($haystack, $needle) !== false;
+  }
+}
+if (!function_exists('mb_strlen')) {
+  function mb_strlen(string $value, ?string $encoding = null): int
+  {
+    return strlen($value);
+  }
+}
+if (!function_exists('mb_substr')) {
+  function mb_substr(string $value, int $start, ?int $length = null, ?string $encoding = null): string
+  {
+    return $length === null ? substr($value, $start) : substr($value, $start, $length);
+  }
+}
+if (!function_exists('mb_strtolower')) {
+  function mb_strtolower(string $value, ?string $encoding = null): string
+  {
+    return strtolower($value);
+  }
+}
+
+/**
+ * Every failure becomes JSON.
+ *
+ * A fatal error with `display_errors` off sends nothing at all, and nothing is
+ * what sent us looking for a missing file. The handler below still cannot catch
+ * a parse error (the file would not have loaded), but it catches everything the
+ * code itself can trip over, and says so in a way the setup screen can show.
+ */
+set_error_handler(static function (int $severity, string $message, string $file = '', int $line = 0): bool {
+  // Only the severities that mean "this did not work". A notice or a
+  // deprecation is normal on an unknown PHP version — 8.1 is noisy about null
+  // arguments — and turning one into an exception would replace a working setup
+  // with a 500.
+  $fatal = E_WARNING | E_USER_WARNING | E_RECOVERABLE_ERROR;
+  if (!($severity & $fatal)) return false;
+  if (!(error_reporting() & $severity)) return false;
+  throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+register_shutdown_function(static function (): void {
+  $error = error_get_last();
+  if (!$error || !in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) return;
+  if (headers_sent()) return;
+  http_response_code(500);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode([
+    'error' => 'The setup file hit a fatal error: ' . $error['message'],
+    'code' => 'php_fatal',
+    'php' => PHP_VERSION,
+    'line' => $error['line'],
+  ], JSON_UNESCAPED_SLASHES);
+});
+
 /* ── configuration ──────────────────────────────────────────────────────── */
 
 $configFile = __DIR__ . '/php-config.php';
@@ -617,6 +706,94 @@ function refusal(string $route): void
     410,
     'setup-only'
   );
+}
+
+/**
+ * "Is this file even running?" — answered in one request.
+ *
+ * The setup screen asks for this when none of the setup addresses answered, and
+ * shows the result on the page. It is the difference between four very
+ * different faults that all look the same from a browser:
+ *
+ *   the file is not there (404) · PHP is not running for the folder (the file
+ *   downloads) · PHP is too old or missing an extension (an error) · the
+ *   database is the thing that is wrong (this answers, the connect fails).
+ *
+ * Nothing secret is in the reply: no password, and no host or user at all once
+ * the site is installed.
+ */
+if ($route === 'diag' && ($verb === 'GET' || $verb === 'POST')) {
+  $ready = installed();
+  $configFile = __DIR__ . '/php-config.php';
+  $db = settings_for($cfg);
+
+  $connect = null;
+  if ($ready) {
+    $connect = ['ok' => true, 'detail' => 'The database answered.'];
+  } else {
+    try {
+      $pdo = connect($db);
+      $pdo->query('SELECT 1')->fetchAll();
+      $connect = ['ok' => true, 'detail' => 'Connected, but the tables are not installed yet.'];
+    } catch (Throwable $e) {
+      $connect = ['ok' => false, 'detail' => $e->getMessage()];
+    }
+  }
+
+  // Table names the setup has created, so a half-finished install is obvious.
+  $tables = [];
+  try {
+    $pdo = repo();
+    if ($pdo) {
+      if (pdo_driver($pdo) === 'sqlite') {
+        $names = array_column($pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(), 'name');
+      } else {
+        // SHOW TABLES returns one column with an unpredictable name; the first
+        // key of the first row is what it is.
+        $rows = $pdo->query('SHOW TABLES')->fetchAll();
+        $names = [];
+        foreach ($rows as $row) $names[] = (string) reset($row);
+      }
+      foreach (['users', 'settings', 'site_content', 'media', 'revisions', 'member_bikes', 'member_journeys', 'route_alerts', 'alert_reads', 'schema_migrations'] as $wanted) {
+        $tables[$wanted] = in_array($wanted, $names, true);
+      }
+    }
+  } catch (Throwable $e) {
+    $tables = [];
+  }
+
+  json_out([
+    'ok' => true,
+    'what' => 'The PHP setup file is running.',
+    'php' => PHP_VERSION,
+    'sapi' => PHP_SAPI,
+    'server' => $_SERVER['SERVER_SOFTWARE'] ?? '',
+    'installed' => $ready,
+    'configFile' => [
+      'present' => is_file($configFile),
+      'readable' => is_readable($configFile),
+    ],
+    'extensions' => [
+      'pdo' => extension_loaded('pdo'),
+      'pdo_mysql' => extension_loaded('pdo_mysql'),
+      'pdo_sqlite' => extension_loaded('pdo_sqlite'),
+      'mbstring' => extension_loaded('mbstring'),
+      'json' => extension_loaded('json'),
+    ],
+    'folderWritable' => is_writable(__DIR__),
+    'database' => $ready
+      ? ['driver' => $db['driver'], 'connect' => $connect, 'tables' => $tables]
+      : [
+          'driver' => $db['driver'],
+          'host' => $db['host'],
+          'port' => $db['port'],
+          'database' => $db['database'],
+          'user' => $db['user'],
+          'connect' => $connect,
+          'tables' => $tables,
+        ],
+    'apiUrl' => (string) $cfg['apiUrl'],
+  ]);
 }
 
 /* ── first visit ────────────────────────────────────────────────────────── */

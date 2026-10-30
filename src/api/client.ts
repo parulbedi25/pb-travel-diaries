@@ -96,23 +96,53 @@ const setupCandidates = (path: string): string[] => {
   return listed;
 };
 
+/** What one attempt actually came back with — the words that diagnose it. */
+export interface SetupAttempt {
+  url: string;
+  status: number;
+  contentType: string;
+  /** The first line of the body, harmless HTML reduced to its text. */
+  sample: string;
+}
+
+export class SetupUnreachable extends ApiError {
+  attempts: SetupAttempt[];
+  constructor(message: string, attempts: SetupAttempt[]) {
+    super(message, 0, "setup_unreachable");
+    this.name = "SetupUnreachable";
+    this.attempts = attempts;
+  }
+}
+
+/** A body, as a person would read it: tags stripped, whitespace collapsed. */
+const readable = (text: string): string =>
+  text
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+
 export async function setupCall<T>(
   method: "GET" | "POST",
   path: string,
   body?: unknown,
 ): Promise<T> {
-  let lastError: unknown = null;
+  const attempts: SetupAttempt[] = [];
   for (const url of setupCandidates(path)) {
     let response: Response;
     try {
       response = await fetch(url, {
         method,
         credentials: "same-origin",
+        cache: "no-store",
         headers: body === undefined ? { accept: "application/json" } : { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-    } catch (error) {
-      lastError = error;
+    } catch {
+      attempts.push({ url, status: 0, contentType: "", sample: "the request itself failed" });
       continue;
     }
 
@@ -124,10 +154,17 @@ export async function setupCall<T>(
       payload = null;
     }
 
-    // A host without PHP answers with its own HTML, or with nothing: try the
-    // next spelling rather than reporting "the server said 200".
+    // A host without PHP answers with its own HTML, with an empty body, or with
+    // a download: try the next spelling rather than reporting "the server said
+    // 200". Each answer is kept, because "empty" and "a page" and "404" are
+    // three different faults and the screen can only help if it says which.
     if (!payload || typeof payload !== "object") {
-      lastError = new ApiError(`The setup step at ${url} did not answer with JSON.`, response.status);
+      attempts.push({
+        url,
+        status: response.status,
+        contentType: response.headers.get("content-type") ?? "",
+        sample: readable(text) || (text ? "(a file, not a page)" : "(empty response)"),
+      });
       continue;
     }
 
@@ -147,12 +184,29 @@ export async function setupCall<T>(
     return payload as T;
   }
 
-  throw lastError instanceof ApiError
-    ? lastError
-    : new ApiError(
-        "The PHP setup file did not answer. Check that api.php was uploaded beside index.html.",
-        0,
-      );
+  // Every spelling failed. Say what each one answered: that is the diagnosis.
+  const summary = attempts
+    .map((a) => `${a.url} → ${a.status || "no answer"}${a.sample ? ` · ${a.sample}` : ""}`)
+    .join("\n");
+  throw new SetupUnreachable(
+    `The PHP setup file did not answer. ${attempts.length} address(es) tried:\n${summary}`,
+    attempts,
+  );
+}
+
+/** Asks the file itself what it sees — only meaningful when it answered at all. */
+export async function phpDiagnosis<T>(): Promise<T | null> {
+  for (const url of ["/api.php?route=diag", "/api/setup/diag"]) {
+    try {
+      const response = await fetch(url, { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) continue;
+      const payload = (await response.json()) as T;
+      if (payload && typeof payload === "object") return payload;
+    } catch {
+      // Not this spelling either.
+    }
+  }
+  return null;
 }
 
 async function request<T>(

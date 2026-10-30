@@ -131,6 +131,20 @@ Then there is no static folder and no PHP at all — not even for the database.
 `npm start`, open the site, and the setup screen is the Node app's own, storing
 what it learns in `data/install.json`. **A Node deployment never runs PHP.**
 
+### When the setup screen cannot reach the file
+
+`api.php` answers a question about itself, which is what the "setup file is not
+answering" screen uses. Open it directly in a browser:
+
+```
+https://your-site.com/api.php?route=diag
+```
+
+It replies with JSON naming the PHP version, which extensions are loaded,
+whether `php-config.php` is present, whether the database connects and which
+tables exist. No password is ever in it, and no host or user once the site is
+installed.
+
 ### After setup: the check
 
 ```
@@ -147,7 +161,10 @@ talking to Node.
 | What you see | What it means |
 | --- | --- |
 | The website opens and the setup screen never appears | the bootstrap did not answer, so nothing was created. Open `/api.php?route=setup/status` — a line of JSON means it is alive and the page will find it on reload; a download or an HTML page means PHP is not running for this folder, or `api.php` was not uploaded |
-| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. Check it is beside `index.html`; `?skip-setup=1` shows the site anyway |
+| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. The screen now probes the file itself and prints PHP version, extensions, `php-config.php` and the database answer — read that panel first. `?skip-setup=1` shows the site anyway |
+| The page says **api.php did not answer with JSON** and the probe shows an **empty** body | PHP ran the file and it hit a fatal error. The bootstrap no longer needs PHP 8 (it carries its own `str_*`/`mb_*` fallbacks), so the usual causes left are a missing `pdo_mysql` extension or a syntax error from a partial upload — the host's PHP error log names the line |
+| The probe shows **404** | `api.php` is not in this folder — re-extract the ZIP, or upload it beside `index.html` |
+| The probe shows **downloaded source** | PHP is not enabled for this folder: cPanel → **Select PHP Version** / **MultiPHP Manager**, then try again |
 | "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
 | The setup screen appears, then the site shows content but no dashboard | `--api` was not given (or is wrong). Export again with the right address |
 | Every API call 404s after setup | the Node app is not running, or `BASE_PATH` does not match `--api` |

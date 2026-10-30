@@ -75,7 +75,7 @@ import MemberTracker from "./members/MemberTracker";
 import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
-import { describeApiError, hasPhpSetup } from "./api/client";
+import { describeApiError, hasPhpSetup, phpDiagnosis } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -385,7 +385,66 @@ function DatabaseProblem({ message, onRetry }: { message: string; onRetry: () =>
  * opening as though it were a finished deployment with no database behind it —
  * which is a table-less site that looks fine until the dashboard is opened.
  */
+/** What the file itself reported, when it ran at all. */
+interface Diagnosis {
+  ok?: boolean;
+  what?: string;
+  php?: string;
+  sapi?: string;
+  server?: string;
+  installed?: boolean;
+  configFile?: { present?: boolean; readable?: boolean };
+  extensions?: Record<string, boolean>;
+  folderWritable?: boolean;
+  database?: {
+    driver?: string;
+    host?: string;
+    database?: string;
+    connect?: { ok?: boolean; detail?: string };
+    tables?: Record<string, boolean>;
+  };
+}
+
 function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  // The page can reach this server; the setup step cannot. So the page asks the
+  // file directly and shows the answer — a fatal error, a missing file and a
+  // database that will not connect read completely differently here.
+  const [diag, setDiag] = useState<Diagnosis | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [probe, setProbe] = useState<string | null>(null);
+
+  const check = async () => {
+    setChecking(true);
+    setProbe(null);
+    const answer = await phpDiagnosis<Diagnosis>();
+    setDiag(answer);
+    if (!answer) {
+      // Nothing answered at all: say what one plain request came back with.
+      try {
+        const response = await fetch("/api.php?route=diag", { cache: "no-store" });
+        const text = await response.text();
+        setProbe(
+          `${response.status} ${response.headers.get("content-type") ?? "no content type"} · ${
+            text.trim() ? text.slice(0, 200) : "empty body"
+          }`,
+        );
+      } catch (failure) {
+        setProbe(describeApiError(failure));
+      }
+    }
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    void check();
+  }, []);
+
+  const tables = diag?.database?.tables ?? {};
+  const missing = Object.entries(tables).filter(([, present]) => !present).map(([name]) => name);
+  const extensionProblem = diag?.extensions
+    ? !diag.extensions.pdo || !(diag.extensions.pdo_mysql || diag.extensions.pdo_sqlite)
+    : false;
+
   return (
     <div className="grid min-h-dvh place-items-center bg-ink-950 px-6 text-white">
       <div className="w-full max-w-xl rounded-3xl glass p-8">
@@ -395,7 +454,81 @@ function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: (
           first visit — but <span className="font-mono text-xs text-zinc-300">api.php</span> did not
           answer, and no tables were created.
         </p>
-        {error && <p className="mt-3 rounded-xl bg-white/[0.04] p-3 text-xs text-amber-200/90">{error}</p>}
+        {error && (
+          <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl bg-white/[0.04] p-3 font-mono text-[11px] leading-relaxed text-amber-200/90">
+            {error}
+          </pre>
+        )}
+
+        {/* What the file itself says, when it answered at all. */}
+        <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              What the server says
+            </p>
+            <button
+              type="button"
+              onClick={() => void check()}
+              disabled={checking}
+              className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+            >
+              {checking ? "Checking…" : "Check again"}
+            </button>
+          </div>
+
+          {checking && <p className="mt-3 text-sm text-zinc-500">Asking api.php…</p>}
+
+          {!checking && diag && (
+            <div className="mt-3 space-y-1.5 font-mono text-[11px] leading-relaxed text-zinc-300">
+              <p className="text-emerald-300">{diag.what ?? "The PHP setup file is running."}</p>
+              <p>PHP {diag.php} · {diag.sapi}</p>
+              {diag.server && <p>{diag.server}</p>}
+              <p>
+                php-config.php: {diag.configFile?.present ? "present" : "MISSING"} ·{" "}
+                {diag.configFile?.readable ? "readable" : "not readable"}
+              </p>
+              <p>
+                extensions:{" "}
+                {Object.entries(diag.extensions ?? {})
+                  .map(([name, on]) => `${name} ${on ? "✓" : "✗"}`)
+                  .join(" · ")}
+              </p>
+              {diag.database && (
+                <p>
+                  database: {diag.database.driver} {diag.database.host ?? ""} ·{" "}
+                  {diag.database.connect?.ok ? "connected" : `failed — ${diag.database.connect?.detail ?? "no detail"}`}
+                </p>
+              )}
+              {missing.length > 0 && (
+                <p className="text-amber-200/90">tables missing: {missing.join(", ")}</p>
+              )}
+              {diag.installed && <p className="text-emerald-300">The database is installed.</p>}
+            </div>
+          )}
+
+          {!checking && !diag && (
+            <div className="mt-3 space-y-1.5 text-sm text-zinc-400">
+              <p className="text-amber-200/90">api.php did not answer with JSON.</p>
+              {probe && <p className="font-mono text-[11px] text-zinc-400">{probe}</p>}
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                An <span className="font-mono">empty</span> answer usually means PHP ran the file and
+                it hit a fatal error — check the host&apos;s PHP error log. A{" "}
+                <span className="font-mono">404</span> means api.php is not in this folder. Downloaded
+                source means PHP is not enabled for it. Re-exporting with{" "}
+                <span className="font-mono">--php</span> and uploading{" "}
+                <span className="font-mono">api.php</span> fixes the last two.
+              </p>
+            </div>
+          )}
+
+          {!checking && diag && extensionProblem && (
+            <p className="mt-3 rounded-xl bg-amber-400/10 p-3 text-[11px] leading-relaxed text-amber-200/90">
+              The database extension is missing. In cPanel → <strong>Select PHP Version</strong>, tick{" "}
+              <span className="font-mono">pdo_mysql</span>, then try again.
+            </p>
+          )}
+        </div>
+
         <ul className="mt-4 space-y-2 text-sm text-zinc-400">
           <li>
             <span className="text-white">1.</span> Is{" "}
