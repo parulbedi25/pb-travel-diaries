@@ -93,7 +93,7 @@ import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
 import SocialIconsEditor from "./SocialIconsEditor";
 import RouteStopsEditor from "./RouteStopsEditor";
-import { navStates } from "../utils/navSections";
+import { PAGE_TARGETS, navStates, navTargetOf, sectionsWithoutNav, sectionHref } from "../utils/navSections";
 import type { MapLinkSource } from "../utils/mapLinks";
 import Switch from "./Switch";
 import ColorPicker from "./ColorPicker";
@@ -3018,6 +3018,19 @@ export function MenuPanel() {
   const states = navStates(draft, { signedIn: true });
   const shownCount = draft.nav.filter((n) => states.get(n.id)?.shown).length;
   const restingCount = draft.nav.filter((n) => !states.get(n.id)?.available).length;
+  // Sections the page has and the menu cannot reach: the other half of "is the
+  // header in step with the dashboard?".
+  const unlinked = sectionsWithoutNav(draft);
+  const addLinkFor = (section: SectionEntry) => {
+    logAction(`Added a Header Menu link for ${section.label}`);
+    updateDraft((c) => ({
+      ...c,
+      nav: [
+        ...c.nav,
+        { id: `nav-${Date.now()}`, label: section.label, href: sectionHref(section), enabled: true },
+      ],
+    }));
+  };
 
   const setItem = (id: string, patch: Partial<{ label: string; href: string; enabled: boolean }>) => {
     logAction("Edited Header Menu links");
@@ -3055,6 +3068,11 @@ export function MenuPanel() {
             {shownCount} of {draft.nav.length} links shown · rename, relink, reorder or hide any item
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            Each line below says which section or page the link opens, named as the
+            <span className="text-saffron-300"> Sections</span> tab names it — rename the link to
+            match and the two lists read the same.
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
             A link whose section is switched off reads as disabled in the header.
             {restingCount > 0 && (
               <span className="text-amber-200/80">
@@ -3082,79 +3100,172 @@ export function MenuPanel() {
         <HeaderButtonsEditor />
         {draft.nav.map((n, i) => {
           const state = states.get(n.id);
+          const target = navTargetOf(draft, n);
+          // "Opens …" is the whole point of this row: the words on the site and
+          // the words in the Sections tab are not always the same, and this line
+          // always uses the dashboard's words.
           return (
           <div
             key={n.id}
             className={cn(
-              "flex flex-wrap items-center gap-3 rounded-2xl border p-4 transition-colors",
+              "rounded-2xl border p-4 transition-colors",
               n.enabled && state?.available
                 ? "border-white/[0.08] bg-white/[0.03]"
                 : "border-white/[0.05] bg-white/[0.01]"
             )}
           >
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => move(i, -1)}
-                disabled={i === 0}
-                aria-label="Move up"
-                className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
-              >
-                <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => move(i, 1)}
-                disabled={i === draft.nav.length - 1}
-                aria-label="Move down"
-                className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  aria-label="Move up"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => move(i, 1)}
+                  disabled={i === draft.nav.length - 1}
+                  aria-label="Move down"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-white/[0.12] hover:text-white disabled:opacity-30"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <input
+                value={n.label}
+                onChange={(e) => setItem(n.id, { label: e.target.value })}
+                aria-label="Menu label"
+                className={cn(inputCls, "w-40")}
+              />
+              {!state?.available && (
+                <span
+                  className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-200/90"
+                  title="Its section is switched off, so the header link is disabled until the section is on again. This switch does not touch the section."
+                >
+                  Section off
+                </span>
+              )}
+              {state?.available && state.section && (state.section.membersOnly || state.section.locked) && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-saffron-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300"
+                  title="The section this link opens is members-only. Visitors who are not signed in do not get the link; it appears as soon as someone signs in."
+                >
+                  <Lock className="h-3 w-3" />
+                  After sign-in
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-3">
+                <Switch on={n.enabled} onChange={(v) => setItem(n.id, { enabled: v })} label={`Show ${n.label}`} />
+                <button
+                  onClick={() => {
+                    logAction(`Removed Header Menu link: ${n.label}`);
+                    updateDraft((c) => ({ ...c, nav: c.nav.filter((x) => x.id !== n.id) }));
+                  }}
+                  aria-label={`Remove ${n.label}`}
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-            <input
-              value={n.label}
-              onChange={(e) => setItem(n.id, { label: e.target.value })}
-              aria-label="Menu label"
-              className={cn(inputCls, "w-40")}
-            />
-            <input
-              value={n.href}
-              onChange={(e) => setItem(n.id, { href: e.target.value })}
-              aria-label="Menu link"
-              placeholder="#anchor or /path or https://…"
-              className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
-            />
-            {!state?.available && (
-              <span
-                className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-200/90"
-                title="Its section is switched off, so the header link is disabled until the section is on again. This switch does not touch the section."
-              >
-                Section off
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <input
+                value={n.href}
+                onChange={(e) => setItem(n.id, { href: e.target.value })}
+                aria-label="Menu link"
+                placeholder="#anchor or /path or https://…"
+                className={cn(inputCls, "min-w-0 flex-1 font-mono text-xs")}
+              />
+              <label className="min-w-0">
+                <span className="sr-only">Point this link at a section</span>
+                <select
+                  value={
+                    target.kind === "section"
+                      ? `section:${target.section.id}`
+                      : target.kind === "page"
+                        ? `page:${n.href.trim().replace(/^#/, "")}`
+                        : ""
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    if (value.startsWith("section:")) {
+                      const section = draft.sections.find((s2) => s2.id === value.slice(8));
+                      if (section) setItem(n.id, { href: sectionHref(section) });
+                    } else if (value.startsWith("page:")) {
+                      setItem(n.id, { href: `#${value.slice(5)}` });
+                    }
+                  }}
+                  aria-label={`Section ${n.label} opens`}
+                  className="max-w-[15rem] rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-saffron-400/60 focus:outline-none"
+                >
+                  <option value="">Point at a section…</option>
+                  {draft.sections.map((section) => (
+                    <option key={section.id} value={`section:${section.id}`}>
+                      {section.label}
+                      {section.enabled ? "" : " (off)"}
+                    </option>
+                  ))}
+                  {Object.entries(PAGE_TARGETS).map(([route, label]) => (
+                    <option key={route} value={`page:${route}`}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed text-zinc-500">
+              <span>
+                Opens{" "}
+                <span className={cn("font-semibold", target.kind === "custom" ? "text-zinc-400" : "text-saffron-300")}>
+                  {target.label}
+                </span>
+                {target.kind === "section" && " — that section in the Sections tab"}
+                {target.kind === "page" && " — one of the site's own pages"}
+                {target.kind === "external" && " — another website"}
+                {target.kind === "custom" && " — a custom link"}
               </span>
-            )}
-            {state?.available && state.section && (state.section.membersOnly || state.section.locked) && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full bg-saffron-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300"
-                title="The section this link opens is members-only. Visitors who are not signed in do not get the link; it appears as soon as someone signs in."
-              >
-                <Lock className="h-3 w-3" />
-                After sign-in
-              </span>
-            )}
-            <Switch on={n.enabled} onChange={(v) => setItem(n.id, { enabled: v })} label={`Show ${n.label}`} />
-            <button
-              onClick={() => {
-                logAction(`Removed Header Menu link: ${n.label}`);
-                updateDraft((c) => ({ ...c, nav: c.nav.filter((x) => x.id !== n.id) }));
-              }}
-              aria-label={`Remove ${n.label}`}
-              className="grid h-7 w-7 place-items-center rounded-lg bg-white/[0.05] text-zinc-400 transition-colors hover:bg-red-500/15 hover:text-red-400"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+              {target.kind === "section" && target.label !== n.label && (
+                <button
+                  onClick={() => setItem(n.id, { label: target.label })}
+                  className="rounded-full border border-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+                  title="Use the section's own name here too, so the menu and the Sections tab read the same."
+                >
+                  Use “{target.label}”
+                </button>
+              )}
+            </p>
           </div>
           );
         })}
       </div>
+      {unlinked.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            Sections with no menu link
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+            These are on the page but the header has no way to reach them. One click adds a link
+            named after the section; the menu stays yours to edit.
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {unlinked.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => addLinkFor(section)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/12 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-saffron-400/50 hover:bg-saffron-400/10 hover:text-white"
+              >
+                <Plus className="h-3 w-3" />
+                {section.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <button
         onClick={() => {
           logAction("Added a new Header Menu link");
