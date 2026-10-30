@@ -164,11 +164,6 @@ export async function requireOwner(req, res, next) {
   }
 }
 
-/** True for the one account that owns the site. */
-export function isOwner(user) {
-  return Boolean(user) && user.role === "owner";
-}
-
 /**
  * Whether the public sign-up page is open. The dashboard setting wins; the
  * environment variable is the fallback for a database created before the

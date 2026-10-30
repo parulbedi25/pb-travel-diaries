@@ -14,9 +14,6 @@
  * owner from the dashboard and stored in the same table — see routes/alerts.js.
  */
 
-/** How loud an alert is. The dashboard colours and sorts by this. */
-export const SEVERITIES = ["info", "watch", "warning"];
-
 /** A stable identity for "this hazard at this place on this day". */
 function dedupeKey(day, stopKey, kind) {
   return `wx:${day}:${stopKey}:${kind}`;

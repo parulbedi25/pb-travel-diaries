@@ -10,7 +10,6 @@ import {
   noteFailedAttempt,
   passwordProblem,
   recordEvent,
-  requireEditor,
   requireOwner,
   requireUser,
   signupAllowed,

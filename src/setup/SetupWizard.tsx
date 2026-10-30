@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { describeApiError } from "../api/client";
 import { siteApi, type RestorePreview, type SetupStatus } from "../api/siteApi";
+import { ADMIN_PATH } from "../utils/router";
 import { cn } from "../utils/cn";
 
 const inputCls =
@@ -66,7 +67,7 @@ export default function SetupWizard({
   status: SetupStatus;
   onDone: () => void;
 }) {
-  const [step, setStep] = useState<1 | 2>(status.installed ? 2 : 1);
+  const [step, setStep] = useState<1 | 2 | 3>(status.installed ? 2 : 1);
   const [showOwnerPassword, setShowOwnerPassword] = useState(false);
   // Once the database step has been saved the API locks it; do not offer a
   // Back button that could only fail.
@@ -97,8 +98,11 @@ export default function SetupWizard({
 
   /* Step 2 — the owner */
   const [owner, setOwner] = useState({ username: "", password: "", confirm: "", email: "" });
+  /* Step 3 — who was just created, shown on the confirmation screen. */
+  const [ownerUsername, setOwnerUsername] = useState("");
   useEffect(() => {
-    document.title = step === 1 ? "Set up your website" : "Create the owner account";
+    document.title =
+      step === 1 ? "Set up your website" : step === 2 ? "Create the owner account" : "You are all set";
   }, [step]);
 
   const dbInput = {
@@ -239,12 +243,14 @@ export default function SetupWizard({
     try {
       // The app creates the owner and signs that account in as it does, so
       // there is nowhere to hand over to: the reload opens the dashboard.
-      await siteApi.setupOwner({
+      const { user } = await siteApi.setupOwner({
         username: owner.username.trim(),
         password: owner.password,
         email: owner.email.trim() || undefined,
       });
-      onDone();
+      setOwnerUsername(user.username);
+      setNotice("");
+      setStep(3);
     } catch (err) {
       setError(describeApiError(err));
       setBusy(false);
@@ -263,16 +269,20 @@ export default function SetupWizard({
             PB
           </span>
           <div>
-            <h1 className="font-display text-lg font-semibold text-white">Set up your website</h1>
+            <h1 className="font-display text-lg font-semibold text-white">
+              {step === 3 ? "You are all set" : "Set up your website"}
+            </h1>
             <p className="text-xs text-zinc-500">
-              One time only — the database and the owner account are created here.
+              {step === 3
+                ? "The database, the tables and the super admin are ready."
+                : "One time only — the database and the owner account are created here."}
             </p>
           </div>
         </div>
 
         {/* progress */}
         <div className="mb-6 flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4">
-          <StepDot n={1} active={step === 1} done={step === 2} />
+          <StepDot n={1} active={step === 1} done={step >= 2} />
           <div className="min-w-0 flex-1">
             <p className={cn("text-sm font-semibold", step === 1 ? "text-white" : "text-zinc-400")}>
               Database
@@ -280,7 +290,7 @@ export default function SetupWizard({
             <p className="text-[11px] text-zinc-600">Website title + database choice</p>
           </div>
           <span className="h-px w-8 bg-white/10" aria-hidden />
-          <StepDot n={2} active={step === 2} done={false} />
+          <StepDot n={2} active={step === 2} done={step === 3} />
           <div className="min-w-0 flex-1">
             <p className={cn("text-sm font-semibold", step === 2 ? "text-white" : "text-zinc-400")}>
               Super admin
@@ -792,11 +802,80 @@ export default function SetupWizard({
                   disabled={busy}
                   className="ml-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-saffron-400 px-6 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-60 sm:w-auto"
                 >
-                  {busy ? "Creating…" : "Create owner & open site"}
+                  {busy ? "Creating…" : "Create the super admin"}
                   {!busy && <Check className="h-4 w-4" />}
                 </button>
               </div>
             </form>
+          )}
+
+          {step === 3 && (
+            <div className="text-center">
+              <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-400/12 text-emerald-300">
+                <CheckCircle2 className="h-8 w-8" />
+              </span>
+              <h2 className="mt-5 font-display text-2xl font-semibold text-white">
+                Database connected successfully
+              </h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
+                Every table was created and your super admin account
+                {ownerUsername ? (
+                  <>
+                    {" "}
+                    <span className="font-semibold text-white">{ownerUsername}</span>
+                  </>
+                ) : null}{" "}
+                is signed in. The website is ready — write your first post in the dashboard, or
+                look at the site the way a reader sees it.
+              </p>
+
+              <ul className="mx-auto mt-6 max-w-md space-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left text-[12px] leading-relaxed text-zinc-400">
+                <li className="flex gap-2">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                  <span>
+                    Sign in later at <span className="font-semibold text-white">#/admin</span> with
+                    the same username and password.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                  <span>
+                    Keep the site title, the map settings and the photos in the dashboard — the
+                    website reads them from there.
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
+                  <span>
+                    Anyone else who should write can be given an account in the dashboard; readers
+                    can sign up themselves.
+                  </span>
+                </li>
+              </ul>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = ADMIN_PATH;
+                    onDone();
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-6 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
+                >
+                  Open the dashboard <ArrowRight className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = "/";
+                    onDone();
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/12 px-6 py-3 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/[0.06] hover:text-white"
+                >
+                  Visit the website
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -805,7 +884,9 @@ export default function SetupWizard({
             ? mode === "restore"
               ? "A restore creates the tables it needs, writes every row back, and unpacks the media folder. Nothing is imported by hand."
               : "The app creates the tables itself — importing server/schema.sql is not needed."
-            : "Afterwards, people can create their own read-only accounts from the sign-up page, or you can add accounts in the dashboard."}
+            : step === 2
+              ? "Afterwards, people can create their own read-only accounts from the sign-up page, or you can add accounts in the dashboard."
+              : "This screen is shown once. From now on the site opens straight to the dashboard when you are signed in."}
         </p>
       </div>
     </div>

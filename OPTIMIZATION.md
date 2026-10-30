@@ -71,3 +71,23 @@ not a guaranteed improvement over every hosting configuration.
 
 Actual Namecheap/Passenger and visual browser verification remain host-side
 checks; no MySQL server was available for a live SQL integration test here.
+
+## Dead-code pass (round 87)
+
+Every declaration in `src/` and `server/` was counted against every reference in
+the tree; only declarations with no reference outside their own line were
+removed, and each was re-checked against the tests first.
+
+- Removed `isOwner` (`server/lib/auth.js`), `egressSummary` and the
+  `proxyConfigured` helper it was the only caller of
+  (`server/lib/egress.js`), `isCleanableImage` (`server/lib/imageMetadata.js`),
+  `SEVERITIES` (`server/lib/weatherAlerts.js`) and the unused `dns` import in
+  `egress.js`.
+- Removed the unused `requireEditor` import in `server/routes/auth.js`.
+- Removed the client's unused `siteApi.testNearby` and the PHP-era `engine`
+  field on `SetupStatus`.
+- Retained helpers whose only callers are the test suite (`viewboxOf`,
+  `clearNearbyCache`, `rowId`): they are shorthands over code that ships, and
+  deleting them would only strip coverage.
+- `npx tsc --noEmit` (with `noUnusedLocals`/`noUnusedParameters`) is clean and
+  `node --test server/tests/*.test.js` still reports 210/210.
