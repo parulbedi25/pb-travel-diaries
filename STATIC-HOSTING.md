@@ -90,6 +90,27 @@ A different folder:
 npm run export:static -- --out ~/Desktop/pb-static
 ```
 
+### If the database cannot be reached, it still builds
+
+An unreachable database no longer stops the export. It prints what it tried,
+then writes the folder from the content in the code and exits `0`:
+
+```
+[export] reading from MySQL at localhost:3306/pb_travel as pb
+[export] could not reach MySQL at localhost:3306/pb_travel as pb: ECONNREFUSED
+[export] building anyway, from the content in the code — the site will
+[export] open and work, without the changes saved in the dashboard.
+[export] done — 44 files, 16.2 MB in …
+```
+
+So a build always produces something uploadable. What it does **not** silently
+do is pretend: the warning says the dashboard's changes are missing, and the
+folder's `README.txt` records that it came from the built-in content.
+
+`--strict` restores the old behaviour — stop instead of building without the
+database — for a script or pipeline that would rather fail than ship the wrong
+content.
+
 ### With no database at all
 
 Most of this site is written in code — every section, the trip, the gear, the
@@ -141,6 +162,35 @@ npm run export:static \
 
 `--check` is worth running first: it says which database it reached and whether
 that database holds a published site, without writing anything.
+
+**`.env` is read by the export as well as by the server.** If this machine's
+`.env` already describes the database — `DB_HOST`, `DB_USER`, `DB_NAME`,
+`DB_PASSWORD` — then `npm run export:static` uses it with no flags at all, and
+`DB_DRIVER=sqlite` selects the local SQLite file. That is the convenient case
+and the one to use when the content is on this machine.
+
+The export says which file it read and which variables it took, never the
+values:
+
+```
+[export] environment: .env
+[export] database settings from the environment: DB_HOST, DB_USER, DB_NAME, DB_PASSWORD
+[export] reading from MySQL at localhost:3306/pb_travel as pb
+```
+
+A file used only for exporting is kept separate by naming it:
+
+```bash
+npm run export:static -- --env .env.static
+ENV_FILE=.env.static npm run export:static
+```
+
+Variables in the named file win over `.env`; anything it does not set still
+comes from `.env`, so the two are read as one set with the named file in front.
+
+The `.env` itself is **never copied into the folder**. It is read for the few
+seconds the export runs; what ships is `content.json`. Uploading a `.env` would
+publish the password and change nothing.
 
 **The password is better in the environment than on the command line**, where it
 lands in your shell's history:
