@@ -56,6 +56,10 @@ export const apiBase = (): string => {
  * same-origin, even when everything afterwards goes to the API.
  */
 export function apiUrl(url: string): string {
+  // An address that is already absolute is left exactly as it is: the caller
+  // has said where it wants to go, and prefixing it again would produce
+  // `/serverhttps://…`.
+  if (/^https?:\/\//i.test(url)) return url;
   const base = apiBase();
   if (!base) return url;
   if (url === "/api/setup" || url.startsWith("/api/setup/")) return url;
@@ -90,9 +94,14 @@ export const hasPhpSetup = (): boolean => setupEngine() === "php";
 let setupSpelling: string | null = null;
 
 const setupCandidates = (path: string): string[] => {
+  // Two different pieces of the same address, and confusing them produced
+  // `/api/setup/setup/status`: `step` is the whole route (`setup/status`, which
+  // is what `?route=` wants) and `leaf` is only its last part (what every
+  // spelling shares and what the remembered template stands in for).
   const step = path.replace(/^\/api\//, "");
+  const leaf = path.split("/").pop() ?? step;
   const listed = [path, `/api.php?route=${step}`, `/api.php/${step}`];
-  if (setupSpelling) return [setupSpelling.replace("{step}", step), ...listed];
+  if (setupSpelling) return [setupSpelling.replace("{leaf}", leaf), ...listed];
   return listed;
 };
 
@@ -168,10 +177,9 @@ export async function setupCall<T>(
       continue;
     }
 
-    // Remember which spelling worked, as a template: `/api/setup/status`,
-    // `/api.php?route=setup/status` and `/api.php/setup/status` all end in
-    // `setup/<step>`, so one replacement covers the three.
-    setupSpelling = url.replace(/setup\/[^/?]+$/, "setup/{step}");
+    // Remember which spelling worked, as a template: the three forms differ
+    // only in the last segment, so that is what is replaced on the way back.
+    setupSpelling = url.replace(/[^/?]+$/, "{leaf}");
 
     if (!response.ok) {
       const answer = payload as { error?: string; code?: string };
