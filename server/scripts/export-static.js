@@ -41,6 +41,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { phpSchemaBlock } from "../db/phpSchema.js";
 
 const THEME_VALUES = new Set(["dark", "light"]);
 const SKIP_UPLOADS = new Set(["README.md", ".DS_Store", "Thumbs.db"]);
@@ -234,6 +235,25 @@ function apiBase() {
 }
 
 /**
+ * `api.php`, with the generated schema inside it.
+ *
+ * The file in `php/` carries an empty `$SCHEMA = [];` between two markers; the
+ * export replaces everything between them with the statements from
+ * `server/db/phpSchema.js`. Keeping the schema in the same file rather than a
+ * `schema.sql` beside it means there is nothing extra to forget to upload.
+ */
+function withSchema(source) {
+  const start = "/* PB-SCHEMA:START";
+  const end = "/* PB-SCHEMA:END */";
+  const from = source.indexOf(start);
+  const to = source.indexOf(end);
+  if (from < 0 || to < 0) {
+    throw new Error("php/api.php has lost its PB-SCHEMA markers — the bootstrap cannot be exported.");
+  }
+  return `${source.slice(0, from)}${phpSchemaBlock()}${source.slice(to + end.length)}`;
+}
+
+/**
  * The built page, told where the API is.
  *
  * Every call the page makes is relative (`/api/content`), which is right when
@@ -304,7 +324,13 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
   // source is never served, a plain file's is.
   if (php) {
     const phpDir = path.join(config.root, "php");
-    fs.copyFileSync(path.join(phpDir, "api.php"), path.join(out, "api.php"));
+    // The schema PHP creates is generated here from the Node server's own
+    // migrations, so the two can never disagree: whatever tables the site needs
+    // today are the tables the bootstrap writes.
+    fs.writeFileSync(
+      path.join(out, "api.php"),
+      withSchema(fs.readFileSync(path.join(phpDir, "api.php"), "utf8")),
+    );
     fs.copyFileSync(path.join(phpDir, "htaccess"), path.join(out, ".htaccess"));
     fs.writeFileSync(
       path.join(out, "php-config.php"),

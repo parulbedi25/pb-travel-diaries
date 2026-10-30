@@ -131,6 +131,20 @@ Then there is no static folder and no PHP at all — not even for the database.
 `npm start`, open the site, and the setup screen is the Node app's own, storing
 what it learns in `data/install.json`. **A Node deployment never runs PHP.**
 
+### What the bootstrap creates, and why it cannot drift
+
+`api.php` has no schema of its own. The export bakes in the statements from
+`server/db/schema.js`, `migrations.js` and `sqliteMigrations.js` — the same SQL
+the Node app would run — together with the ledger rows that say the database is
+fully upgraded. So the tables PHP creates are the tables Node expects, including
+every column a feature added later needs.
+
+That is why the Node app opens a PHP-created database as "installed, nothing
+pending" and serves every endpoint, rather than reporting a schema that needs
+migrating. If you add a feature and a migration, export again; the bootstrap
+picks the new statements up automatically. `server/tests/phpSchema.test.js`
+fails the build if the two ever disagree.
+
 ### When the setup screen cannot reach the file
 
 `api.php` answers a question about itself, which is what the "setup file is not

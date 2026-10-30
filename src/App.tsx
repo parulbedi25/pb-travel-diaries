@@ -75,7 +75,7 @@ import MemberTracker from "./members/MemberTracker";
 import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
-import { describeApiError, hasPhpSetup, phpDiagnosis } from "./api/client";
+import { apiBase, describeApiError, hasApiBase, hasPhpSetup, phpDiagnosis } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -593,8 +593,14 @@ function SetupGate() {
     let alive = true;
     setError(null);
     setSetupProblem(null);
-    /** Both a refusal and a host that answers with the page itself mean the same thing here. */
+    /**
+     * Both a refusal and a host that answers with the page itself mean the same
+     * thing here — unless this page was exported pointing at an API, in which
+     * case the site is served from a database and "no server" is a fault, not a
+     * mode. Returning false there sends it to the error screen with the address.
+     */
     const noServer = async (): Promise<boolean> => {
+      if (hasApiBase()) return false;
       if (await isStaticHosting()) return true;
       return false;
     };
@@ -636,7 +642,14 @@ function SetupGate() {
           if (alive) setStaticHost(true);
           return;
         }
-        if (alive) setError(describeApiError(err));
+        if (alive) {
+          setError(
+            hasApiBase()
+              ? `The API at ${apiBase()} did not answer (${describeApiError(err)}). ` +
+                "The site is served from its database, so start the Node app and reload."
+              : describeApiError(err),
+          );
+        }
       });
     return () => {
       alive = false;

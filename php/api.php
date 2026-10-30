@@ -114,6 +114,14 @@ register_shutdown_function(static function (): void {
   ], JSON_UNESCAPED_SLASHES);
 });
 
+/* ── the schema ─────────────────────────────────────────────────────────── */
+
+/* PB-SCHEMA:START — empty on purpose. `npm run export:static -- --php` fills
+ * this in from server/db/schema.js, migrations.js and sqliteMigrations.js, so
+ * the tables created here are exactly the tables the Node server expects. */
+$SCHEMA = [];
+/* PB-SCHEMA:END */
+
 /* ── configuration ──────────────────────────────────────────────────────── */
 
 $configFile = __DIR__ . '/php-config.php';
@@ -132,7 +140,6 @@ $cfg += [
   'apiUrl' => '/server',
 ];
 
-const SCHEMA_VERSION = 8;
 
 /* ── plumbing ───────────────────────────────────────────────────────────── */
 
@@ -285,190 +292,76 @@ function pdo_driver(PDO $pdo): string
 }
 
 /**
- * Every table, exactly as the Node server names them.
+ * The tables, as SQL — generated from the Node server's own schema.
  *
- * `IF NOT EXISTS` makes this the repair as well as the setup, and the columns
- * are the Node server's own, so the app finds the database already shaped the
- * way it expects and runs its migrations on top without a rewrite.
+ * Nothing is hand-written here. `npm run export:static -- --php` bakes in
+ * `server/db/schema.js`, `migrations.js` and `sqliteMigrations.js` as two plain
+ * lists: the statements Node would run, in order, each followed by its ledger
+ * row. So a database this file creates is the same database `npm start` creates,
+ * and every endpoint the site has works against it — a hand-written copy would
+ * have drifted the first time a migration was added.
+ *
+ * If the block is missing, this api.php was copied by hand or came from an older
+ * export. Saying so is better than creating five of the nine tables.
  */
 function schema_statements(): array
 {
-  global $cfg;
-  if ($cfg['driver'] === 'sqlite') {
-    // SQLite: for local trials of this file. Shared hosting is MySQL.
-    return [
-      "CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username VARCHAR(64) NOT NULL UNIQUE, email VARCHAR(190) NULL,
-        password_hash VARCHAR(255) NOT NULL, role VARCHAR(16) NOT NULL DEFAULT 'reader',
-        disabled INTEGER NOT NULL DEFAULT 0, created_at VARCHAR(32) NOT NULL,
-        last_login_at VARCHAR(32) NULL)",
-      "CREATE TABLE IF NOT EXISTS settings (
-        setting_key VARCHAR(64) PRIMARY KEY, value TEXT NOT NULL, updated_at VARCHAR(32) NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS site_content (
-        id INTEGER PRIMARY KEY, content TEXT NOT NULL,
-        updated_at VARCHAR(32) NOT NULL, updated_by VARCHAR(190) NULL)",
-      "CREATE TABLE IF NOT EXISTS revisions (
-        id VARCHAR(64) PRIMARY KEY, description VARCHAR(255) NOT NULL DEFAULT '',
-        content TEXT NOT NULL, created_at VARCHAR(32) NOT NULL, created_by VARCHAR(190) NULL)",
-      "CREATE TABLE IF NOT EXISTS auth_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NULL,
-        username VARCHAR(190) NOT NULL, event VARCHAR(32) NOT NULL,
-        ip VARCHAR(64) NULL, user_agent VARCHAR(255) NULL, detail VARCHAR(255) NULL,
-        created_at VARCHAR(32) NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS media (
-        id VARCHAR(64) PRIMARY KEY, filename VARCHAR(255) NOT NULL UNIQUE,
-        original_name VARCHAR(255) NOT NULL, mime VARCHAR(190) NOT NULL DEFAULT '',
-        size INTEGER NOT NULL DEFAULT 0, kind VARCHAR(32) NOT NULL DEFAULT 'other',
-        ext VARCHAR(16) NOT NULL DEFAULT '', tags VARCHAR(400) NOT NULL DEFAULT '',
-        created_at VARCHAR(32) NOT NULL, created_by VARCHAR(190) NULL)",
-      "CREATE TABLE IF NOT EXISTS member_bikes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
-        maker VARCHAR(64) NOT NULL, model VARCHAR(120) NOT NULL, year INTEGER NULL,
-        mileage_kmpl REAL NULL, mileage_source VARCHAR(16) NOT NULL DEFAULT 'manual',
-        created_at VARCHAR(32) NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS member_journeys (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
-        title VARCHAR(160) NOT NULL DEFAULT '', bike_id INTEGER NULL,
-        stops TEXT NOT NULL, notes TEXT NOT NULL, gallery TEXT NOT NULL,
-        round_trip INTEGER NOT NULL DEFAULT 0,
-        created_at VARCHAR(32) NOT NULL, updated_at VARCHAR(32) NOT NULL)",
-      "CREATE TABLE IF NOT EXISTS route_alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, kind VARCHAR(24) NOT NULL DEFAULT 'weather',
-        severity VARCHAR(16) NOT NULL DEFAULT 'info', title VARCHAR(200) NOT NULL,
-        body VARCHAR(1000) NOT NULL DEFAULT '', place VARCHAR(160) NOT NULL DEFAULT '',
-        lat REAL NULL, lng REAL NULL, source VARCHAR(24) NOT NULL DEFAULT 'weather',
-        dedupe_key VARCHAR(200) NOT NULL DEFAULT '', route_signature TEXT NOT NULL DEFAULT '',
-        created_at VARCHAR(32) NOT NULL, expires_at VARCHAR(32) NULL)",
-      "CREATE TABLE IF NOT EXISTS alert_reads (
-        alert_id INTEGER NOT NULL, user_id INTEGER NOT NULL, read_at VARCHAR(32) NOT NULL,
-        PRIMARY KEY (alert_id, user_id))",
-      "CREATE TABLE IF NOT EXISTS schema_migrations (
-        version INTEGER PRIMARY KEY, name VARCHAR(160) NOT NULL DEFAULT '',
-        applied_at VARCHAR(32) NOT NULL)",
-    ];
+  global $SCHEMA, $cfg;
+  $driver = $cfg['driver'] === 'sqlite' ? 'sqlite' : 'mysql';
+  if (empty($SCHEMA[$driver])) {
+    fail(
+      'This api.php carries no schema, so it cannot create the tables. Export the site again with '
+        . '`npm run export:static -- --php` and upload the api.php from that folder.',
+      500,
+      'php_schema_missing'
+    );
   }
+  return $SCHEMA[$driver];
+}
 
-  return [
-    "CREATE TABLE IF NOT EXISTS users (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      username VARCHAR(64) NOT NULL,
-      email VARCHAR(190) NULL,
-      password_hash VARCHAR(255) NOT NULL,
-      role ENUM('owner','admin','reader') NOT NULL DEFAULT 'reader',
-      disabled TINYINT(1) NOT NULL DEFAULT 0,
-      created_at DATETIME NOT NULL,
-      last_login_at DATETIME NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY users_username (username)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS settings (
-      setting_key VARCHAR(64) NOT NULL,
-      value LONGTEXT NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (setting_key)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS site_content (
-      id TINYINT UNSIGNED NOT NULL DEFAULT 1,
-      content LONGTEXT NOT NULL,
-      updated_at DATETIME NOT NULL,
-      updated_by VARCHAR(190) NULL,
-      PRIMARY KEY (id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS revisions (
-      id VARCHAR(64) NOT NULL,
-      description VARCHAR(255) NOT NULL DEFAULT '',
-      content LONGTEXT NOT NULL,
-      created_at DATETIME(3) NOT NULL,
-      created_by VARCHAR(190) NULL,
-      PRIMARY KEY (id),
-      KEY revisions_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS auth_events (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      user_id BIGINT UNSIGNED NULL,
-      username VARCHAR(190) NOT NULL,
-      event VARCHAR(32) NOT NULL,
-      ip VARCHAR(64) NULL,
-      user_agent VARCHAR(255) NULL,
-      detail VARCHAR(255) NULL,
-      created_at DATETIME(3) NOT NULL,
-      PRIMARY KEY (id),
-      KEY auth_events_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS media (
-      id VARCHAR(64) NOT NULL,
-      filename VARCHAR(255) NOT NULL,
-      original_name VARCHAR(255) NOT NULL,
-      mime VARCHAR(190) NOT NULL DEFAULT '',
-      size BIGINT UNSIGNED NOT NULL DEFAULT 0,
-      kind VARCHAR(32) NOT NULL DEFAULT 'other',
-      ext VARCHAR(16) NOT NULL DEFAULT '',
-      tags VARCHAR(400) NOT NULL DEFAULT '',
-      created_at DATETIME(3) NOT NULL,
-      created_by VARCHAR(190) NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY media_filename (filename)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS member_bikes (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      user_id BIGINT UNSIGNED NOT NULL,
-      maker VARCHAR(64) NOT NULL,
-      model VARCHAR(120) NOT NULL,
-      year SMALLINT UNSIGNED NULL,
-      mileage_kmpl DECIMAL(5,2) NULL,
-      mileage_source VARCHAR(16) NOT NULL DEFAULT 'manual',
-      created_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      KEY member_bikes_user (user_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS member_journeys (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      user_id BIGINT UNSIGNED NOT NULL,
-      title VARCHAR(160) NOT NULL DEFAULT '',
-      bike_id BIGINT UNSIGNED NULL,
-      stops LONGTEXT NOT NULL,
-      notes LONGTEXT NOT NULL,
-      gallery LONGTEXT NOT NULL,
-      round_trip TINYINT(1) NOT NULL DEFAULT 0,
-      created_at DATETIME NOT NULL,
-      updated_at DATETIME NOT NULL,
-      PRIMARY KEY (id),
-      KEY member_journeys_user (user_id),
-      KEY member_journeys_bike (bike_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS route_alerts (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      kind VARCHAR(24) NOT NULL DEFAULT 'weather',
-      severity VARCHAR(16) NOT NULL DEFAULT 'info',
-      title VARCHAR(200) NOT NULL,
-      body VARCHAR(1000) NOT NULL DEFAULT '',
-      place VARCHAR(160) NOT NULL DEFAULT '',
-      lat DECIMAL(9,6) NULL,
-      lng DECIMAL(9,6) NULL,
-      source VARCHAR(24) NOT NULL DEFAULT 'weather',
-      dedupe_key VARCHAR(200) NOT NULL DEFAULT '',
-      route_signature VARCHAR(4000) NOT NULL DEFAULT '',
-      created_at DATETIME NOT NULL,
-      expires_at DATETIME NULL,
-      PRIMARY KEY (id),
-      UNIQUE KEY route_alerts_dedupe (dedupe_key),
-      KEY route_alerts_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS alert_reads (
-      alert_id BIGINT UNSIGNED NOT NULL,
-      user_id BIGINT UNSIGNED NOT NULL,
-      read_at DATETIME NOT NULL,
-      PRIMARY KEY (alert_id, user_id),
-      KEY alert_reads_user (user_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INT UNSIGNED NOT NULL,
-      name VARCHAR(160) NOT NULL DEFAULT '',
-      applied_at DATETIME(3) NOT NULL,
-      PRIMARY KEY (version)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-  ];
+/** The version the schema in this file leaves the database at. */
+function schema_version(): int
+{
+  global $SCHEMA, $cfg;
+  $key = $cfg['driver'] === 'sqlite' ? 'sqliteVersion' : 'mysqlVersion';
+  return (int) ($SCHEMA[$key] ?? 0);
+}
+
+/**
+ * Runs one statement, treating "already done" as done.
+ *
+ * The list is replayed on every setup step, so `CREATE TABLE` meets its own
+ * table and `INSERT` meets its own row. Those are the only errors ignored —
+ * exactly the set the Node migrator ignores. Anything else (a permission error,
+ * a bad password, a syntax error) is the setup failing and must say so.
+ */
+function run_statement(PDO $pdo, string $statement): void
+{
+  try {
+    $pdo->exec($statement);
+  } catch (Throwable $e) {
+    // The same list the Node migrator ignores (server/db/migrationErrors.js):
+    // an object or a seed row that is already there is not a failure. This list
+    // is replayed on every setup step, so the second run meets its own work.
+    // Everything else is — a syntax error, a permission problem, a bad
+    // character set — and must stop the setup rather than leave half a schema.
+    $message = $e->getMessage();
+    $known = preg_match(
+      '/duplicate column name|duplicate key name|already exists|duplicate entry|multiple primary key|UNIQUE constraint failed|duplicate field name/i',
+      $message
+    );
+    if (!$known) throw $e;
+  }
+}
+
+/** Every table, every column, every default row. Safe to run more than once. */
+function install_schema(PDO $pdo): void
+{
+  repair_settings_table($pdo);
+  foreach (schema_statements() as $statement) run_statement($pdo, $statement);
+  // A database an earlier setup created keeps its narrow tables: the columns
+  // the server writes are added here, so "Create tables" is a repair too.
+  ensure_columns($pdo);
 }
 
 /**
@@ -754,7 +647,10 @@ if ($route === 'diag' && ($verb === 'GET' || $verb === 'POST')) {
         $names = [];
         foreach ($rows as $row) $names[] = (string) reset($row);
       }
-      foreach (['users', 'settings', 'site_content', 'media', 'revisions', 'member_bikes', 'member_journeys', 'route_alerts', 'alert_reads', 'schema_migrations'] as $wanted) {
+      // The ledger table differs per driver: Node's SQLite migrator uses
+      // `pb_schema_migrations`, MySQL uses `schema_migrations`.
+      $ledger = pdo_driver($pdo) === 'sqlite' ? 'pb_schema_migrations' : 'schema_migrations';
+      foreach (['users', 'settings', 'site_content', 'media', 'revisions', 'member_bikes', 'member_journeys', 'route_alerts', 'alert_reads', $ledger] as $wanted) {
         $tables[$wanted] = in_array($wanted, $names, true);
       }
     }
@@ -895,23 +791,15 @@ if ($route === 'setup/database' && $verb === 'POST') {
     fail('This site is already set up. Sign in through the Node API — the dashboard is not served by PHP.', 409, 'setup-only');
   }
   try {
-    repair_settings_table($pdo);
-    foreach (schema_statements() as $statement) $pdo->exec($statement);
-    // A database an earlier setup created keeps its narrow tables: the columns
-    // the server writes are added here, so "Create tables" is a repair too.
-    ensure_columns($pdo);
+    install_schema($pdo);
   } catch (Throwable $e) {
     fail('The tables could not be created: ' . $e->getMessage(), 500);
   }
   $title = trim((string) (body()['siteTitle'] ?? ''));
   if ($title !== '') put_setting('site_title', (string) json_encode($title), $pdo);
-  put_setting('schema_version', (string) SCHEMA_VERSION, $pdo);
-  try {
-    $pdo->prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
-      ->execute([SCHEMA_VERSION, 'php setup', now_db()]);
-  } catch (Throwable $e) {
-    // Already recorded.
-  }
+  // `$SCHEMA` already recorded every ledger row, so the Node server reads this
+  // database as fully migrated rather than "installed 0 of 8".
+  put_setting('schema_version', (string) schema_version(), $pdo);
   $users = count_users_on($pdo);
   json_out([
     'ok' => true,
@@ -928,13 +816,11 @@ if ($route === 'setup/owner' && $verb === 'POST') {
   $input = body();
   $pdo = repo();
   if (!$pdo) fail('Finish the database step first.', 409);
-  repair_settings_table($pdo);
   try {
-    foreach (schema_statements() as $statement) $pdo->exec($statement);
+    install_schema($pdo);
   } catch (Throwable $e) {
-    // Already there.
+    fail('The tables could not be checked: ' . $e->getMessage(), 500);
   }
-  ensure_columns($pdo);
   if (count_users_on($pdo) > 0) {
     fail('This site already has its owner account. Sign in through the Node API instead.', 409, 'setup-only');
   }

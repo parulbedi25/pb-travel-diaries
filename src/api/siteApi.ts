@@ -1,6 +1,6 @@
 import type { SiteContent } from "../store/siteContent";
 import type { MediaItem } from "../admin/mediaLibrary";
-import { api, setupCall } from "./client";
+import { api, hasApiBase, setupCall } from "./client";
 
 /** The dashboard as the server knows it. */
 export interface Account {
@@ -394,14 +394,21 @@ export const siteApi = {
   /* ── first-run setup ─────────────────────────────────────────────────── */
 
   /**
-   * The first question every deployment asks.
+   * The first question every deployment asks — and the last one PHP ever sees.
    *
-   * It goes through `setupCall` rather than the ordinary client because setup is
-   * the PHP bootstrap on a static deployment, and that must answer even on a
-   * host that ignores `.htaccess` — the rewrite-free spellings are tried when
-   * the tidy one does not answer.
+   * Once the page knows where the API is (`__PB_API_BASE__`, baked in by the
+   * export), the API answers this and PHP is not asked at all. That is the rule
+   * for the whole deployment: PHP creates the database on the first visit and
+   * never touches a request again.
+   *
+   * Before that — a folder of files with no API configured — it goes through
+   * `setupCall`, because the bootstrap must answer even on a host that ignores
+   * `.htaccess`: the rewrite-free spellings are tried when the tidy one does not.
    */
-  setupStatus: () => setupCall<SetupStatus>("GET", "/api/setup/status"),
+  setupStatus: () =>
+    hasApiBase()
+      ? api.get<SetupStatus>("/api/setup/status")
+      : setupCall<SetupStatus>("GET", "/api/setup/status"),
 
   async testDatabase(input: SetupDatabaseInput): Promise<SetupTestResult> {
     return setupCall<SetupTestResult>("POST", "/api/setup/test", input);

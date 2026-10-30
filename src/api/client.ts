@@ -41,7 +41,7 @@ const describe = (error: unknown): string => {
  * subfolder into the page as `window.__PB_API_BASE__`; a Node deployment writes
  * nothing, and every call stays relative.
  */
-const apiBase = (): string => {
+export const apiBase = (): string => {
   if (typeof window === "undefined") return "";
   const base = (window as { __PB_API_BASE__?: unknown }).__PB_API_BASE__;
   if (typeof base !== "string") return "";
