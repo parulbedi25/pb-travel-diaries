@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { isStaticBuild, isStaticHosting } from "./utils/staticSite";
+import { hasBakedSite, isStaticBuild, isStaticHosting } from "./utils/staticSite";
 import {
   SiteProvider,
   canEditSite,
@@ -75,7 +75,7 @@ import MemberTracker from "./members/MemberTracker";
 import MemberPlacePage from "./members/MemberPlacePage";
 import SetupWizard from "./setup/SetupWizard";
 import { siteApi, type SetupStatus } from "./api/siteApi";
-import { apiBase, describeApiError, hasApiBase, hasPhpSetup, phpDiagnosis } from "./api/client";
+import { apiBase, apiReachable, describeApiError, hasApiBase, hasPhpSetup, phpDiagnosis } from "./api/client";
 
 // Heavy routes are split out so the landing page never downloads them.
 const AdminPage = lazy(() => import("./admin/AdminPage"));
@@ -413,11 +413,15 @@ function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: (
   const [checking, setChecking] = useState(true);
   const [probe, setProbe] = useState<string | null>(null);
 
+  /** The API, asked only when the bootstrap could not answer at all. */
+  const [api, setApi] = useState<{ ok: boolean; detail: string } | null>(null);
+
   const check = async () => {
     setChecking(true);
     setProbe(null);
     const answer = await phpDiagnosis<Diagnosis>();
     setDiag(answer);
+    setApi(answer ? null : await apiReachable());
     if (!answer) {
       // Nothing answered at all: say what one plain request came back with.
       try {
@@ -506,7 +510,41 @@ function BootstrapProblem({ error, onRetry }: { error: string | null; onRetry: (
             </div>
           )}
 
-          {!checking && !diag && (
+          {!checking && !diag && api?.ok && (
+            <div className="mt-3 space-y-2 text-sm text-zinc-400">
+              <p className="text-emerald-300">
+                The API is answering — so the database was set up and this file has finished its job.
+              </p>
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                <span className="font-mono">api.php</span> is either gone (deleting it after setup is
+                safe and recommended) or not being run by this folder. Nothing is wrong with the
+                site: carry on and it will load.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-xl bg-saffron-400 px-5 py-2.5 text-sm font-semibold text-on-gold"
+              >
+                Go to the site
+              </button>
+            </div>
+          )}
+
+          {!checking && !diag && api && !api.ok && (
+            <div className="mt-3 space-y-1.5 text-sm text-zinc-400">
+              <p className="text-amber-200/90">Neither PHP nor the API is answering.</p>
+              {probe && <p className="font-mono text-[11px] text-zinc-400">{probe}</p>}
+              <p className="font-mono text-[11px] text-zinc-500">{api.detail}</p>
+              <p className="text-[11px] leading-relaxed text-zinc-500">
+                If the tables were already created, start the Node app (cPanel → Setup Node.js App)
+                and reload. If they were not, upload <span className="font-mono">api.php</span> and{" "}
+                <span className="font-mono">php-config.php</span> beside{" "}
+                <span className="font-mono">index.html</span>.
+              </p>
+            </div>
+          )}
+
+          {!checking && !diag && !api && (
             <div className="mt-3 space-y-1.5 text-sm text-zinc-400">
               <p className="text-amber-200/90">api.php did not answer with JSON.</p>
               {probe && <p className="font-mono text-[11px] text-zinc-400">{probe}</p>}
@@ -636,13 +674,25 @@ function SetupGate() {
           // the site here is what let a deployment open with no tables and no
           // setup screen, so it is reported instead.
           if (hasPhpSetup() && alive) {
+            // The bootstrap promised itself in the page, and it did not answer.
+            // That screen also asks the API, so it can tell "setup never
+            // happened" apart from "setup is done and Node is simply not up".
             setSetupProblem(describeApiError(err));
             return;
           }
+          // No bootstrap here, and the host answers like a folder of files.
+          // That is a plain static export: show the site.
           if (alive) setStaticHost(true);
           return;
         }
         if (alive) {
+          if (await hasBakedSite()) {
+            // The API is not answering, but the site was exported with its
+            // content: show it. Only the dashboard needs the API, and it says
+            // so itself when it cannot sign in.
+            setStaticHost(true);
+            return;
+          }
           setError(
             hasApiBase()
               ? `The API at ${apiBase()} did not answer (${describeApiError(err)}). ` +

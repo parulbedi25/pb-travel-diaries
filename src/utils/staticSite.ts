@@ -72,6 +72,21 @@ export function loadBakedSite(): Promise<BakedSite | null> {
 }
 
 /**
+ * Is there an exported site beside this page?
+ *
+ * The pages of a static deployment are files, so the site can be read with no
+ * API at all — and should be. A Node app that is not running yet (the usual
+ * state right after the bootstrap finishes) must not turn the front page into an
+ * error screen; `content.json` is right there and is what a visitor came for.
+ *
+ * Reuses the one reader, so this costs nothing extra and cannot disagree with
+ * the content that is actually shown.
+ */
+export async function hasBakedSite(): Promise<boolean> {
+  return (await loadBakedSite()) !== null;
+}
+
+/**
  * Whether the site being shown came from an exported file.
  *
  * Used to keep the dashboard out of an export: there is no server, so there is
