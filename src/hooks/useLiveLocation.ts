@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LIVE_LOCATION } from "../data/liveLocation";
+import { apiUrl } from "../api/client";
+import type { LiveFix } from "../api/siteApi";
 
 export type LiveStatus = "live" | "stale" | "offduty";
 
@@ -11,6 +13,14 @@ export interface LiveLocationData {
   altitude: string;
   note: string;
   updatedAt: string; // ISO 8601
+  /**
+   * Where this position came from: the phone's own fix ("phone"), the JSON feed
+   * set in `data/liveLocation.ts` ("feed"), the stop the dashboard marked "here
+   * now" ("dashboard"), or the values bundled with the build ("default").
+   */
+  source?: "phone" | "feed" | "dashboard" | "default";
+  /** How sure the phone was, in metres — shown only when it says. */
+  accuracyM?: number | null;
 }
 
 /**
@@ -78,10 +88,53 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
     return () => clearInterval(id);
   }, []);
 
-  // Poll the feed (if configured) every 60s
+  // Ask for the newest position. A JSON feed set in data/liveLocation.ts is an
+  // override; with none set, the site's own API is asked, which is where the
+  // phone's OwnTracks app has been posting (see server/routes/live.js). A page
+  // exported as static files with no API behind it simply keeps the dashboard's
+  // stop — a failed poll is not an error worth showing anybody.
   useEffect(() => {
     const feedUrl = LIVE_LOCATION.feedUrl;
-    if (!feedUrl) return;
+    if (!feedUrl) {
+      let cancelled = false;
+      const pullFromApi = async () => {
+        try {
+          // Deliberately a plain fetch, not `api.get`: on a host with no server
+          // that route answers with the site's own 404 page, and the API client
+          // would take any answer under 500 as proof that a server exists —
+          // which would put the dashboard back into a static export.
+          const response = await fetch(apiUrl("/api/live"), {
+            cache: "no-store",
+            credentials: "omit",
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok) return;
+          const { fix } = (await response.json()) as { fix: LiveFix | null };
+          if (cancelled || !fix) return;
+          setRemote({
+            lat: fix.lat,
+            lng: fix.lng,
+            // A phone fix carries no place name; `useSiteLiveLocation` fills
+            // that in from the nearest stop on the route.
+            name: "",
+            state: "",
+            altitude: altitudeLabel(fix.altitudeM),
+            note: "",
+            updatedAt: fix.updatedAt,
+            source: "phone",
+            accuracyM: fix.accuracyM,
+          });
+        } catch {
+          /* no API here — the dashboard's stop stays in charge */
+        }
+      };
+      void pullFromApi();
+      const id = setInterval(() => void pullFromApi(), 30_000);
+      return () => {
+        cancelled = true;
+        clearInterval(id);
+      };
+    }
     let cancelled = false;
     const pull = async () => {
       try {
@@ -102,6 +155,7 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
             typeof json.updatedAt === "string"
               ? json.updatedAt
               : new Date().toISOString(),
+          source: "feed",
         });
       } catch {
         /* feed unreachable — keep using bundled/fallback data */
@@ -128,21 +182,30 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
       altitude: seed.altitude?.trim() || LIVE_LOCATION.altitude,
       note: seed.note?.trim() || LIVE_LOCATION.note,
       updatedAt: new Date().toISOString(),
+      source: "dashboard",
     };
     // Re-stamp only when the position itself changes, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.lat, seed?.lng, seed?.name, seed?.state, seed?.altitude, seed?.note]);
 
-  const location: LiveLocationData = remote ??
-    seeded ?? {
-      lat: LIVE_LOCATION.lat,
-      lng: LIVE_LOCATION.lng,
-      name: LIVE_LOCATION.name,
-      state: LIVE_LOCATION.state,
-      altitude: LIVE_LOCATION.altitude,
-      note: LIVE_LOCATION.note,
-      updatedAt: LIVE_LOCATION.updatedAt,
-    };
+  const fallback: LiveLocationData = {
+    lat: LIVE_LOCATION.lat,
+    lng: LIVE_LOCATION.lng,
+    name: LIVE_LOCATION.name,
+    state: LIVE_LOCATION.state,
+    altitude: LIVE_LOCATION.altitude,
+    note: LIVE_LOCATION.note,
+    updatedAt: LIVE_LOCATION.updatedAt,
+    source: "default",
+  };
+
+  // A remote fix leads only while it is still worth calling live. Once the
+  // phone has been quiet for longer than the tracker's own hour, the stop the
+  // dashboard marked "here now" is the better answer — it is a place somebody
+  // chose, not a place a flat battery left behind.
+  const remoteFresh =
+    remote !== null && now.getTime() - (Date.parse(remote.updatedAt) || 0) <= FRESH_TTL_MS;
+  const location: LiveLocationData = (remoteFresh ? remote : null) ?? seeded ?? fallback;
 
   const parts = istParts(now);
   const inWindow =
@@ -190,6 +253,18 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
     nextWindowOpenMs,
     windowCloseMs,
   };
+}
+
+/**
+ * "1,150 ft" from the metres a phone reports.
+ *
+ * The tracker has always shown altitude in feet; the phone speaks metres, so
+ * the conversion lives here rather than in the three components that print it.
+ */
+export function altitudeLabel(metres: number | null | undefined): string {
+  if (typeof metres !== "number" || !Number.isFinite(metres)) return "";
+  const feet = Math.round(metres * 3.28084);
+  return `${feet.toLocaleString("en-IN")} ft`;
 }
 
 /** "2m ago" — how old the last ping is, in the shortest honest form. */

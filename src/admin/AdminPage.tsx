@@ -43,6 +43,7 @@ import {
   Plus,
   RefreshCcw,
   Save,
+  Satellite,
   Settings,
   ShoppingBag,
   Sun,
@@ -93,6 +94,7 @@ import ImagesField from "./ImagesField";
 import BlockComposer from "./BlockComposer";
 import SocialIconsEditor from "./SocialIconsEditor";
 import RouteStopsEditor from "./RouteStopsEditor";
+import LiveLocationPanel from "./LiveLocationPanel";
 import { PAGE_TARGETS, navStates, navTargetOf, sectionsWithoutNav, sectionHref } from "../utils/navSections";
 import type { MapLinkSource } from "../utils/mapLinks";
 import Switch from "./Switch";
@@ -3910,6 +3912,7 @@ type SettingsSection =
   | "colours"
   | "map"
   | "loader"
+  | "live"
   | "account"
   | "backup"
   | "history";
@@ -3938,6 +3941,12 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string; hint: string; ico
     label: "Map look",
     hint: "One basemap for every map on the site — the tracker, the live page and a member's rides.",
     icon: MapIcon,
+  },
+  {
+    id: "live",
+    label: "Live location",
+    hint: "Point the OwnTracks app on your phone at this site and the tracker, the live map and the nearby page follow you by themselves.",
+    icon: Satellite,
   },
   {
     id: "loader",
@@ -3987,7 +3996,7 @@ function SectionNote({ children }: { children: React.ReactNode }) {
  * for anybody else, and the dashboard does not offer it either. Everybody can
  * still change their own password: that part of the account section stays.
  */
-const OWNER_ONLY_SECTIONS: SettingsSection[] = ["backup"];
+const OWNER_ONLY_SECTIONS: SettingsSection[] = ["backup", "live"];
 
 function SettingsPanel() {
   const { account } = useSite();
@@ -4026,6 +4035,7 @@ function SettingsPanel() {
         {section === "brand" && <SettingsBrand />}
         {section === "colours" && <SettingsColours />}
         {section === "map" && <SettingsMap />}
+        {section === "live" && owner && <LiveLocationPanel />}
         {section === "loader" && <SettingsLoader />}
         {section === "account" && <SettingsAccount />}
         {section === "backup" && owner && <SettingsBackup />}

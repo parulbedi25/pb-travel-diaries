@@ -261,7 +261,33 @@ The owner signs in at `#/admin` (aliases `#/pb-control`, `#/login`).
 
 ---
 
-## 8. Backups
+## 8. The phone on the map (OwnTracks)
+
+The tracker, `#/live-map` and the nearby page share one position, and it can
+come from the rider's own phone instead of a hand-moved stop.
+
+1. Dashboard → **Settings → Live location**. The panel shows the URL to paste
+   into the phone and the last fix it has received, if any.
+2. Install **OwnTracks**, open **Preferences → Connection**, set **Mode** to
+   **HTTP** and paste that URL. OwnTracks' username field can stay empty; if the
+   app insists on a password, the token from the URL is it.
+3. Turn location reporting on. Fixes appear within a minute.
+
+| Endpoint | Who may call it | What it does |
+| --- | --- | --- |
+| `POST /api/live/owntracks?token=…` | the phone, holding the token | stores the newest fix, answers `[]` as OwnTracks expects |
+| `GET /api/live` | anybody | the newest position, its time, accuracy, altitude and speed |
+| `GET /api/live/setup` | owner | the token, the path, and the last fix |
+| `POST /api/live/setup/token` | owner | a new token; the old URL stops working |
+| `DELETE /api/live/fix` | owner | forget the fix, back to the dashboard's stop |
+
+The token is a credential: it is never logged (query values are redacted), never
+sent to a visitor, and shown only to the owner. A fix is live for an hour; after
+that the stop marked **Here now** takes over again. Only a latitude, longitude,
+time, accuracy, altitude and speed leave the server — the phone's device id and
+battery level stay in the dashboard.
+
+## 9. Backups
 
 The app backs itself up. Once a day it writes one zip into **`backup/`** at the
 root of the installation, creating the folder the first time, and keeps the
@@ -337,7 +363,7 @@ the app.
 
 ---
 
-## 9. Changing the database later
+## 10. Changing the database later
 
 Adding a feature that needs a column, a table or a backfilled row is one entry
 in **`server/db/migrations.js`**:
@@ -428,7 +454,7 @@ table.
 
 ---
 
-## 10. Updating
+## 11. Updating
 
 **Option A upload (no build tools on the server):**
 
@@ -460,7 +486,7 @@ role to the `users` table and writes the schema version. Nothing to import.
 
 ---
 
-## 11. Process manager examples
+## 12. Process manager examples
 
 **systemd** (`/etc/systemd/system/pb.service`):
 
@@ -526,7 +552,7 @@ the uploads.
 
 ---
 
-## 12. Serving the site as plain files (no Node at all)
+## 13. Serving the site as plain files (no Node at all)
 
 The site can be exported into a folder of ordinary files and uploaded to any
 static host — Namecheap, Netlify, GitHub Pages, S3, a shared plan with no Node

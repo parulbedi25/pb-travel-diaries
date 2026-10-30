@@ -17,8 +17,8 @@ import {
 import type { LiveButton, LiveData } from "../store/siteContent";
 import { SectionHeader, Reveal, Stagger, Item } from "./ui/motion";
 import { externalLinkProps } from "./ui/SocialIcons";
-import { ageLabel, useLiveLocation, type LiveLocationSeed } from "../hooks/useLiveLocation";
-import { currentStopIndex } from "../utils/liveRoute";
+import { ageLabel } from "../hooks/useLiveLocation";
+import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import TrackerMap from "./TrackerMap";
 import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
@@ -86,18 +86,11 @@ function TrackerButton({
 }
 
 export default function LiveTracker({ data }: { data: LiveData }) {
-  // Where the bike is comes from the route the dashboard owns: the stop marked
-  // "Here now". The bundled LIVE_LOCATION is only the last resort, for a site
-  // whose route has been emptied out.
-  const here = useMemo(() => {
-    const stops = data.stops ?? [];
-    if (!stops.length) return null;
-    const stop = stops[currentStopIndex(stops)];
-    return stop
-      ? ({ lat: stop.lat, lng: stop.lng, name: stop.name, state: stop.state, altitude: stop.altitude, note: stop.note } as LiveLocationSeed)
-      : null;
-  }, [data.stops]);
-  const { location, status, ageSec, istTime } = useLiveLocation(here);
+  // Where the bike is: the phone's own fix when one has arrived (the rider's
+  // OwnTracks app posts it to this site), otherwise the stop the dashboard
+  // marked "Here now". The live map and the nearby page read the same hook, so
+  // all three agree about the position.
+  const { location, status, ageSec, istTime } = useSiteLiveLocation();
   const lat = location.lat.toFixed(4);
   const lng = location.lng.toFixed(4);
   const note = data.note.trim() ? data.note : location.note;

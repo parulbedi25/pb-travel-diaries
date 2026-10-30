@@ -16,6 +16,7 @@ import { nearbyRouter } from "./routes/nearby.js";
 import { alertsRouter } from "./routes/alerts.js";
 import { restoreRouter } from "./routes/restore.js";
 import { setupRouter } from "./routes/setup.js";
+import { liveRouter } from "./routes/live.js";
 import { isMissingSchema } from "./db/migrationErrors.js";
 import { redactForLog } from "./lib/logRedaction.js";
 
@@ -218,6 +219,7 @@ const SITE_CSP = [
   api.use(memberRouter);
   api.use(nearbyRouter);
   api.use(alertsRouter);
+  api.use(liveRouter);
   api.use((req, res) => res.status(404).json({ error: "Unknown endpoint." }));
 
   app.use("/api", api);

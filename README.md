@@ -108,6 +108,33 @@ not be treated as a secret credential. Anonymous visitors gain no edit rights.
 
 SQL query protections and first-install schema: [SQL-SECURITY.md](SQL-SECURITY.md).
 
+## Live location from your phone (OwnTracks)
+
+The live tracker, the live map (`#/live-map`) and the nearby places map can all
+follow the rider's phone. Install **OwnTracks** (free, Android and iPhone), then:
+
+1. In the dashboard open **Settings → Live location** and copy the URL shown
+   there (`https://YOUR_DOMAIN/api/live/owntracks?token=…`).
+2. In OwnTracks: **Preferences → Connection**, set **Mode** to **HTTP** and
+   paste the URL into **URL**. If it asks for a password, the token is the
+   password.
+3. Turn location reporting on. Every fix the phone sends appears under
+   **Last fix from the phone**.
+
+How it behaves:
+
+- A fix counts as live for **one hour**, inside the tracker's usual 6:00 AM –
+  9:00 PM IST window. After that the site falls back to the stop marked
+  **Here now** in the dashboard, so a phone left in a drawer cannot park the
+  bike somewhere it no longer is.
+- The newest fix wins even if an older one arrives later (a phone that was out
+  of signal replays its queue).
+- The token in that URL is a password: it is shown only to the owner, and
+  **New token** retires the old URL. Nothing about the position is public
+  beyond a latitude, a longitude, the time and how accurate the fix was.
+- No map key or Google account is involved: the same Node app that serves the
+  site receives the fixes and stores the latest one in the database.
+
 ## Setup database location
 
 Choose **Local database (SQLite)** for one-click persistent setup with the name
