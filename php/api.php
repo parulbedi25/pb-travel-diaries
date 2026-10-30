@@ -258,6 +258,15 @@ function connect(array $db, bool $withDatabase = true): PDO
     if (!is_dir(dirname($file))) mkdir(dirname($file), 0775, true);
     $pdo = new PDO('sqlite:' . $file);
   } else {
+    // An export made on a machine with no database leaves these blank on
+    // purpose, so the setup screen asks for the real ones. Saying that is far
+    // more useful than the driver's "Access denied for user ''@'localhost'".
+    if ($db['database'] === '' || $db['user'] === '') {
+      throw new RuntimeException(
+        'No database is configured yet. Fill in the host, database name, user and password '
+          . 'on the setup screen, or in php-config.php, and try again.'
+      );
+    }
     $dsn = $db['socket'] !== ''
       ? sprintf('mysql:unix_socket=%s', $db['socket'])
       : sprintf('mysql:host=%s;port=%d', $db['host'], $db['port']);

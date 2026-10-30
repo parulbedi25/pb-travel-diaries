@@ -204,14 +204,19 @@ function exportBuiltin(out) {
  */
 function phpSettings() {
   if (!hasFlag("php")) return null;
+  // Nothing configured on this machine: leave the credentials blank rather than
+  // baking in the defaults the app falls back to. `pb_travel_diaries` and `pb`
+  // are placeholders, not this site's database, and a wrong value that looks
+  // real is worse than an empty one — the setup screen asks for it and says so.
+  const known = config.hasDatabase;
   return {
     driver: config.dbDriver === "sqlite" ? "sqlite" : "mysql",
-    host: config.db.host,
+    host: known ? config.db.host : "localhost",
     port: config.db.port,
-    database: config.db.database,
-    user: config.db.user,
-    password: config.db.password ?? "",
-    socket: config.db.socketPath ?? "",
+    database: known ? config.db.database : "",
+    user: known ? config.db.user : "",
+    password: known ? (config.db.password ?? "") : "",
+    socket: known ? (config.db.socketPath ?? "") : "",
     siteTitle: config.siteTitle,
     apiUrl: apiBase(),
   };
@@ -355,7 +360,11 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
         `  'socket' => ${JSON.stringify(php.socket)},`,
         `  'siteTitle' => ${JSON.stringify(php.siteTitle)},`,
         `  'apiUrl' => ${JSON.stringify(php.apiUrl)},`,
-        "]",
+        // The semicolon is not decoration: without it this file is a parse
+        // error, `api.php` fatals while requiring it, and with display_errors
+        // off the browser gets an empty response — which reads as "api.php is
+        // missing" and sent us hunting for a file that was there all along.
+        "];",
       ].join("\n"),
     );
     console.log(`[export] api.php (setup only), .htaccess and php-config.php written — API at ${php.apiUrl || "(none)"}`);
@@ -439,8 +448,26 @@ function writeFolder(out, page, content, { theme, title, source, php = null, api
 }
 
 async function main() {
+  const target = path.resolve(argValue("out", path.join(config.root, "release", "static")));
   if (hasFlag("builtin") || hasFlag("no-database")) {
-    exportBuiltin(path.resolve(argValue("out", path.join(config.root, "release", "static"))));
+    exportBuiltin(target);
+    return;
+  }
+  // Exported against a live API: there is nothing to read here, and nothing to
+  // miss. The pages take their content from that API — `content.json` is only
+  // the fallback for a server that has stopped answering — so a machine with no
+  // database of its own can still produce the release. This is the normal case:
+  // the site's database lives on the server, not on the laptop that builds it.
+  const api = apiBase();
+  if (!config.hasDatabase && (hasFlag("php") || api !== "")) {
+    console.log(
+      "[export] no database here — baking the built-in content as the offline fallback.",
+    );
+    console.log(
+      `[export] the site's own content comes from the API at ${api || "(this folder)"}; ` +
+        "to bake the live content instead, pass --db-host/--db-user/--db-name.",
+    );
+    exportBuiltin(target);
     return;
   }
   if (!config.hasDatabase) {
@@ -457,6 +484,9 @@ async function main() {
     console.error("[export] or put DB_HOST, DB_USER, DB_NAME and DB_PASSWORD in .env — this");
     console.error("[export] command reads it too. The .env is not copied into the folder: what");
     console.error("[export] ships is content.json, because a static site cannot hold a connection.");
+    console.error("");
+    console.error("[export] Or ship the built-in content and let the live API supply the rest:");
+    console.error("[export]   npm run export:static -- --builtin");
     console.error("");
     console.error("[export] If the site has never been set up on this machine:");
     console.error("[export]   PORT=4000 node app.cjs   → finish the setup screen → Save → export again");

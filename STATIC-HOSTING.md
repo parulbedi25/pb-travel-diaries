@@ -131,6 +131,23 @@ Then there is no static folder and no PHP at all — not even for the database.
 `npm start`, open the site, and the setup screen is the Node app's own, storing
 what it learns in `data/install.json`. **A Node deployment never runs PHP.**
 
+### You do not need a database to export
+
+The site's database lives on the server, so the machine that builds the release
+usually has none. `--php` (or `--api`) with nothing configured exports anyway: it
+bakes the built-in content as the offline fallback, writes `php-config.php` with
+the credentials left blank for the setup screen, and says so:
+
+```
+npm run export:static -- --php --api https://your-site.com/server
+[export] no database here — baking the built-in content as the offline fallback.
+[export] the site's own content comes from the API at https://your-site.com/server
+```
+
+The pages take their content from the API, so what ships as `content.json` is
+only what a visitor sees if the API is down. To bake the *live* content instead,
+pass `--db-host/--db-user/--db-name` from a machine that can reach the database.
+
 ### What the bootstrap creates, and why it cannot drift
 
 `api.php` has no schema of its own. The export bakes in the statements from
@@ -176,7 +193,8 @@ talking to Node.
 | --- | --- |
 | The website opens and the setup screen never appears | the bootstrap did not answer, so nothing was created. Open `/api.php?route=setup/status` — a line of JSON means it is alive and the page will find it on reload; a download or an HTML page means PHP is not running for this folder, or `api.php` was not uploaded |
 | "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. The screen now probes the file itself and prints PHP version, extensions, `php-config.php` and the database answer — read that panel first. `?skip-setup=1` shows the site anyway |
-| The page says **api.php did not answer with JSON** and the probe shows an **empty** body | PHP ran the file and it hit a fatal error. The bootstrap no longer needs PHP 8 (it carries its own `str_*`/`mb_*` fallbacks), so the usual causes left are a missing `pdo_mysql` extension or a syntax error from a partial upload — the host's PHP error log names the line |
+| The page says **api.php did not answer with JSON** and the probe shows an **empty** body | PHP ran the file and it hit a fatal error. The bootstrap no longer needs PHP 8 (it carries its own `str_*`/`mb_*` fallbacks), so the usual causes left are a missing `pdo_mysql` extension, a partial upload, or a `php-config.php` from an **old export** — releases before this fix shipped one with no closing `;`, which is a parse error and therefore a blank page. Export again and replace both files |
+| The screen asks for the database details | the export was made on a machine with no database configured, so `php-config.php` was written blank on purpose rather than with placeholder values. Type the host, database, user and password from cPanel |
 | The probe shows **404** | `api.php` is not in this folder — re-extract the ZIP, or upload it beside `index.html` |
 | The probe shows **downloaded source** | PHP is not enabled for this folder: cPanel → **Select PHP Version** / **MultiPHP Manager**, then try again |
 | "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
