@@ -113,3 +113,82 @@ export function navStates(
 ): Map<string, NavItemState> {
   return new Map(content.nav.map((item) => [item.id, navItemState(content, item, viewer)]));
 }
+
+/**
+ * The pages a menu link can open, in the words the dashboard uses for them.
+ * A page is not a section: it has no anchor to scroll to and no entry in the
+ * Sections tab, so it is named here instead of being derived.
+ */
+export const PAGE_TARGETS: Record<string, string> = {
+  "/live-map": "Live map page",
+  "/shop": "Shop page",
+  "/nearby": "Nearby places page",
+  "/members": "Members page",
+  "/ride": "Ride builder page",
+  "/admin": "Dashboard",
+};
+
+/** What a menu link opens, for the line of text under it in the dashboard. */
+export type NavTarget =
+  /** A section from the Sections tab, named exactly as that tab names it. */
+  | { kind: "section"; label: string; section: SectionEntry; off: boolean }
+  /** One of the app's own pages, such as the shop. */
+  | { kind: "page"; label: string }
+  /** Somebody else's site. */
+  | { kind: "external"; label: string }
+  /** An anchor or path that is neither — the operator typed it. */
+  | { kind: "custom"; label: string };
+
+/** Which section or page a menu link points at. */
+export function navTargetOf(content: SiteContent, item: NavItem): NavTarget {
+  const target = anchorTarget(item.href);
+  if (target) {
+    const matches = content.sections.filter((entry) => anchorsOf(entry).includes(target));
+    if (matches.length) {
+      const section = matches.find((entry) => entry.enabled) ?? matches[0];
+      return { kind: "section", label: section.label, section, off: !matches.some((e) => e.enabled) };
+    }
+    return { kind: "custom", label: item.href.trim() };
+  }
+  const href = item.href.trim();
+  if (/^https?:\/\//i.test(href)) return { kind: "external", label: href };
+  const route = href.startsWith("#/") ? href.slice(1).split("?")[0] : "";
+  const page = PAGE_TARGETS[route];
+  if (page) return { kind: "page", label: page };
+  return { kind: "custom", label: href };
+}
+
+/**
+ * Sections that no menu link points at.
+ *
+ * These are the ones an owner opens the Header tab to find: the page has them,
+ * the dashboard lists them, and the menu has no way to reach them. Hero,
+ * countdown and maintenance are left out on purpose — the first is where every
+ * logo already goes, and the other two take the whole page over rather than
+ * being somewhere a menu can send you.
+ */
+const NOT_A_DESTINATION: ReadonlySet<SectionEntry["type"]> = new Set(["hero", "countdown", "maintenance"]);
+
+export function sectionsWithoutNav(content: SiteContent): SectionEntry[] {
+  const anchors = new Set(
+    content.nav
+      .map((item) => anchorTarget(item.href))
+      .filter((target): target is string => Boolean(target)),
+  );
+  // A link that carries the section's own name counts as reaching it, even
+  // when it opens a page of its own: the Live Tracker row in the header goes to
+  // the full live map, and calling that "no link" would be wrong.
+  const names = new Set(content.nav.map((item) => item.label.trim().toLocaleLowerCase()).filter(Boolean));
+  return content.sections.filter(
+    (entry) =>
+      entry.enabled &&
+      !NOT_A_DESTINATION.has(entry.type) &&
+      !anchorsOf(entry).some((anchor) => anchors.has(anchor)) &&
+      !names.has(entry.label.trim().toLocaleLowerCase()),
+  );
+}
+
+/** The `href` that opens a section: the anchor its component actually carries. */
+export function sectionHref(entry: SectionEntry): string {
+  return `#${anchorsOf(entry)[0]}`;
+}

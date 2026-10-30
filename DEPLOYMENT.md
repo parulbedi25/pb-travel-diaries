@@ -252,6 +252,10 @@ The owner signs in at `#/admin` (aliases `#/pb-control`, `#/login`).
   owner — signing up is what unlocks it). Signing out puts it away again. The
   section itself stays on the page with its sign-in card, so there is always a
   way in; the Menu tab marks such links **After sign-in**.
+- **Header** names the destination of every menu link the way the **Sections**
+  tab names it ("Opens *Riding Gear & Wardrobe*"), offers a picker to point a
+  link at any section or page, and lists the sections no link reaches yet so
+  one click can add them. The shipped labels already match the section names.
 - Every sign-up, sign-in, sign-out, failed attempt, password change and account
   creation is stored in `auth_events` with the address and browser.
 

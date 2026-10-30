@@ -1575,17 +1575,20 @@ const CTA: CtaData = {
 
 export const DEFAULT_CONTENT: SiteContent = {
   v: 1,
-  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1", "phoenix-glove-photo-v1", "restore-default-data-v1"],
+  migrations: ["gears-nav-link-v1", "gears-store-picks-v1", "gear-item-ids-v1", "riderkit-nav-v1", "riderkit-attached-gear-v1", "riderkit-hover-zoom-v2", "riderkit-reference-image-v2", "riderkit-dashboard-pointers-v1", "riderkit-pointer-products-v1", "riderkit-product-pointer-list-v1", "riderkit-the-gear-label-v1", "shop-my-picks-nav-v1", "gears-my-picks-copy-v1", "riderkit-independent-products-v1", "phoenix-glove-photo-v1", "restore-default-data-v1", "nav-section-names-v1"],
+  // The labels are the names the Sections tab uses for the same place — "Live"
+  // is the Live Tracker section, "Gears" is Riding Gear & Wardrobe — so an
+  // owner reading the menu and the dashboard is reading one set of names.
   nav: [
-    { id: "nav-live", label: "Live", href: "#/live-map", enabled: true },
-    { id: "nav-journey", label: "The Journey", href: "#journey", enabled: true },
+    { id: "nav-live", label: "Live Tracker", href: "#/live-map", enabled: true },
+    { id: "nav-journey", label: "Journey", href: "#journey", enabled: true },
     { id: "nav-machine", label: "The Machine", href: "#machine", enabled: true },
-    { id: "nav-gears", label: "Gears", href: "#gears", enabled: true },
-    { id: "nav-shop", label: "My Picks", href: "#/shop", enabled: true },
-    { id: "nav-riderkit", label: "Rider Kit", href: "#riderkit", enabled: true },
+    { id: "nav-gears", label: "Riding Gear", href: "#gears", enabled: true },
+    { id: "nav-shop", label: "Shop", href: "#/shop", enabled: true },
+    { id: "nav-riderkit", label: "The Gear", href: "#riderkit", enabled: true },
     { id: "nav-features", label: "Why PB", href: "#features", enabled: true },
-    { id: "nav-stories", label: "Tribe Stories", href: "#stories", enabled: true },
-    { id: "nav-pricing", label: "Membership", href: "#pricing", enabled: true },
+    { id: "nav-stories", label: "Testimonials", href: "#stories", enabled: true },
+    { id: "nav-pricing", label: "Pricing", href: "#pricing", enabled: true },
     { id: "nav-faq", label: "FAQ", href: "#faq", enabled: true },
   ],
   sections: [
@@ -1899,6 +1902,7 @@ export function normaliseSavedContent(parsed: SiteContent): SiteContent {
     const gearsMyPicksCopyMigration = "gears-my-picks-copy-v1";
     const riderKitIndependentProductsMigration = "riderkit-independent-products-v1";
     const phoenixGlovePhotoMigration = "phoenix-glove-photo-v1";
+    const navSectionNamesMigration = "nav-section-names-v1";
     const shouldMigrateGearsNav = !appliedMigrations.includes(gearsNavMigration);
     const shouldSeedGears = !appliedMigrations.includes(gearsPicksMigration);
     const shouldMigrateGearItemIds = !appliedMigrations.includes(gearItemIdsMigration);
@@ -1909,6 +1913,7 @@ export function normaliseSavedContent(parsed: SiteContent): SiteContent {
     const shouldMigrateRiderKitPointers = !appliedMigrations.includes(riderKitPointerMigration);
     const shouldMigrateRiderKitProductLinks = !appliedMigrations.includes(riderKitProductLinkMigration);
     const shouldMigratePhoenixGlovePhoto = !appliedMigrations.includes(phoenixGlovePhotoMigration);
+    const shouldMigrateNavSectionNames = !appliedMigrations.includes(navSectionNamesMigration);
     const shouldMigrateRiderKitProductPointerList = !appliedMigrations.includes(riderKitProductPointerListMigration);
     const shouldMigrateRiderKitLabel = !appliedMigrations.includes(riderKitLabelMigration);
     const shouldMigrateShopPicksNav = !appliedMigrations.includes(shopPicksNavMigration);
@@ -2234,6 +2239,31 @@ export function normaliseSavedContent(parsed: SiteContent): SiteContent {
         n.id === "nav-gears" ? { ...n, enabled: true } : n
       );
     }
+
+    // The menu used to call the same places by other names ("Gears" for the
+    // Riding Gear & Wardrobe section, "Tribe Stories" for Testimonials), which
+    // made the header and the Sections tab two different vocabularies. Rename
+    // only the links that still carry the shipped wording, so a label the owner
+    // typed is never overwritten.
+    if (shouldMigrateNavSectionNames) {
+      const renames: Record<string, [string, string]> = {
+        "nav-live": ["Live", "Live Tracker"],
+        "nav-journey": ["The Journey", "Journey"],
+        "nav-gears": ["Gears", "Riding Gear"],
+        "nav-shop": ["My Picks", "Shop"],
+        "nav-riderkit": ["Rider Kit", "The Gear"],
+        "nav-stories": ["Tribe Stories", "Testimonials"],
+        "nav-pricing": ["Membership", "Pricing"],
+      };
+      migratedNav = migratedNav.map((item) => {
+        const rename = renames[item.id];
+        if (!rename) return item;
+        const [from, to] = rename;
+        return item.label.trim().toLocaleLowerCase() === from.toLocaleLowerCase()
+          ? { ...item, label: to }
+          : item;
+      });
+    }
     const migrations = [
       ...appliedMigrations,
       ...(shouldMigrateGearsNav ? [gearsNavMigration] : []),
@@ -2251,6 +2281,7 @@ export function normaliseSavedContent(parsed: SiteContent): SiteContent {
       ...(shouldMigrateGearsMyPicksCopy ? [gearsMyPicksCopyMigration] : []),
       ...(shouldMigrateRiderKitIndependentProducts ? [riderKitIndependentProductsMigration] : []),
       ...(shouldMigratePhoenixGlovePhoto ? [phoenixGlovePhotoMigration] : []),
+      ...(shouldMigrateNavSectionNames ? [navSectionNamesMigration] : []),
     ];
 
     // A schedule whose moment has passed switches maintenance on before the
