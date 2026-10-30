@@ -77,13 +77,38 @@ function body(): array
   return is_array($parsed) ? $parsed : [];
 }
 
-/** The request path below `/api`, without the query string. */
+/**
+ * Which setup step this request is.
+ *
+ * Three spellings, all of them the same four answers, because the folder may or
+ * may not have a working `.htaccess`:
+ *
+ *   /api/setup/status            rewrite to api.php (the tidy one)
+ *   /api.php/setup/status        PATH_INFO, no rewrite needed
+ *   /api.php?route=setup/status  a query parameter, works on any PHP host
+ *
+ * The last one is why this file needs no Apache configuration at all to do its
+ * job: a host that ignores `.htaccess`, or a file manager that hides dotfiles
+ * and never uploads it, still reaches the bootstrap.
+ */
 function route(): string
 {
   $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
   $at = strpos($path, '/api/');
-  if ($at === false) return '';
-  return trim(substr($path, $at + 5), '/');
+  if ($at !== false) return trim(substr($path, $at + 5), '/');
+
+  // /api.php/setup/status
+  $script = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+  $info = (string) ($_SERVER['PATH_INFO'] ?? '');
+  if ($info === '' && $script !== '' && str_starts_with($path, $script)) {
+    $info = substr($path, strlen($script));
+  }
+  $info = trim($info, '/');
+  if ($info !== '') return $info;
+
+  // /api.php?route=setup/status
+  $asked = $_GET['route'] ?? '';
+  return is_string($asked) ? trim($asked, '/') : '';
 }
 
 function method(): string

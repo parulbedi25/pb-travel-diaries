@@ -65,9 +65,10 @@ test("a document served under BASE_PATH carries that address", async () => {
     const plain = await request(port, "identity");
     const html = plain.body.toString("utf8");
     assert.match(html, /<script>window\.__PB_API_BASE__="\/server";<\/script><\/head>/);
-    // Exactly once, and nothing else changed: the same build still works at the
-    // domain root, where the injection is simply absent.
-    assert.equal(html.split("__PB_API_BASE__").length - 1, 1);
+    // The tag is injected exactly once, and nothing else changed: the same build
+    // still works at the domain root, where the injection is simply absent. The
+    // token itself appears again inside the bundle, which reads it.
+    assert.equal(html.split('<script>window.__PB_API_BASE__="/server";</script>').length - 1, 1);
     assert.equal(
       html.replace('<script>window.__PB_API_BASE__="/server";</script>', ""),
       fs.readFileSync(file, "utf8"),
