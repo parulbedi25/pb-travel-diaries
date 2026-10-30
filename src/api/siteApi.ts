@@ -14,6 +14,33 @@ export interface Account {
   disabledAt?: string | null;
 }
 
+/**
+ * The newest position the phone sent, as `/api/live` hands it out.
+ *
+ * `updatedAt` is when the phone took the fix, not when the server received it:
+ * a phone that was out of signal delivers an hour-old point, and that point is
+ * an hour old.
+ */
+export interface LiveFix {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+  accuracyM: number | null;
+  altitudeM: number | null;
+  speedKmh: number | null;
+}
+
+/** What the dashboard learns about the phone feed. Everything but the fix is
+ * the same for every link: the token and where to post. */
+export interface LiveSetup {
+  token: string;
+  path: string;
+  ttlMs: number;
+  fix:
+    | (LiveFix & { battery: number | null; device: string })
+    | null;
+}
+
 /** What the first-run setup screen needs to know. */
 export interface SetupStatus {
   installed: boolean;
@@ -228,6 +255,20 @@ export const siteApi = {
   async setTheme(theme: "dark" | "light"): Promise<void> {
     await api.put("/api/settings/theme", { theme });
   },
+
+  /* ── live location, from the phone ───────────────────────────────────── */
+
+  /** The newest fix from OwnTracks, or null when the phone has not reported. */
+  live: () => api.get<{ fix: LiveFix | null }>("/api/live"),
+
+  /** The URL and token to paste into the phone. Owner only. */
+  liveSetup: () => api.get<LiveSetup>("/api/live/setup"),
+
+  /** A new token: the URL already in the phone stops working. */
+  newLiveToken: () => api.post<{ token: string; path: string }>("/api/live/setup/token", {}),
+
+  /** Forget the last fix, so the site goes back to the dashboard's stop. */
+  clearLiveFix: () => api.delete<{ fix: null }>("/api/live/fix"),
 
   /* ── accounts ────────────────────────────────────────────────────────── */
 
