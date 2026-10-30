@@ -21,7 +21,20 @@ export interface SetupStatus {
   databaseReady: boolean;
   users: number;
   siteTitle: string;
-  db: { driver?: "mysql" | "sqlite"; host: string; port: number; database: string; user: string; socketPath: string } | null;
+  db: {
+    driver?: "mysql" | "sqlite";
+    host: string;
+    port: number;
+    database: string;
+    user: string;
+    socketPath: string;
+    /**
+     * A password is already stored on the server (the PHP bridge reads one from
+     * `php-config.php`). The password itself is never sent to a browser, so the
+     * field may be left blank and the server will use the stored one.
+     */
+    passwordStored?: boolean;
+  } | null;
   setupLocked: boolean;
   /** The "Restore a backup" tab: only while the site has no database yet. */
   restoreAllowed?: boolean;

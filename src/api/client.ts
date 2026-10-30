@@ -1,3 +1,5 @@
+import { markApiSeen } from "../utils/staticSite";
+
 /**
  * One place for every request to the server.
  *
@@ -50,6 +52,9 @@ async function request<T>(
   }
 
   if (response.status === 204) return undefined as T;
+  // A real answer: this deployment has a server, whatever the page guessed
+  // from a 404 earlier.
+  if (response.status < 500) markApiSeen();
 
   const text = await response.text();
   let payload: unknown = null;
