@@ -75,9 +75,9 @@ export function loadBakedSite(): Promise<BakedSite | null> {
  * Is there an exported site beside this page?
  *
  * The pages of a static deployment are files, so the site can be read with no
- * API at all — and should be. A Node app that is not running yet (the usual
- * state right after the bootstrap finishes) must not turn the front page into an
- * error screen; `content.json` is right there and is what a visitor came for.
+ * API at all — and should be. An API that is not answering must not turn the
+ * front page into an error screen; `content.json` is right there and is what a
+ * visitor came for.
  *
  * Reuses the one reader, so this costs nothing extra and cannot disagree with
  * the content that is actually shown.
@@ -98,7 +98,7 @@ export const isStaticBuild = () => baked && !apiSeen && !apiBase();
 /**
  * Called by the API client whenever a request is actually answered.
  *
- * An export can carry `content.json` *and* a PHP bridge; in that case the file
+ * An export can carry `content.json` *and* an API address; in that case the file
  * is a fallback, not the source, and treating the page as a static build would
  * lock the dashboard out of a deployment that has a real database behind it.
  */

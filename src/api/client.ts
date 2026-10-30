@@ -51,9 +51,9 @@ export const apiBase = (): string => {
 /**
  * The address a call should go to.
  *
- * Setup is the one exception: it is the bootstrap on this very folder — the PHP
- * file on a static deployment, the Node app on a Node one — so it always stays
- * same-origin, even when everything afterwards goes to the API.
+ * Every call goes to the API, setup included: one program answers all of it.
+ * When the page is served by that program the address is relative and this is
+ * the identity function.
  */
 export function apiUrl(url: string): string {
   // An address that is already absolute is left exactly as it is: the caller
@@ -62,160 +62,11 @@ export function apiUrl(url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
   const base = apiBase();
   if (!base) return url;
-  if (url === "/api/setup" || url.startsWith("/api/setup/")) return url;
   return `${base}${url}`;
 }
 
 /** Whether this page has an API somewhere other than its own folder. */
 export const hasApiBase = (): boolean => apiBase() !== "";
-
-/** The setup marker the export writes: `"php"` when the folder carries api.php. */
-const setupEngine = (): string => {
-  if (typeof window === "undefined") return "";
-  const engine = (window as { __PB_SETUP__?: unknown }).__PB_SETUP__;
-  return typeof engine === "string" ? engine : "";
-};
-
-/** Whether this folder is supposed to have a PHP bootstrap in it. */
-export const hasPhpSetup = (): boolean => setupEngine() === "php";
-
-/**
- * Calls the setup step, on whichever spelling of the address this host gives.
- *
- * Setup is the one thing PHP does, and it must work on a host whose Apache
- * ignores `.htaccess` — a shared plan with `AllowOverride` off, or a file
- * manager that hid the dotfile and never uploaded it. So the tidy address is
- * tried first and the two rewrite-free spellings after it; the one that answered
- * is remembered, so the remaining steps go straight there.
- *
- * Nothing else uses this. The site's API is the Node app, and it is reached
- * through the `API_BASE` address the export baked in.
- */
-let setupSpelling: string | null = null;
-
-const setupCandidates = (path: string): string[] => {
-  // Two different pieces of the same address, and confusing them produced
-  // `/api/setup/setup/status`: `step` is the whole route (`setup/status`, which
-  // is what `?route=` wants) and `leaf` is only its last part (what every
-  // spelling shares and what the remembered template stands in for).
-  const step = path.replace(/^\/api\//, "");
-  const leaf = path.split("/").pop() ?? step;
-  const listed = [path, `/api.php?route=${step}`, `/api.php/${step}`];
-  if (setupSpelling) return [setupSpelling.replace("{leaf}", leaf), ...listed];
-  return listed;
-};
-
-/** What one attempt actually came back with — the words that diagnose it. */
-export interface SetupAttempt {
-  url: string;
-  status: number;
-  contentType: string;
-  /** The first line of the body, harmless HTML reduced to its text. */
-  sample: string;
-}
-
-export class SetupUnreachable extends ApiError {
-  attempts: SetupAttempt[];
-  constructor(message: string, attempts: SetupAttempt[]) {
-    super(message, 0, "setup_unreachable");
-    this.name = "SetupUnreachable";
-    this.attempts = attempts;
-  }
-}
-
-/** A body, as a person would read it: tags stripped, whitespace collapsed. */
-const readable = (text: string): string =>
-  text
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 160);
-
-export async function setupCall<T>(
-  method: "GET" | "POST",
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const attempts: SetupAttempt[] = [];
-  for (const url of setupCandidates(path)) {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method,
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: body === undefined ? { accept: "application/json" } : { "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch {
-      attempts.push({ url, status: 0, contentType: "", sample: "the request itself failed" });
-      continue;
-    }
-
-    const text = await response.text();
-    let payload: unknown = null;
-    try {
-      payload = text ? JSON.parse(text) : null;
-    } catch {
-      payload = null;
-    }
-
-    // A host without PHP answers with its own HTML, with an empty body, or with
-    // a download: try the next spelling rather than reporting "the server said
-    // 200". Each answer is kept, because "empty" and "a page" and "404" are
-    // three different faults and the screen can only help if it says which.
-    if (!payload || typeof payload !== "object") {
-      attempts.push({
-        url,
-        status: response.status,
-        contentType: response.headers.get("content-type") ?? "",
-        sample: readable(text) || (text ? "(a file, not a page)" : "(empty response)"),
-      });
-      continue;
-    }
-
-    // Remember which spelling worked, as a template: the three forms differ
-    // only in the last segment, so that is what is replaced on the way back.
-    setupSpelling = url.replace(/[^/?]+$/, "{leaf}");
-
-    if (!response.ok) {
-      const answer = payload as { error?: string; code?: string };
-      throw new ApiError(
-        answer.error ?? `The setup step answered ${response.status}.`,
-        response.status,
-        answer.code,
-      );
-    }
-    return payload as T;
-  }
-
-  // Every spelling failed. Say what each one answered: that is the diagnosis.
-  const summary = attempts
-    .map((a) => `${a.url} → ${a.status || "no answer"}${a.sample ? ` · ${a.sample}` : ""}`)
-    .join("\n");
-  throw new SetupUnreachable(
-    `The PHP setup file did not answer. ${attempts.length} address(es) tried:\n${summary}`,
-    attempts,
-  );
-}
-
-/** Asks the file itself what it sees — only meaningful when it answered at all. */
-export async function phpDiagnosis<T>(): Promise<T | null> {
-  for (const url of ["/api.php?route=diag", "/api/setup/diag"]) {
-    try {
-      const response = await fetch(url, { cache: "no-store", credentials: "same-origin" });
-      if (!response.ok) continue;
-      const payload = (await response.json()) as T;
-      if (payload && typeof payload === "object") return payload;
-    } catch {
-      // Not this spelling either.
-    }
-  }
-  return null;
-}
 
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -249,11 +100,9 @@ async function request<T>(
     }
   }
 
-  // A real answer: this deployment has a server, whatever the page guessed
-  // from a 404 earlier. The one exception is the bootstrap on a static folder,
-  // which says plainly that it is setup-only — that is not an API.
-  const setupOnly = (payload as { code?: string } | null)?.code === "setup-only";
-  if (response.status < 500 && !setupOnly) markApiSeen();
+  // A real answer: this deployment has a server, whatever the page guessed from
+  // a 404 earlier.
+  if (response.status < 500) markApiSeen();
 
   if (!response.ok) {
     const message =
@@ -265,45 +114,6 @@ async function request<T>(
   }
 
   return payload as T;
-}
-
-/**
- * Is the Node app actually up?
- *
- * The bootstrap hands the person to the site, which then needs the API for
- * everything beyond reading. Asking this before navigating means a deployment
- * whose Node app has not been started says so on a page with the address in it,
- * instead of dumping the new owner on a 404 with no explanation.
- *
- * Resolves rather than throwing: "not running" is an answer here, not a fault.
- */
-export async function apiReachable(timeoutMs = 6000): Promise<{ ok: boolean; detail: string }> {
-  // Relative when this page is served by the app itself (a Node deployment), so
-  // it asks its own server rather than a domain that would be cross-origin.
-  const base = apiBase();
-  const url = base ? `${base}/api/health` : "/api/health";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      cache: "no-store",
-      credentials: "omit",
-      headers: { accept: "application/json" },
-      signal: controller.signal,
-    });
-    if (!response.ok) return { ok: false, detail: `${url} answered ${response.status}.` };
-    const payload = (await response.json()) as { ok?: boolean };
-    return payload?.ok
-      ? { ok: true, detail: `${url} is answering.` }
-      : { ok: false, detail: `${url} answered, but not like the API.` };
-  } catch (error) {
-    const detail = error instanceof Error && error.name === "AbortError"
-      ? `${url} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`
-      : `${url} could not be reached.`;
-    return { ok: false, detail };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export const api = {

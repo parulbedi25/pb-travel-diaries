@@ -17,8 +17,7 @@ import {
   User,
   Wand2,
 } from "lucide-react";
-import { apiReachable, describeApiError } from "../api/client";
-import { goToSiteRoute, handoffTargets } from "./handoff";
+import { describeApiError } from "../api/client";
 import { siteApi, type RestorePreview, type SetupStatus } from "../api/siteApi";
 import { cn } from "../utils/cn";
 
@@ -68,6 +67,7 @@ export default function SetupWizard({
   onDone: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(status.installed ? 2 : 1);
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
   // Once the database step has been saved the API locks it; do not offer a
   // Back button that could only fail.
   const [databaseSaved, setDatabaseSaved] = useState(status.installed);
@@ -97,54 +97,6 @@ export default function SetupWizard({
 
   /* Step 2 — the owner */
   const [owner, setOwner] = useState({ username: "", password: "", confirm: "", email: "" });
-  /**
-   * Set when the owner was created by the PHP bootstrap on a static folder.
-   *
-   * PHP creates the database, the tables and the account, and then stops: it
-   * has no session and never signs anybody in. So the last thing this screen
-   * does is say where the API is and hand the person over to it.
-   */
-  const [handoff, setHandoff] = useState<{ apiUrl: string; username: string } | null>(null);
-  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
-  /** Set when the person asks to stay on the handover screen. */
-  const [holdOn, setHoldOn] = useState(false);
-  const [countdown, setCountdown] = useState(6);
-  /** Is the Node app up? The site is usable either way; signing in is not. */
-  const [api, setApi] = useState<{ ok: boolean; detail: string } | null>(null);
-
-  // Ask the API whether it is there before sending anybody to it. On a static
-  // deployment the pages come from files and the API from a subfolder, and a
-  // Node app that has not been started yet is the single most likely reason for
-  // "the dashboard will not open" — worth saying plainly, on a page that stays
-  // put, rather than navigating into a 404.
-  useEffect(() => {
-    if (!handoff) return;
-    let alive = true;
-    void apiReachable().then((answer) => {
-      if (alive) setApi(answer);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [handoff]);
-
-  // The handover is a step, not a decision — but only once the API exists to
-  // hand over to. With no API, the page stays and explains; it does not navigate.
-  useEffect(() => {
-    if (!handoff || holdOn || !api?.ok) return;
-    const target = handoffTargets({
-      apiUrl: handoff.apiUrl,
-      origin: window.location.origin,
-      pathname: window.location.pathname,
-    }).signIn;
-    const tick = setInterval(() => setCountdown((n) => Math.max(0, n - 1)), 1000);
-    const go = setTimeout(() => goToSiteRoute(target), 6000);
-    return () => {
-      clearInterval(tick);
-      clearTimeout(go);
-    };
-  }, [handoff, holdOn, api]);
-
   useEffect(() => {
     document.title = step === 1 ? "Set up your website" : "Create the owner account";
   }, [step]);
@@ -256,10 +208,10 @@ export default function SetupWizard({
       setSiteTitle(result.siteTitle);
       setDatabaseSaved(true);
 
-      // Reconnecting a database that already has its owner: there is nothing
-      // to create, so go straight to the sign-in screen after a moment.
+      // Reconnecting a database that already has its owner: there is nothing to
+      // create, so open the site. Signing in happens there, at #/members.
       if (!result.needsOwner) {
-        setNotice("The database and every table are ready — it already has an owner account. Opening the sign-in screen…");
+        setNotice("The database and every table are ready — it already has an owner account. Opening the site…");
         setTimeout(onDone, 1400);
         return;
       }
@@ -285,19 +237,13 @@ export default function SetupWizard({
     }
     setBusy(true);
     try {
-      const result = await siteApi.setupOwner({
+      // The app creates the owner and signs that account in as it does, so
+      // there is nowhere to hand over to: the reload opens the dashboard.
+      await siteApi.setupOwner({
         username: owner.username.trim(),
         password: owner.password,
         email: owner.email.trim() || undefined,
       });
-      if (result.apiUrl) {
-        // The bootstrap has done its three jobs. There is no session here to
-        // carry, so the sign-in happens on the API — which is the only program
-        // that ever authenticates on this deployment.
-        setHandoff({ apiUrl: result.apiUrl, username: owner.username.trim() });
-        setBusy(false);
-        return;
-      }
       onDone();
     } catch (err) {
       setError(describeApiError(err));
@@ -305,127 +251,6 @@ export default function SetupWizard({
     }
   };
 
-
-  if (handoff) {
-    const targets = handoffTargets({
-      apiUrl: handoff.apiUrl,
-      origin: window.location.origin,
-      pathname: window.location.pathname,
-    });
-    // Three states, and the middle one is the point: the API is up (go on),
-    // the API is not up (say so, stay here), or we are still asking.
-    const ready = api?.ok === true;
-    const down = api !== null && !api.ok;
-
-    return (
-      <div className="relative min-h-screen overflow-hidden bg-ink-950 px-5 py-10 text-white sm:py-16">
-        <div className="pointer-events-none absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black,transparent_75%)]" aria-hidden />
-        <div className="relative mx-auto w-full max-w-2xl">
-          <div className="rounded-3xl glass p-6 sm:p-8">
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-300">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Database ready
-            </span>
-            <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight text-white">
-              The database is set up
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              The tables and the owner account <span className="text-white">{handoff.username}</span> are
-              created. This is where PHP stops — it created the database and nothing else, and it
-              answers nothing else from here on.
-            </p>
-
-            {/* The API check. This is what a person needs to know before
-                wondering why the sign-in form does nothing. */}
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                  The site&apos;s API
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setApi(null);
-                    void apiReachable().then(setApi);
-                  }}
-                  disabled={api === null}
-                  className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-semibold text-zinc-300 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
-                >
-                  {api === null ? "Checking…" : "Check again"}
-                </button>
-              </div>
-
-              {api === null && (
-                <p className="mt-3 text-sm text-zinc-500">
-                  Asking <span className="font-mono text-[11px]">{targets.apiHealth}</span>…
-                </p>
-              )}
-
-              {ready && (
-                <p className="mt-3 text-sm text-emerald-300">
-                  Answering at <span className="font-mono text-[11px]">{handoff.apiUrl}</span>. Sign in
-                  on this site with the account you just made — the dashboard, saving and uploads all
-                  happen there.
-                </p>
-              )}
-
-              {down && (
-                <div className="mt-3 space-y-2 text-sm leading-relaxed text-amber-200/90">
-                  <p>
-                    <span className="font-mono text-[11px]">{targets.apiHealth}</span> did not answer,
-                    so signing in will not work yet. The database is created and safe — only the Node
-                    app is missing.
-                  </p>
-                  <p className="text-[11px] text-zinc-500">
-                    Start it (cPanel → Setup Node.js App, startup file{" "}
-                    <span className="font-mono">app.cjs</span>,{" "}
-                    <span className="font-mono">BASE_PATH=/server</span>, plus the same{" "}
-                    <span className="font-mono">DB_*</span> details as{" "}
-                    <span className="font-mono">php-config.php</span>), then press Check again.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => goToSiteRoute(targets.signIn)}
-                disabled={!ready}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-saffron-400 px-6 py-3 text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <User className="h-4 w-4" /> Sign in and carry on
-              </button>
-              <a
-                href={targets.dashboard}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/[0.08]"
-              >
-                Open the dashboard <ArrowRight className="h-4 w-4" />
-              </a>
-            </div>
-
-            {ready && !holdOn && (
-              <p className="mt-4 text-[11px] text-zinc-500">
-                Taking you to sign in in {countdown}s ·{" "}
-                <button
-                  type="button"
-                  onClick={() => setHoldOn(true)}
-                  className="underline decoration-zinc-600 underline-offset-2 hover:text-zinc-300"
-                >
-                  stay on this page
-                </button>
-              </p>
-            )}
-
-            <p className="mt-5 text-[11px] leading-relaxed text-zinc-600">
-              You can read the site already — the pages are files in this folder and they do not need
-              the API. You can also delete <span className="font-mono">api.php</span> now; it has
-              finished its work.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-ink-950 px-5 py-10 text-white sm:py-16">

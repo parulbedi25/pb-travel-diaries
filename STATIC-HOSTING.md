@@ -1,14 +1,18 @@
-# Hosting this site as static files
+# Hosting the site as files, with the API on Node
 
-This is the "no Node.js anywhere" route. The site is exported into a folder of
-ordinary files, you upload that folder, and the domain serves the site. No
-database, no `npm install`, no Passenger, no Node version to pick, no process to
-keep alive.
+Two ways to run this site, and neither of them involves PHP:
 
-Use it when the site is finished and just needs to be online. If you still want
-to edit the site from a browser, or have pasted map links expand on the live
-site, you want the server instead — see [DEPLOYMENT.md](DEPLOYMENT.md) and
-[NAMECHEAP.md](NAMECHEAP.md).
+1. **All Node.** `npm start` serves the pages and the API from one process.
+   Simplest, and what [DEPLOYMENT.md](DEPLOYMENT.md) covers.
+2. **Files + API.** The pages are exported into a folder of ordinary files and
+   uploaded; the API is the Node app in a subfolder of the same domain. Use this
+   when the host serves static files better than it runs applications, or when
+   the site is finished and only the dashboard needs a server.
+
+A folder of files on its own — with no Node app anywhere — still shows the site
+(that is what `content.json` is for), but there is no dashboard, no signing in
+and no editing. Nothing here creates a database; the app does that, wherever it
+runs.
 
 ---
 
@@ -68,156 +72,73 @@ panel's environment (or a `.env` **outside** `public_html`). See
 
 ---
 
-## The PHP bootstrap — setup only
+## There is no PHP here
 
-A folder of files cannot open a database: nothing on the server executes, and a
-browser has no MySQL client. PHP does execute, so the export carries **one** PHP
-file whose only job is the first five minutes: create the database's tables and
-the owner account. After that it refuses everything.
+This project has none: no `api.php`, no `php-config.php`, no bridge. The API is
+the Node app and nothing else, so a static folder is **only** useful when the
+Node app is running somewhere on the same domain.
 
-```bash
-npm run export:static -- --php --api https://your-site.com/server
+That leaves two sane deployments, and only two:
+
+| | What serves the site | What serves `/api/…` | Setup creates the tables |
+| --- | --- | --- | --- |
+| **All Node** (recommended) | the Node app | the same Node app | the app's own setup screen |
+| Files + API | the folder of files | the Node app in a subfolder | the app's own setup screen |
+
+In both, the database is created by **Node**, from the same setup screen, with
+the same code that runs in production. Nothing else can create it — which is the
+point: one program owns the database, so there is no second schema to drift and
+no second set of credentials on the server.
+
+### All Node: the simplest thing that works
+
+```
+npm start                      # serves the site AND the API on one port
 ```
 
-| File | What it is |
-| --- | --- |
-| `api.php` | the bootstrap: `setup/status`, `setup/test`, `setup/database`, `setup/owner`. **Nothing else, ever.** |
-| `php-config.php` | the database details from your `.env`, including the password, plus where the API lives |
-| `.htaccess` | sends `/api/…` to `api.php`; hides `php-config.php`; blocks dotfiles — **optional**: the setup screen also reaches `api.php` through `/api.php?route=…`, which needs no rewrite |
+Open the site, finish the setup screen (database details, then the owner
+account), and you are signed in. One process, one folder, nothing to keep in
+sync. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
-**`--api` is where the site's API lives** — the Node app, normally mounted in a
-subfolder such as `/server`. The export writes that address into the page, so
-every request after setup goes there. Without `--api`, a `--php` export points at
-`/server` by default.
+### Files + API: when you must serve the pages as files
 
-### What PHP does, in full
+```
+npm run export:static -- --api https://your-site.com/server
+```
 
-1. `/api/setup/status` — is the database reachable, is the site installed, what
-   are this server's details (prefilled into the setup screen).
-2. `/api/setup/test` — really connect and name the server version.
-3. `/api/setup/database` — create every table, in the Node server's own shape,
-   and repair a database an older setup left half-created.
-4. `/api/setup/owner` — create the owner account, with a bcrypt hash the Node
-   app verifies.
+The pages go in the web root, the Node app answers `/server/api/…` (run it with
+`BASE_PATH=/server`). The export bakes that address into the page
+(`window.__PB_API_BASE__`), so the page's calls go to the app instead of to the
+folder — which can only serve files.
 
-Every other request — `/api/auth/login`, `/api/content`, `/api/media`,
-`/api/alerts`, the lot — answers **410 Gone** with `code: "setup-only"`. There is
-no session in PHP, no cookie, no password check, no upload, no content read.
-Once the installer is done you can delete `api.php` from the folder and nothing
-stops working: it has no further part to play.
+The pages work on their own: with the API down they still read `content.json`,
+so a visitor sees the site. The dashboard and signing in need the app.
 
-**Why the password can live in `php-config.php` but never in a `.env`:** PHP is
-*executed* by the server, so its source is never downloaded — a `.env` is a
-plain file, and anything a browser can reach, anyone can read. Keep the `.php`
-extension; renaming it to `.txt` publishes your password.
+**Setup happens in the app, not in this folder.** Create the tables and the
+owner at `https://your-site.com/server` — the same screen an all-Node deployment
+uses. There is nothing to run in the file folder, and nothing to delete
+afterwards.
 
-### Where the API comes from
+### After setup
 
-The Node app, in a subfolder of the same domain:
-
-1. cPanel → **Setup Node.js App** → application root = the project folder,
-   startup file `app.cjs`.
-2. Add `BASE_PATH=/server` (and `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`)
-   as environment variables. `BASE_PATH` is what makes the app answer under the
-   subfolder, so the page's calls to `/server/api/content` land on it.
-3. Restart the app, then upload `release/static` to the document root.
-
-Sign-in, the dashboard, saving, uploads, backups, alerts and the member garage
-are all served by that Node app. PHP never sees any of them.
-
-### If I run the Node app at the domain root
-
-Then there is no static folder and no PHP at all — not even for the database.
-`npm start`, open the site, and the setup screen is the Node app's own, storing
-what it learns in `data/install.json`. **A Node deployment never runs PHP.**
-
-### After setup: the site stays put, the API is checked
-
-The bootstrap finishes by handing the person back to the **site** — not to the
-API's address. Signing in happens on the site itself and goes through the API,
-because the session cookie is set for the whole domain (`Path=/`), so a page at
-the root is signed in by a request made to `/server`.
-
-Before it lets you go, that screen asks the API's health check. If the Node app
-is not running yet it says so, names the address, and waits — it does not
-navigate into a 404 and it does not hide the fact that the tables are already
-created and safe.
-
-The front page never depends on that check. The pages are files: if the API is
-not answering, the site is still served from `content.json` beside them, and
-only the dashboard and signing in need the server.
+The app signs the owner in as it creates the account, so the wizard ends by
+reloading into the site, already signed in. No handover page, no second address,
+no countdown.
 
 ### You do not need a database to export
 
 The site's database lives on the server, so the machine that builds the release
-usually has none. `--php` (or `--api`) with nothing configured exports anyway: it
-bakes the built-in content as the offline fallback, writes `php-config.php` with
-the credentials left blank for the setup screen, and says so:
+usually has none. With `--api` the export proceeds anyway: it bakes the built-in
+content as the offline fallback and says so.
 
 ```
-npm run export:static -- --php --api https://your-site.com/server
+npm run export:static -- --api https://your-site.com/server
 [export] no database here — baking the built-in content as the offline fallback.
 [export] the site's own content comes from the API at https://your-site.com/server
 ```
 
-The pages take their content from the API, so what ships as `content.json` is
-only what a visitor sees if the API is down. To bake the *live* content instead,
-pass `--db-host/--db-user/--db-name` from a machine that can reach the database.
-
-### What the bootstrap creates, and why it cannot drift
-
-`api.php` has no schema of its own. The export bakes in the statements from
-`server/db/schema.js`, `migrations.js` and `sqliteMigrations.js` — the same SQL
-the Node app would run — together with the ledger rows that say the database is
-fully upgraded. So the tables PHP creates are the tables Node expects, including
-every column a feature added later needs.
-
-That is why the Node app opens a PHP-created database as "installed, nothing
-pending" and serves every endpoint, rather than reporting a schema that needs
-migrating. If you add a feature and a migration, export again; the bootstrap
-picks the new statements up automatically. `server/tests/phpSchema.test.js`
-fails the build if the two ever disagree.
-
-### When the setup screen cannot reach the file
-
-`api.php` answers a question about itself, which is what the "setup file is not
-answering" screen uses. Open it directly in a browser:
-
-```
-https://your-site.com/api.php?route=diag
-```
-
-It replies with JSON naming the PHP version, which extensions are loaded,
-whether `php-config.php` is present, whether the database connects and which
-tables exist. No password is ever in it, and no host or user once the site is
-installed.
-
-### After setup: the check
-
-```
-curl -i https://your-site.com/api/content
-# HTTP/1.1 410 Gone
-# {"error":"This file only creates the database. …","code":"setup-only"}
-```
-
-That 410 is the guarantee working: PHP is out of the way, and the dashboard is
-talking to Node.
-
-### If something looks wrong
-
-| What you see | What it means |
-| --- | --- |
-| The website opens and the setup screen never appears | the bootstrap did not answer, so nothing was created. Open `/api.php?route=setup/status` — a line of JSON means it is alive and the page will find it on reload; a download or an HTML page means PHP is not running for this folder, or `api.php` was not uploaded |
-| "The setup file is not answering" | the same thing, said by the page: this folder was exported with `--php`, so it expects `api.php`. The screen now probes the file itself and prints PHP version, extensions, `php-config.php` and the database answer — read that panel first. `?skip-setup=1` shows the site anyway |
-| The page says **api.php did not answer with JSON** and the probe shows an **empty** body | PHP ran the file and it hit a fatal error. The bootstrap no longer needs PHP 8 (it carries its own `str_*`/`mb_*` fallbacks), so the usual causes left are a missing `pdo_mysql` extension, a partial upload, or a `php-config.php` from an **old export** — releases before this fix shipped one with no closing `;`, which is a parse error and therefore a blank page. Export again and replace both files |
-| A page of text: *"This file only creates the database… nothing else is served from PHP"* | the page asked PHP for something a page needs (content, sign-in) — so the `index.html` is older than the export, or was uploaded without `--api`. The bootstrap now **redirects** such a request to the Node API (`307`/`308`) instead of refusing, so this should heal itself; if it persists, the Node app at that address is not answering — check `${API}/api/health`, then re-upload `index.html` |
-| The screen asks for the database details | the export was made on a machine with no database configured, so `php-config.php` was written blank on purpose rather than with placeholder values. Type the host, database, user and password from cPanel |
-| The probe shows **404** | `api.php` is not in this folder — re-extract the ZIP, or upload it beside `index.html` |
-| The probe shows **downloaded source** | PHP is not enabled for this folder: cPanel → **Select PHP Version** / **MultiPHP Manager**, then try again |
-| "This deployment has no such endpoint" from an old upload | an older `api.php` is still on the server — export again and replace `api.php`, `php-config.php` and `.htaccess` |
-| The setup screen appears, then the site shows content but no dashboard | `--api` was not given (or is wrong). Export again with the right address |
-| Every API call 404s after setup | the Node app is not running, or `BASE_PATH` does not match `--api` |
-| The setup screen does not appear | `.htaccess` was not uploaded (some file managers hide dotfiles), or the folder is not at the domain root |
+To bake the *live* content into the folder instead, pass `--db-host/--db-user/
+--db-name` from a machine that can reach that database.
 
 ## 2. Make the export
 
@@ -384,18 +305,16 @@ one.
 4. The API is a second, separate thing: **Setup Node.js App** in the same panel,
    pointed at the repository, with `BASE_PATH=/server`. Both live at one
    address — Apache serves the files, Node answers `/server/api/…`. See
-   [The PHP bootstrap](#the-php-bootstrap--setup-only) above.
+   [Files + API](#files--api-when-you-must-serve-the-pages-as-files) above, and
+   create the tables at `https://your-site.com/server` afterwards.
 
 ### If the plan has Node and it can be the whole site
 
 Then skip the export entirely: upload the repository, `npm install`,
 application startup file `app.cjs`, `npm start`, and let it answer at the domain
-root with no `BASE_PATH`. The setup screen is the Node app's own, it writes
-`data/install.json`, and **PHP is never installed, never uploaded, never run** —
-not even for the database. The Node server creates its own tables.
-
-In that case do not upload `api.php` or `php-config.php`: two APIs answering
-`/api/…` in one folder is one too many, and Apache would answer first.
+root with no `BASE_PATH`. The setup screen is the app's own, it writes
+`data/install.json`, and it creates its own tables. One process serves the site
+and the API; there is no second folder and nothing to keep in sync.
 
 ### Netlify
 
