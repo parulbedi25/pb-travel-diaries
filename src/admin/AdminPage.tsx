@@ -242,6 +242,16 @@ export const SECTION_FIELDS: Record<Exclude<SectionType, "custom">, Field[]> = {
     T("cta2Href", "Secondary button link"),
     T("ratingText", "Rating line", "e.g. 4.9 from 6,200+ travelers"),
     T("tribeText", "Tribe line", "e.g. 480K+ tribe members"),
+    T(
+      "riderName",
+      "Your name — the face in the plate",
+      "The circle under the coordinates takes its letters from this: Parul Bedi shows as PB.",
+    ),
+    TA(
+      "crew",
+      "Also on the road — one per line",
+      "Each line becomes a circle: a full name gives its initials (Aman Mehta → AM), or type just the letters. Leave it empty and the plate shows your own initials alone.",
+    ),
     T("chipLocation", "Location chip on photo"),
     T("originLat", "Origin — latitude", "Where the rider is from; e.g. 31.3832 shows as 31.3832° N"),
     T("originLng", "Origin — longitude", "e.g. 76.3766 shows as 76.3766° E"),
