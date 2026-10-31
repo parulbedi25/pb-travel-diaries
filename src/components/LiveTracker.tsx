@@ -90,7 +90,18 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   // OwnTracks app posts it to this site), otherwise the stop the dashboard
   // marked "Here now". The live map and the nearby page read the same hook, so
   // all three agree about the position.
-  const { location, status, ageSec, istTime } = useSiteLiveLocation();
+  const { location, status, ageSec, istTime, cadenceMinutes } = useSiteLiveLocation();
+  // A paced pin is not a slow one: when the owner has asked the map to move
+  // every N minutes, say so where the position is shown, so a visitor does not
+  // read "same place for twenty minutes" as the site being broken.
+  const paceLabel =
+    cadenceMinutes > 0
+      ? cadenceMinutes === 1440
+        ? "updates once a day"
+        : cadenceMinutes < 60
+          ? `updates every ${cadenceMinutes} min`
+          : `updates every ${Number.isInteger(cadenceMinutes / 60) ? cadenceMinutes / 60 : (cadenceMinutes / 60).toFixed(1)} h`
+      : "";
   const lat = location.lat.toFixed(4);
   const lng = location.lng.toFixed(4);
   const note = data.note.trim() ? data.note : location.note;
@@ -343,7 +354,8 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                           : "○ OFF DUTY — BACK 6 AM IST"}
                     </span>
                     <span className="mt-0.5 block text-[11px] font-medium text-zinc-400">
-                      {location.name}, {location.state} · tap to open live map
+                      {location.name}, {location.state}
+                      {paceLabel ? ` · ${paceLabel}` : ""} · tap to open live map
                     </span>
                   </span>
                   <ArrowUpRight className="live-plate-arrow h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />

@@ -123,10 +123,16 @@ follow the rider's phone. Install **OwnTracks** (free, Android and iPhone), then
 
 How it behaves:
 
-- A fix counts as live for **one hour**, inside the tracker's usual 6:00 AM –
-  9:00 PM IST window. After that the site falls back to the stop marked
-  **Here now** in the dashboard, so a phone left in a drawer cannot park the
-  bike somewhere it no longer is.
+- **You choose how often the pin moves.** Dashboard → **Settings → Live
+  location** offers *Live* (every fix) or a rhythm — every minute, 5, 10, 15,
+  30 minutes, 1, 2, 3, 6, 12 hours, once a day. The phone keeps reporting
+  either way; the rhythm decides when the tracker, `#/live-map` and the nearby
+  page move. A paced pin shows "updates every 30 min" beside the position, and
+  the panel reports when the next move is due.
+- A point counts as live for **one hour plus your rhythm**, inside the
+  tracker's usual 6:00 AM – 9:00 PM IST window. After that the site falls back
+  to the stop marked **Here now** in the dashboard, so a phone left in a drawer
+  cannot park the bike somewhere it no longer is.
 - The newest fix wins even if an older one arrives later (a phone that was out
   of signal replays its queue).
 - The token in that URL is a password: it is shown only to the owner, and

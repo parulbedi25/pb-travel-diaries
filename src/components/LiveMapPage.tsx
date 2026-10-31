@@ -179,6 +179,7 @@ export default function LiveMapPage() {
     location,
     status,
     ageSec,
+    cadenceMinutes,
     now,
     istTime,
     nextWindowOpenMs,
@@ -258,6 +259,17 @@ export default function LiveMapPage() {
               <li className="flex items-center gap-2.5">
                 <Clock className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
                 Updated {formatAge(ageSec)} · IST {istTime}
+                {/* The pin is paced by the owner's own rhythm, not by a fault. */}
+                {cadenceMinutes > 0 && (
+                  <span className="text-zinc-500">
+                    · moves{" "}
+                    {cadenceMinutes === 1440
+                      ? "once a day"
+                      : cadenceMinutes < 60
+                        ? `every ${cadenceMinutes} min`
+                        : `every ${Number.isInteger(cadenceMinutes / 60) ? cadenceMinutes / 60 : (cadenceMinutes / 60).toFixed(1)} h`}
+                  </span>
+                )}
               </li>
               <li className="flex items-center gap-2.5">
                 <Compass className="h-3.5 w-3.5 shrink-0 text-sky-400" />

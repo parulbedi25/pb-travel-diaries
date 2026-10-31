@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LIVE_LOCATION } from "../data/liveLocation";
 import { apiUrl } from "../api/client";
-import type { LiveFix } from "../api/siteApi";
+import type { LiveNow } from "../api/siteApi";
 
 export type LiveStatus = "live" | "stale" | "offduty";
 
@@ -81,6 +81,16 @@ function istToUtcMs(
 export function useLiveLocation(seed?: LiveLocationSeed | null) {
   const [now, setNow] = useState(() => new Date());
   const [remote, setRemote] = useState<LiveLocationData | null>(null);
+  /**
+   * The rhythm the owner chose in the dashboard, and how old a point may be
+   * before the dashboard's own stop takes over again. Both come from the API
+   * rather than being constants here, because "move the pin every three hours"
+   * and "a point is stale after an hour" cannot both be true.
+   */
+  const [rhythm, setRhythm] = useState<{ cadenceMinutes: number; ttlMs: number }>({
+    cadenceMinutes: 0,
+    ttlMs: FRESH_TTL_MS,
+  });
 
   // 1s clock — drives the IST window, "updated Xs ago" and countdowns
   useEffect(() => {
@@ -97,6 +107,7 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
     const feedUrl = LIVE_LOCATION.feedUrl;
     if (!feedUrl) {
       let cancelled = false;
+      let timer: number | undefined;
       const pullFromApi = async () => {
         try {
           // Deliberately a plain fetch, not `api.get`: on a host with no server
@@ -109,8 +120,25 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
             headers: { accept: "application/json" },
           });
           if (!response.ok) return;
-          const { fix } = (await response.json()) as { fix: LiveFix | null };
-          if (cancelled || !fix) return;
+          const data = (await response.json()) as LiveNow;
+          if (cancelled) return;
+
+          const cadenceMinutes = data.cadenceMinutes ?? 0;
+          const ttlMs = data.ttlMs ?? FRESH_TTL_MS;
+          setRhythm({ cadenceMinutes, ttlMs });
+
+          // Poll four times per rhythm, so the pin moves when it is allowed to
+          // rather than up to a rhythm late — but never faster than every 30s,
+          // and never slower than every two minutes, which is nothing on the
+          // wire and keeps a live map live.
+          const waitMs =
+            cadenceMinutes > 0
+              ? Math.min(Math.max((cadenceMinutes * 60_000) / 4, 30_000), 120_000)
+              : 30_000;
+          timer = window.setTimeout(() => void pullFromApi(), waitMs);
+
+          const { fix } = data;
+          if (!fix) return;
           setRemote({
             lat: fix.lat,
             lng: fix.lng,
@@ -129,10 +157,9 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
         }
       };
       void pullFromApi();
-      const id = setInterval(() => void pullFromApi(), 30_000);
       return () => {
         cancelled = true;
-        clearInterval(id);
+        window.clearTimeout(timer);
       };
     }
     let cancelled = false;
@@ -200,11 +227,11 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
   };
 
   // A remote fix leads only while it is still worth calling live. Once the
-  // phone has been quiet for longer than the tracker's own hour, the stop the
+  // phone has been quiet for longer than the owner's rhythm allows, the stop the
   // dashboard marked "here now" is the better answer — it is a place somebody
   // chose, not a place a flat battery left behind.
   const remoteFresh =
-    remote !== null && now.getTime() - (Date.parse(remote.updatedAt) || 0) <= FRESH_TTL_MS;
+    remote !== null && now.getTime() - (Date.parse(remote.updatedAt) || 0) <= rhythm.ttlMs;
   const location: LiveLocationData = (remoteFresh ? remote : null) ?? seeded ?? fallback;
 
   const parts = istParts(now);
@@ -216,7 +243,7 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
     [location.updatedAt]
   );
   const ageMs = Math.max(0, now.getTime() - updatedMs);
-  const fresh = ageMs <= FRESH_TTL_MS;
+  const fresh = ageMs <= rhythm.ttlMs;
 
   const status: LiveStatus = !inWindow ? "offduty" : fresh ? "live" : "stale";
 
@@ -240,6 +267,8 @@ export function useLiveLocation(seed?: LiveLocationSeed | null) {
     location,
     status,
     inWindow,
+    /** The owner's rhythm: 0 means the map follows every fix. */
+    cadenceMinutes: rhythm.cadenceMinutes,
     ageMs,
     ageSec: Math.floor(ageMs / 1000),
     now,

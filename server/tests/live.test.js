@@ -24,7 +24,16 @@ process.env.RATE_LIMIT_PER_MINUTE = "0";
 process.env.BCRYPT_ROUNDS = "4";
 
 const { createApp } = await import("../app.js");
-const { fixFromPayload, sameToken, tokenFromRequest } = await import("../routes/live.js");
+const {
+  CADENCE_CHOICES,
+  MAX_CADENCE_MINUTES,
+  fixFromPayload,
+  liveTtlMs,
+  normaliseCadence,
+  pickShown,
+  sameToken,
+  tokenFromRequest,
+} = await import("../routes/live.js");
 
 const app = createApp();
 let server;
@@ -205,6 +214,82 @@ test("only the signed-in owner may read the setup or clear the fix", async () =>
   assert.equal((await call("GET", "/api/live")).json.fix, null);
 });
 
+/* ── the owner's rhythm ─────────────────────────────────────────────── */
+
+test("a new site follows the phone live", async () => {
+  const setup = await call("GET", "/api/live/setup");
+  assert.equal(setup.json.cadenceMinutes, 0);
+  assert.deepEqual(setup.json.choices, CADENCE_CHOICES);
+  assert.equal(setup.json.maxCadenceMinutes, MAX_CADENCE_MINUTES);
+});
+
+test("the owner can slow the pin down, and only the owner", async () => {
+  const saved = session;
+  session = "";
+  assert.equal((await call("POST", "/api/live/setup/cadence", { minutes: 30 })).status, 401);
+  session = saved;
+
+  const paced = await call("POST", "/api/live/setup/cadence", { minutes: 30 });
+  assert.equal(paced.status, 200);
+  assert.equal(paced.json.cadenceMinutes, 30);
+  // Three hours of rhythm means a point is still "live" well past the old hour.
+  assert.equal(paced.json.ttlMs, 60 * 60_000 + 30 * 60_000);
+  assert.equal((await call("GET", "/api/live/setup")).json.cadenceMinutes, 30);
+});
+
+test("a nonsense rhythm is refused rather than stored", async () => {
+  for (const minutes of [-5, "soon", "", null, MAX_CADENCE_MINUTES + 1]) {
+    const res = await call("POST", "/api/live/setup/cadence", { minutes });
+    assert.equal(res.status, 400, String(minutes));
+  }
+  // Still the 30 chosen above: a bad request changes nothing.
+  assert.equal((await call("GET", "/api/live/setup")).json.cadenceMinutes, 30);
+});
+
+test("inside the rhythm the pin stays put while the phone keeps reporting", async () => {
+  const { token } = (await call("GET", "/api/live/setup")).json;
+  const now = Math.floor(Date.now() / 1000);
+
+  // The first fix is always shown — a rhythm that never starts is not a rhythm.
+  await call("POST", `/api/live/owntracks?token=${token}`, ownTracksFix({ lat: 31.1, lon: 76.1, tst: now }));
+  assert.equal((await call("GET", "/api/live")).json.fix.lat, 31.1);
+
+  // A newer fix arrives a second later: the phone has moved, the map has not.
+  await call("POST", `/api/live/owntracks?token=${token}`, ownTracksFix({ lat: 31.5, lon: 76.5, tst: now + 1 }));
+  const onMap = (await call("GET", "/api/live")).json;
+  assert.equal(onMap.fix.lat, 31.1);
+  assert.equal(onMap.cadenceMinutes, 30);
+  assert.ok(onMap.nextUpdateAt, "the map knows when it may move next");
+
+  // The dashboard shows both, which is what makes the pause explainable.
+  const setup = (await call("GET", "/api/live/setup")).json;
+  assert.equal(setup.shown.lat, 31.1);
+  assert.equal(setup.fix.lat, 31.5);
+});
+
+test("switching back to live moves the pin on the next fix", async () => {
+  const { token } = (await call("GET", "/api/live/setup")).json;
+  await call("POST", "/api/live/setup/cadence", { minutes: 0 });
+  const now = Math.floor(Date.now() / 1000) + 10;
+  await call("POST", `/api/live/owntracks?token=${token}`, ownTracksFix({ lat: 32.7, lon: 77.7, tst: now }));
+
+  const live = (await call("GET", "/api/live")).json;
+  assert.equal(live.fix.lat, 32.7);
+  assert.equal(live.cadenceMinutes, 0);
+  assert.equal(live.nextUpdateAt, null);
+  // And the dashboard no longer reports a point waiting behind the pin.
+  const setup = (await call("GET", "/api/live/setup")).json;
+  assert.equal(setup.shown.lat, setup.fix.lat);
+});
+
+test("clearing the fix clears the pin too", async () => {
+  assert.equal((await call("DELETE", "/api/live/fix")).status, 200);
+  assert.equal((await call("GET", "/api/live")).json.fix, null);
+  const setup = (await call("GET", "/api/live/setup")).json;
+  assert.equal(setup.fix, null);
+  assert.equal(setup.shown, null);
+});
+
 /* ── the small pieces, on their own ─────────────────────────────────── */
 
 test("fixFromPayload reads the app's field names and keeps the phone's time", () => {
@@ -240,4 +325,59 @@ test("tokenFromRequest reads the query, the header and Basic's password", () => 
   );
   assert.equal(tokenFromRequest(from({ "x-pb-token": "h4" })), "h4");
   assert.equal(tokenFromRequest(from({})), "");
+});
+
+test("normaliseCadence keeps whole minutes in range", () => {
+  assert.equal(normaliseCadence(0), 0);
+  assert.equal(normaliseCadence(15), 15);
+  assert.equal(normaliseCadence("30"), 30);
+  assert.equal(normaliseCadence(12.7), 12);
+  assert.equal(normaliseCadence(-3), 0);
+  assert.equal(normaliseCadence("soon"), 0);
+  assert.equal(normaliseCadence(null), 0);
+  assert.equal(normaliseCadence(MAX_CADENCE_MINUTES + 500), MAX_CADENCE_MINUTES);
+});
+
+test("a slower rhythm stretches how long a point counts as live", () => {
+  const hour = 60 * 60_000;
+  assert.equal(liveTtlMs(0), hour);
+  assert.equal(liveTtlMs(30), hour + 30 * 60_000);
+  assert.equal(liveTtlMs(360), hour + 6 * 60 * 60_000);
+});
+
+test("pickShown paces the pin and never invents a position", () => {
+  const at = (iso) => new Date(iso);
+  const first = { lat: 31.1, lng: 76.1, updatedAt: "2026-10-30T10:00:00.000Z" };
+  const second = { lat: 31.5, lng: 76.5, updatedAt: "2026-10-30T10:05:00.000Z" };
+
+  // Nothing to show yet.
+  assert.equal(pickShown({ latest: null, shown: null, cadenceMinutes: 30 }), null);
+
+  // The first fix always goes on the map.
+  const shownFirst = pickShown({ latest: first, shown: null, cadenceMinutes: 30, now: at("2026-10-30T10:00:05Z") });
+  assert.equal(shownFirst.lat, 31.1);
+  assert.equal(shownFirst.shownAt, "2026-10-30T10:00:05.000Z");
+
+  // Five minutes into a thirty-minute rhythm: the pin holds.
+  const held = pickShown({ latest: second, shown: shownFirst, cadenceMinutes: 30, now: at("2026-10-30T10:05:00Z") });
+  assert.equal(held, shownFirst, "the same object — nothing moved");
+
+  // Thirty-one minutes later: the map jumps to the fix that was waiting.
+  const moved = pickShown({ latest: second, shown: shownFirst, cadenceMinutes: 30, now: at("2026-10-30T10:31:00Z") });
+  assert.equal(moved.lat, 31.5);
+  assert.equal(moved.shownAt, "2026-10-30T10:31:00.000Z");
+
+  // Live mode never waits.
+  assert.equal(
+    pickShown({ latest: second, shown: shownFirst, cadenceMinutes: 0, now: at("2026-10-30T10:05:01Z") }).lat,
+    31.5,
+  );
+
+  // A late, older fix must not drag the pin backwards.
+  const backwards = pickShown({ latest: first, shown: moved, cadenceMinutes: 0, now: at("2026-10-30T10:40:00Z") });
+  assert.equal(backwards, moved);
+
+  // The same point again does not reset "on the map since".
+  const same = pickShown({ latest: moved, shown: moved, cadenceMinutes: 30, now: at("2026-10-30T10:45:00Z") });
+  assert.equal(same, moved);
 });
