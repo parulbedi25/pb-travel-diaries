@@ -24,6 +24,7 @@ import { cn } from "../utils/cn";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
 import { useRouteGeometry } from "../hooks/useRoadGeometry";
 import { storedRoadFits } from "../utils/liveRoute";
+import { ARRIVE_KM, rideStanding, withStanding } from "../utils/rideStanding";
 import { useRouteWeather } from "../hooks/useRouteWeather";
 import { WeatherBadge, WeatherIcon } from "./WeatherBadge";
 import { WeatherCard } from "./WeatherBubble";
@@ -244,19 +245,66 @@ export default function LiveTracker({ data }: { data: LiveData }) {
   }, [stops.length]);
 
   const totalKm = totals[totals.length - 1] ?? 0;
-  const liveIndex = stops.findIndex((stop) => stop.status === "live");
-  const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
+
+  /**
+   * Where the ride has actually got to.
+   *
+   * Read from the position the site is already showing — the phone's fix when
+   * one is arriving, the stop the dashboard marked otherwise — rather than
+   * from the statuses somebody typed. A stop becomes **here now** as soon as
+   * the rider is within two kilometres of it, and **ridden** once they are
+   * that far past it; everything between is still to come. Without this a stop
+   * stayed "here now" all day while the bike was two hundred kilometres on.
+   *
+   * Only a real position is allowed to re-decide the statuses: when the page
+   * is showing the position bundled with the build, there is nothing to decide
+   * from and the dashboard's own statuses stay in charge.
+   */
+  const followsFix = location.source === "phone" || location.source === "dashboard";
+  const standing = useMemo(
+    () => rideStanding(stops, geometry, totals, { lat: location.lat, lng: location.lng }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stops, geometry, totals, location.lat, location.lng],
+  );
+  const routeStops = useMemo(
+    () => (followsFix ? withStanding(stops, standing.statuses) : stops),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [followsFix, stops, standing.statuses],
+  );
+
+  const liveIndex = routeStops.findIndex((stop) => stop.status === "live");
+  const lastDone = routeStops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
   const progressIndex = liveIndex >= 0 ? liveIndex : lastDone >= 0 ? lastDone : 0;
-  const coveredKm = totals[progressIndex] ?? 0;
-  const progressPct = stops.length > 1 ? (progressIndex / (stops.length - 1)) * 100 : 0;
-  const currentStop = stops[progressIndex];
-  const nextStop = stops[progressIndex + 1];
+  // The pointer stands where the rider is, not at the last stop they reached:
+  // between Nangal and Anandpur it belongs on the road between them.
+  const coveredKm = followsFix ? standing.alongKm : (totals[progressIndex] ?? 0);
+  const progressPct = totalKm > 0 ? Math.min(100, Math.max(0, (coveredKm / totalKm) * 100)) : 0;
+  const currentStop = followsFix
+    ? standing.fromIndex >= 0
+      ? stops[standing.fromIndex]
+      : undefined
+    : stops[progressIndex];
+  const targetIndex = followsFix
+    ? standing.toIndex
+    : progressIndex + 1 < stops.length
+      ? progressIndex + 1
+      : -1;
+  const nextStop = targetIndex >= 0 ? stops[targetIndex] : undefined;
   // What is left of the leg being ridden: the distance to the next stop, along
   // the same measure the totals use — road geometry when the dashboard has
   // fetched it, straight lines between stops when it has not.
-  const toNextKm = nextStop ? Math.max(0, (totals[progressIndex + 1] ?? 0) - coveredKm) : 0;
-  const upcoming = stops.slice(progressIndex + 1, progressIndex + 4);
+  const toNextKm = nextStop ? Math.max(0, (totals[targetIndex] ?? 0) - coveredKm) : 0;
+  const upcoming = targetIndex >= 0 ? stops.slice(targetIndex, targetIndex + 3) : [];
   const hereWeather = conditions?.[progressIndex] ?? null;
+  // The one line that says why a stop changed status: inside the ring, or past
+  // it. Shown with the position, because it is the rule the tracker follows.
+  const arriveNote = !followsFix
+    ? ""
+    : standing.hereIndex >= 0
+      ? `Here now · ${standing.distances[standing.hereIndex]!.toFixed(1)} km from ${stops[standing.hereIndex].name}`
+      : standing.fromIndex >= 0
+        ? `Ridden · ${Math.round(standing.alongKm - (totals[standing.fromIndex] ?? 0))} km past ${stops[standing.fromIndex].name}`
+        : "";
   // Shown on the tracker's stop strip rather than floating over the map.
   const pingLabel =
     status === "live"
@@ -264,6 +312,10 @@ export default function LiveTracker({ data }: { data: LiveData }) {
       : status === "stale"
         ? `Last ping ${ageLabel(ageSec)}`
         : "Window closed · 6 AM IST";
+  // Where the "coming up next" rows start: the stop being ridden towards, on
+  // the same derivation the map and the strip use.
+  const nextRowStart = targetIndex >= 0 ? targetIndex : progressIndex + 1;
+
   // Both calls to action are dashboard content now — label, link, icon and
   // whether they show at all — so the fallbacks below only matter for a site
   // saved before the buttons were configurable.
@@ -299,13 +351,16 @@ export default function LiveTracker({ data }: { data: LiveData }) {
               <div className="shrink-0 aspect-square absolute -left-24 top-10 h-72 w-72 rounded-full bg-saffron-400/8 blur-[100px]" aria-hidden />
               <div className="shrink-0 aspect-square absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-saffron-500/8 blur-[100px]" aria-hidden />
               <TrackerMap
-                stops={data.stops}
+                stops={routeStops}
                 routeGeometry={storedFits ? data.routeGeometry : []}
                 geometry={geometry}
                 routeDistanceKm={officialKm}
                 live={{ lat: location.lat, lng: location.lng }}
                 liveName={location.name}
                 liveState={location.state}
+                travelKm={followsFix ? standing.alongKm : undefined}
+                liveIsFix={location.source === "phone"}
+                arriveKm={ARRIVE_KM}
                 status={status}
                 pingLabel={pingLabel}
                 topInset={topInset}
@@ -451,7 +506,9 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                     </p>
                     <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
                       {nextStop
-                        ? `Left before ${nextStop.name}`
+                        ? `Left before ${nextStop.name}${
+                            standing.arrived ? ` · ${ARRIVE_KM} km ring reached` : ""
+                          }`
                         : "The last stop on this route — nothing left to ride."}
                     </p>
                   </div>
@@ -504,6 +561,23 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                       style={{ width: `${progressPct}%` }}
                     />
                   </div>
+                  {arriveNote && (
+                    <p
+                      className={cn(
+                        "mt-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                        standing.arrived ? "text-emerald-300" : "text-zinc-400",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "shrink-0 aspect-square h-1.5 w-1.5 rounded-full",
+                          standing.arrived ? "bg-emerald-400 animate-blink" : "bg-zinc-500",
+                        )}
+                        aria-hidden
+                      />
+                      {arriveNote}
+                    </p>
+                  )}
                   <p className="mt-2 text-[11px] text-zinc-500">{note}</p>
                 </div>
 
@@ -644,24 +718,24 @@ export default function LiveTracker({ data }: { data: LiveData }) {
                               data-temp-peek=""
                               onClick={(event) => {
                                 event.stopPropagation();
-                                openPeek(event.currentTarget, progressIndex + 1 + i);
+                                openPeek(event.currentTarget, nextRowStart + i);
                               }}
-                              aria-expanded={peek?.index === progressIndex + 1 + i}
+                              aria-expanded={peek?.index === nextRowStart + i}
                               aria-label={`Weather at ${stop.name}: open the next three hours and the coming week`}
                               className={cn(
                                 "rounded-full p-0.5 transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-400/70",
-                                peek?.index === progressIndex + 1 + i ? "scale-110" : "",
+                                peek?.index === nextRowStart + i ? "scale-110" : "",
                               )}
                             >
-                              <WeatherBadge conditions={conditions?.[progressIndex + 1 + i]} compact />
+                              <WeatherBadge conditions={conditions?.[nextRowStart + i]} compact />
                             </button>
                           </p>
                           <p className="text-xs text-zinc-500">
-                            {stop.note || `${formatKm(totals[progressIndex + 1 + i] ?? 0)} from the start`}
+                            {stop.note || `${formatKm(totals[nextRowStart + i] ?? 0)} from the start`}
                           </p>
                         </div>
                         <span className="rounded-full bg-saffron-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-saffron-300">
-                          {formatKm((totals[progressIndex + 1 + i] ?? 0) - coveredKm)}
+                          {formatKm((totals[nextRowStart + i] ?? 0) - coveredKm)}
                         </span>
                       </div>
                     </li>
