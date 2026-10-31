@@ -61,6 +61,8 @@ export interface MajorStopOptions {
   trimKm?: number;
   /** Names already on the route — never suggest them twice. */
   avoid?: readonly string[];
+  /** How far from the road a settlement may sit and still be asked about. */
+  corridorKm?: number;
 }
 
 const GEOAPIFY_PLACES_URL = "https://api.geoapify.com/v2/places";
@@ -73,7 +75,7 @@ const GEOAPIFY_PLACES_URL = "https://api.geoapify.com/v2/places";
  * evenly, and the list should not pretend they are: the only thing filtered out
  * now is the same place mentioned twice. `gapKm` survives as that guard.
  */
-const DEFAULT_OPTIONS: Required<Omit<MajorStopOptions, "avoid" | "key">> = {
+const DEFAULT_OPTIONS: Required<Omit<MajorStopOptions, "avoid" | "key" | "corridorKm">> = {
   radiusKm: 14,
   max: 120,
   gapKm: 1.5,
@@ -188,9 +190,13 @@ export function pickMajorStops(
     // doubles the list without adding anywhere new.
     const minGap = place.rank >= 2 ? gapKm : Math.max(gapKm, VILLAGE_GAP_KM);
     if (previous && place.km - previous.km < minGap) {
-      // Same ground twice: the larger settlement keeps the row, unless the
-      // name is the same ground spelled differently — then the first wins.
-      if (place.population > previous.population) chosen[chosen.length - 1] = place;
+      // Same ground twice: the bigger settlement keeps the row. Rank first —
+      // a town whose own village sits on top of it is still the town, even
+      // when neither has a population figure — and population second.
+      const beats =
+        place.rank > previous.rank ||
+        (place.rank === previous.rank && place.population > previous.population);
+      if (beats) chosen[chosen.length - 1] = place;
       seen.add(name);
       continue;
     }
@@ -408,6 +414,227 @@ async function geoapifyTowns(
 }
 
 /* ------------------------------------------------------------------ *
+ * OpenStreetMap, asked directly
+ * ------------------------------------------------------------------ */
+
+/**
+ * The settlements along a road, from OpenStreetMap itself.
+ *
+ * Geoapify is a good index and needs a key; Most sites do not have one, and
+ * without it the fill used to fall back to a dozen carried town names — which
+ * is why a ride like Chandigarh → Saharanpur came back with nothing between
+ * them, though it passes Rajpura, Ambala, Naraingarh, Yamunanagar and Deoband.
+ *
+ * Overpass is OpenStreetMap's own query service: no key, no page of results
+ * that runs out, and it will answer "every settlement within 15 km of this
+ * line", which is exactly the question. It is the same service the nearby page
+ * already trusts for beds and petrol pumps.
+ *
+ * The road is asked about in chunks — a handful of `around:` coordinates per
+ * request — because one request carrying a thousand coordinates is a request
+ * a public server is entitled to refuse.
+ */
+const OVERPASS_HOSTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+/** How far from the road a settlement may sit and still be on the ride. */
+const CORRIDOR_KM = 15;
+/** Coordinates per request: enough to cover a stretch, few enough to be polite. */
+const CORRIDOR_POINTS = 24;
+/** How often the road is sampled: a coordinate every eight kilometres. */
+const CORRIDOR_SAMPLE_KM = 8;
+/**
+ * How wide to look when the road itself could not be fetched.
+ *
+ * The geometry is then a straight line between the stops, and a real road
+ * wanders — Chandigarh to Saharanpur goes through Ambala, thirty-five
+ * kilometres west of the straight line. Looking wider is the only way to find
+ * those towns when the routing service is down.
+ */
+const CORRIDOR_WITHOUT_ROAD_KM = 40;
+/** However long the ride, it is asked about in this many coordinates at most. */
+const CORRIDOR_SAMPLES = 200;
+/** How long one chunk gets, across every mirror it tries. */
+const OVERPASS_BUDGET_MS = 16_000;
+
+interface OverpassElement {
+  lat?: number;
+  lon?: number;
+  center?: { lat?: number; lon?: number };
+  tags?: Record<string, string>;
+}
+
+/**
+ * The question: every city, town and village within `radiusKm` of this line.
+ *
+ * `around:` takes a list of coordinates, so the road itself is the filter —
+ * a town forty kilometres off the route is never fetched, let alone drawn.
+ * Ways and relations count as well as nodes: a town mapped as an area carries
+ * its name on the area, and `out center` gives it a point to sit on.
+ */
+export function corridorQuery(
+  points: readonly LatLng[],
+  radiusKm: number = CORRIDOR_KM,
+): string {
+  const around = points
+    .map(([lat, lng]) => `${lat.toFixed(4)},${lng.toFixed(4)}`)
+    .join(",");
+  const radius = Math.round(radiusKm * 1000);
+  return (
+    `[out:json][timeout:25];(` +
+    `nwr["place"~"^(city|town|village)$"](around:${radius},${around});` +
+    `);out center 900;`
+  );
+}
+
+/** Every settlement in one answer, read as a candidate stop. */
+function candidatesFromOverpass(elements: readonly OverpassElement[]): Candidate[] {
+  const out: Candidate[] = [];
+  for (const element of elements) {
+    const name = element.tags?.name?.trim();
+    const lat = element.lat ?? element.center?.lat;
+    const lng = element.lon ?? element.center?.lon;
+    if (!name || typeof lat !== "number" || typeof lng !== "number") continue;
+    const place = (element.tags?.place ?? "town").trim();
+    const population = Number.parseInt(String(element.tags?.population ?? ""), 10);
+    out.push({
+      name,
+      lat,
+      lng,
+      population: Number.isFinite(population) ? population : 0,
+      place,
+    });
+  }
+  return out;
+}
+
+/** One chunk of the road, asked of the first mirror that answers. */
+async function askOverpass(
+  points: readonly LatLng[],
+  timeoutMs: number,
+  corridorKm: number,
+): Promise<Candidate[]> {
+  const body = `data=${encodeURIComponent(corridorQuery(points, corridorKm))}`;
+  let lastError: unknown = null;
+  const startedAt = Date.now();
+  for (const host of OVERPASS_HOSTS) {
+    // The budget is for the chunk, not for each mirror: three slow mirrors in a
+    // row would otherwise hold the fill for most of a minute.
+    const left = Math.min(timeoutMs, OVERPASS_BUDGET_MS) - (Date.now() - startedAt);
+    if (left < 1500) break;
+    try {
+      const response = await fetch(host, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body,
+        signal: AbortSignal.timeout(left),
+      });
+      if (!response.ok) throw new Error(`Overpass answered ${response.status}`);
+      const json = (await response.json()) as { elements?: OverpassElement[] };
+      return candidatesFromOverpass(json.elements ?? []);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Overpass did not answer");
+}
+
+/**
+ * Evenly spaced coordinates along a line, ends included.
+ *
+ * Walking the vertices would thin out on the long empty stretches between two
+ * towns and bunch up on the hairpins; this samples by distance, interpolating
+ * inside a leg, so the spacing is the same everywhere.
+ */
+function corridorPoints(
+  geometry: readonly LatLng[],
+  spacingKm: number,
+  limit = CORRIDOR_SAMPLES,
+): LatLng[] {
+  if (geometry.length < 2) return geometry.slice(0, 1);
+  const cumulative = cumulativePath(geometry);
+  const total = cumulative[cumulative.length - 1] ?? 0;
+  if (!(total > 0)) return [geometry[0]];
+  const spacing = Math.max(0.5, spacingKm);
+  const count = Math.min(limit, Math.max(2, Math.ceil(total / spacing) + 1));
+  const step = total / (count - 1);
+  const out: LatLng[] = [];
+  let leg = 0;
+  for (let i = 0; i < count; i += 1) {
+    const target = i === count - 1 ? total : i * step;
+    while (leg < geometry.length - 2 && cumulative[leg + 1] < target) leg += 1;
+    const a = geometry[leg];
+    const b = geometry[leg + 1] ?? geometry[leg];
+    const legKm = (cumulative[leg + 1] ?? total) - cumulative[leg];
+    const t = legKm > 0 ? Math.min(1, Math.max(0, (target - cumulative[leg]) / legKm)) : 0;
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  }
+  return out;
+}
+
+/**
+ * Every settlement along the road, from OpenStreetMap.
+ *
+ * The same contract as the Geoapify version: a chunk that fails is not fatal
+ * while others answer, but a ride where nothing answered throws, so the caller
+ * knows it is holding an incomplete answer rather than a complete emptiness.
+ */
+async function overpassTowns(
+  geometry: readonly LatLng[],
+  timeoutMs: number,
+  corridorKm: number,
+): Promise<Candidate[]> {
+  // `around:` means "near any of these coordinates", not "near this line", so
+  // the coordinates have to be close enough together that their circles touch.
+  // Interpolated, not merely subsampled: the geometry can be two points —
+  // a straight line when the road could not be fetched — and a line is exactly
+  // where evenly spaced coordinates matter most.
+  const spacing = Math.min(CORRIDOR_SAMPLE_KM, corridorKm * 0.8);
+  const points = corridorPoints(geometry, spacing);
+  if (points.length < 2) return [];
+  const chunks: LatLng[][] = [];
+  for (let i = 0; i < points.length; i += CORRIDOR_POINTS) {
+    chunks.push(points.slice(i, i + CORRIDOR_POINTS));
+  }
+
+  const answers = await Promise.allSettled(
+    chunks.map((chunk) => askOverpass(chunk, timeoutMs, corridorKm)),
+  );
+  const byGround = new Map<string, Candidate>();
+  let answered = 0;
+  for (const answer of answers) {
+    if (answer.status !== "fulfilled") continue;
+    answered += 1;
+    for (const candidate of answer.value) {
+      keepLongerName(byGround, candidate);
+    }
+  }
+  if (!answered) throw new Error("OpenStreetMap did not answer");
+  return [...byGround.values()];
+}
+
+/**
+ * Two names for the same ground: keep the one that is a bigger place.
+ *
+ * The map lists a town and the village inside it, and every source spells its
+ * coordinates a little differently, so the key is the name and the ground it
+ * sits on to a hundred metres rather than an exact match.
+ */
+function keepLongerName(seen: Map<string, Candidate>, candidate: Candidate): void {
+  const key = `${candidate.name.toLowerCase()}|${candidate.lat.toFixed(2)}|${candidate.lng.toFixed(2)}`;
+  const previous = seen.get(key);
+  if (!previous || placeRank(candidate.place) > placeRank(previous.place) || candidate.population > previous.population) {
+    seen.set(key, candidate);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Offline fallback
  * ------------------------------------------------------------------ */
 
@@ -479,8 +706,8 @@ const KNOWN_TOWNS: Candidate[] = (
 
 export interface MajorStopResult {
   stops: MajorStop[];
-  /** Where they came from, for the note under the button. */
-  source: "map" | "offline";
+  /** Which map answered: Geoapify, OpenStreetMap, both, or neither. */
+  source: "map" | "osm" | "both" | "offline";
 }
 
 /**
@@ -497,22 +724,36 @@ export async function findMajorStops(
   if (geometry.length < 2) return { stops: [], source: "offline" };
   const { timeoutMs = 20_000, ...pickOptions } = options;
 
-  try {
-    const towns = await geoapifyTowns(geometry, options.key ?? "", timeoutMs);
-    if (towns.length) {
-      // The carried list is added to the answer rather than kept as an
-      // alternative to it: the map knows far more places, but it is the map
-      // that is allowed to be incomplete, and a ride that loses Manali because
-      // a tile server had a bad minute is worse than a duplicate name here.
-      return {
-        stops: pickMajorStops([...towns, ...KNOWN_TOWNS], geometry, pickOptions),
-        source: "map",
-      };
-    }
-  } catch {
-    // Fall through to the list we carry ourselves.
+  /**
+   * Both maps are asked, every time, and their answers are put together.
+   *
+   * They are not alternatives: Geoapify indexes settlements with a population
+   * figure, so it ranks a town above the hamlet beside it, while Overpass
+   * answers the whole corridor and needs no key at all. Asking both and
+   * merging is what makes a stretch like Chandigarh → Saharanpur come back
+   * with Rajpura, Ambala, Naraingarh, Yamunanagar and Deoband rather than
+   * with whichever of the two happened to have an answer that day.
+   */
+  const [geoapify, overpass] = await Promise.allSettled([
+    geoapifyTowns(geometry, options.key ?? "", timeoutMs),
+    overpassTowns(geometry, Math.min(timeoutMs, 14_000), pickOptions.corridorKm ?? CORRIDOR_KM),
+  ]);
+
+  const fromGeoapify = geoapify.status === "fulfilled" ? geoapify.value : [];
+  const fromOverpass = overpass.status === "fulfilled" ? overpass.value : [];
+
+  const merged = new Map<string, Candidate>();
+  // The carried list goes in first and is then overwritten by anything the map
+  // knows better: it is a floor, not a substitute.
+  for (const candidate of KNOWN_TOWNS) keepLongerName(merged, candidate);
+  for (const candidate of fromOverpass) keepLongerName(merged, candidate);
+  for (const candidate of fromGeoapify) keepLongerName(merged, candidate);
+
+  const stops = pickMajorStops([...merged.values()], geometry, pickOptions);
+  if (fromGeoapify.length || fromOverpass.length) {
+    return { stops, source: fromGeoapify.length && fromOverpass.length ? "both" : fromGeoapify.length ? "map" : "osm" };
   }
-  return { stops: pickMajorStops(KNOWN_TOWNS, geometry, pickOptions), source: "offline" };
+  return { stops, source: "offline" };
 }
 
 /* ------------------------------------------------------------------ *
@@ -527,6 +768,8 @@ export interface FilledRoute {
   added: string[];
   /** The road that was measured, so the caller can store it. */
   road: RouteFetchResult;
+  /** Which map named the towns, so the dashboard can say where they came from. */
+  source: MajorStopResult["source"];
 }
 
 /**
@@ -549,11 +792,25 @@ export async function fillRoute(
   options: MajorStopOptions = {},
 ): Promise<FilledRoute> {
   const road = await fetchRoadGeometry(list);
-  if (list.length < 2) return { stops: [...list], added: [], road };
+  if (list.length < 2) return { stops: [...list], added: [], road, source: "offline" };
 
+  /**
+   * The line everything is measured against.
+   *
+   * Without a road it is a straight line between the stops — but a line of two
+   * points has no positions along it, so every town would measure as the start
+   * or as the finish and be thrown out for not being between them. Interpolating
+   * it, one coordinate every two kilometres, gives the straight line the same
+   * kind of geometry the road has, and nothing else in here has to know which
+   * of the two it is looking at.
+   */
   const geometry: LatLng[] = road.ok
     ? road.geometry
-    : list.map((stop) => [stop.lat, stop.lng] as LatLng);
+    : corridorPoints(
+        list.map((stop) => [stop.lat, stop.lng] as LatLng),
+        2,
+        Math.max(64, list.length * 120),
+      );
 
   const stopKm = cumulativeKmOf(list, geometry);
   const legs = list.length - 1;
@@ -561,9 +818,22 @@ export async function fillRoute(
   // duplicate. A place twenty kilometres before a stop is a stop of its own.
   const edge = options.trimKm ?? 2;
 
-  const { stops: found } = await findMajorStops(geometry, {
-    max: 120,
-    radiusKm: 14,
+  // How many rows a ride can carry: roughly one every ten kilometres. A ride
+  // of 250 km wants its towns, not four hundred hamlets; a ride of 2,000 km
+  // wants far more than a fixed dozen. Every city and town comes first when
+  // the list has to be cut, so the villages are what give way.
+  const lengthKm = stopKm[stopKm.length - 1] ?? 0;
+  const wanted = Math.min(120, Math.max(10, Math.round(lengthKm / 10)));
+
+  // Without a road, the geometry is a straight line between the stops, and a
+  // real road wanders tens of kilometres away from that — so the corridor is
+  // widened to look for the towns a straight line would miss.
+  const corridorKm = options.corridorKm ?? (road.ok ? CORRIDOR_KM : CORRIDOR_WITHOUT_ROAD_KM);
+
+  const { stops: found, source } = await findMajorStops(geometry, {
+    max: wanted,
+    radiusKm: corridorKm,
+    corridorKm,
     ...options,
     avoid: [...(options.avoid ?? []), ...list.map((stop) => stop.name)],
   });
@@ -576,7 +846,7 @@ export async function fillRoute(
         index < legs && place.km > km + edge && place.km < stopKm[index + 1] - edge,
     ),
   );
-  if (!between.length) return { stops: [...list], added: [], road };
+  if (!between.length) return { stops: [...list], added: [], road, source };
 
   const merged = mergeStopsByDistance(list, geometry, between, (place: MajorStop) => ({
     name: place.name,
@@ -592,6 +862,7 @@ export async function fillRoute(
     stops: merged,
     added: between.map((place) => place.name),
     road,
+    source,
   };
 }
 

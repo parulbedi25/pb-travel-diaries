@@ -262,6 +262,20 @@ async function reverseFromOsm(
 }
 
 /** The services this can name in the selector. */
+/**
+ * Where the towns along the road came from, in the words the builder uses.
+ *
+ * The fill asks two maps — Geoapify when the site has a key for it, and
+ * OpenStreetMap always, because it needs none — so the note names the one that
+ * answered instead of leaving the owner to wonder where the names are from.
+ */
+function alongTheRoad(source: "map" | "osm" | "both" | "offline"): string {
+  if (source === "both") return " (Geoapify and OpenStreetMap)";
+  if (source === "map") return " (Geoapify)";
+  if (source === "osm") return " (OpenStreetMap)";
+  return "";
+}
+
 const LINK_SOURCES: MapLinkSource[] = ["google", "bing", "apple", "openstreetmap", "other"];
 
 export default function RouteStopsEditor({
@@ -963,7 +977,9 @@ export default function RouteStopsEditor({
       if (say) {
         setBuildNote(
           filled.added.length
-            ? `${filled.added.length} town${filled.added.length === 1 ? "" : "s"} on the way: ${filled.added.join(
+            ? `${filled.added.length} town${filled.added.length === 1 ? "" : "s"} on the way${alongTheRoad(
+                filled.source,
+              )}: ${filled.added.join(
                 ", ",
               )}. They are green — remove any you do not want and they stay removed.`
             : `No towns to add between ${start.name} and ${end.name}${
@@ -1152,7 +1168,7 @@ export default function RouteStopsEditor({
       // are the route, and only the road is measured.
       const filled = addTowns
         ? measured
-        : { stops: imported, added: [] as string[], road: measured.road };
+        : { stops: imported, added: [] as string[], road: measured.road, source: measured.source };
 
       // What this paste changed, named: the stops it threw away (red) and the
       // ones it brought in (green) — the link's own points and the towns filled

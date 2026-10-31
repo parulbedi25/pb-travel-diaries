@@ -230,11 +230,18 @@ does: **Your route** is a list of rows, and every row *is* a stop.
   in green, so your own deletions survive the next edit; *Fill in the towns
   between* does it again on demand. Every city, town and village the road goes
   through is added, in the order the road reaches them — a stop 10 km after the
-  one before it is still a stop, because the next gap may be 50 km. The road is
-  searched a stretch at a time, so a long ride cannot exhaust one answer, and
-  the small carried list of known towns is added to the map's answer so a place
-  the map misses is still on the route. Untick *Add the cities and towns on the
-  way* to keep the route exactly as you made it; ticking it again fills it in.
+  one before it is still a stop, because the next gap may be 50 km. The names
+  come from a real map, not a list typed into the code: the road is looked up in
+  **OpenStreetMap** (Overpass, no key needed) and in **Geoapify** when the site
+  has a key, and the two answers are merged, so a stretch one of them misses is
+  still covered. Chandigarh to Saharanpur comes back with Rajpura, Ambala,
+  Naraingarh, Yamunanagar and Deoband. The road is searched a stretch at a time
+  — coordinates every eight kilometres, 15 km either side — so a long ride cannot
+  exhaust one answer, and the small carried list of known towns is the floor
+  under the map's answer rather than a substitute for it. With 1, 5 or 20 stops
+  every leg is filled the same way, and the note under the panel says which map
+  named them. Untick *Add the cities and towns on the way* to keep the route
+  exactly as you made it; ticking it again fills it in.
 - Towns that were added show in **green**; remove any of them (or **Clear all
   stops**) and they turn **red** with an **Undo** button beside them — one at a
   time, or **Put every removed stop back** for all of them. A replaced start or
