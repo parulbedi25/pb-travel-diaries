@@ -1048,21 +1048,26 @@ export default function RouteStopsEditor({
   };
 
   /**
-   * A blank stop, in the row the panel is about to show.
+   * A blank stop, appended to the list the panel shows.
    *
-   * It goes before the destination — that is where a stop on the way belongs —
-   * and it starts at the middle of the leg it lands on, so the pin is somewhere
-   * sensible to drag rather than at the equator. Typing a name into its row
-   * replaces it.
+   * It goes at the end, so the operator sees the row they just asked for at the
+   * bottom of the route rather than above the destination. Its pin starts just
+   * past the place that was last — somewhere sensible to drag, rather than at
+   * the equator — and typing a name into the row replaces it.
    */
   const addWaypoint = () => {
-    // Before the destination — that is where a stop on the way belongs.
-    const at = stops.length >= 2 ? stops.length - 1 : stops.length;
+    // The end of the list, because that is where the operator is looking: a new
+    // row that appears above the destination pushes the destination down and
+    // reads as though the stop had been dropped in the middle of the ride. The
+    // list is the route, so a row added last is the last place reached — the
+    // old destination becomes a stop on the way, exactly as it does when a new
+    // destination is named in any directions panel.
+    const at = stops.length;
     const stop = midpointStop(stops, at, `Stop ${stops.length + 1}`);
     applyStops(insertStopAt(stops, at, stop));
     setBuildError("");
     setBuildNote(
-      "New row added — type a place in it, or drag its pin on the map. Its name and coordinates below update as you go.",
+      "Row added at the end of the route — type a place in it, or drag its pin on the map. The place that was last is now a stop on the way.",
     );
   };
 

@@ -217,10 +217,11 @@ does: **Your route** is a list of rows, and every row *is* a stop.
   on the old stretch go with it — the list under the box is the ride you just
   described, not the old one plus a new name at the top. A stop already marked
   *here now* stays marked when its name is corrected.
-- **Add a stop** puts a blank row just before the destination, halfway along the
-  leg it lands on: type its name, or drag its pin on the map above. Drag a row
-  by its grip (or use the arrows) to change the order, and remove one with the
-  bin beside it.
+- **Add a stop** puts a blank row at the **end of the list**. The list is the
+  route, so the last row is the last place reached: the place that was the
+  destination becomes a stop on the way, and the new row is the one to name —
+  type into it, or drag its pin on the map above. Drag a row by its grip (or
+  use the arrows) to change the order, and remove one with the bin beside it.
 - **The road and the distance are measured again after every edit** — a place
   picked, a row dragged, added or removed, a pin moved. The panel says
   *Recalculating the road…* while it measures, and each row shows its kilometres
