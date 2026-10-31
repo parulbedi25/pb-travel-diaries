@@ -5,7 +5,7 @@ import type { LiveStatus } from "../hooks/useLiveLocation";
 import { cn } from "../utils/cn";
 import VectorBasemap from "./VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-import { splitRouteAtProgress, type LatLng } from "../utils/routing";
+import { splitRouteAtKm, splitRouteAtProgress, type LatLng } from "../utils/routing";
 import { useRoadGeometry } from "../hooks/useRoadGeometry";
 import { fitRouteToBand, routeFramePoints } from "../utils/routeFrame";
 import { useRouteWeather } from "../hooks/useRouteWeather";
@@ -87,6 +87,22 @@ export interface TrackerMapProps {
   selectedIndex?: number | null;
   /** A checkpoint was tapped — pin, name or the weather over it. */
   onSelectStop?: (index: number) => void;
+  /**
+   * Kilometres along the road where the rider actually is.
+   *
+   * The line used to be split at the stop marked "here now", which moves in
+   * whole stops: ride three-quarters of the way to the next town and the map
+   * still coloured the road ahead of you as ridden. Given the distance the
+   * standing measured from the fix, the yellow ends under the pointer instead.
+   */
+  travelKm?: number;
+  /**
+   * The position is the phone's own fix rather than a stop, so the pin and its
+   * radar rings are drawn there instead of on the nearest checkpoint.
+   */
+  liveIsFix?: boolean;
+  /** The radius that makes a stop "here now", drawn as a faint ring. */
+  arriveKm?: number;
 }
 
 /**
@@ -161,6 +177,9 @@ export default function TrackerMap({
   topInset,
   selectedIndex = null,
   onSelectStop,
+  travelKm,
+  liveIsFix = false,
+  arriveKm = 2,
 }: TrackerMapProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   /** The route strip along the bottom — measured, so the route stops just above it. */
@@ -341,9 +360,14 @@ export default function TrackerMap({
     return kept;
   }, [marks, toPx]);
 
+  // Split at the rider when the caller knows where that is, at the checkpoint
+  // otherwise — an older page, or a route nobody has ridden yet.
   const { covered, remaining } = useMemo(
-    () => splitRouteAtProgress(geometry, stops),
-    [geometry, stops],
+    () =>
+      typeof travelKm === "number" && Number.isFinite(travelKm)
+        ? splitRouteAtKm(geometry, travelKm)
+        : splitRouteAtProgress(geometry, stops),
+    [geometry, stops, travelKm],
   );
   const toPath = (points: LatLng[]) =>
     points.length
@@ -382,14 +406,23 @@ export default function TrackerMap({
   const liveIndex = stops.findIndex((stop) => stop.status === "live");
   const lastDone = stops.reduce((acc, stop, i) => (stop.status === "done" ? i : acc), -1);
   const progressIndex = liveIndex >= 0 ? liveIndex : lastDone >= 0 ? lastDone : 0;
-  const progressPct = count > 1 ? (progressIndex / (count - 1)) * 100 : 0;
+  // The thin line above the strip follows the same kilometre the road does:
+  // part-ridden legs are part-ridden there too, not all-or-nothing per stop.
+  const progressPct =
+    typeof travelKm === "number" && Number.isFinite(travelKm) && routeKm > 0
+      ? Math.min(100, Math.max(0, (travelKm / routeKm) * 100))
+      : count > 1
+        ? (progressIndex / (count - 1)) * 100
+        : 0;
   const edge = count > 0 ? 50 / count : 0;
 
-  // A checkpoint marked "here now" in the dashboard is where PB is, so the
-  // radar, the pin and the label all sit on it and agree with each other. The
-  // GPS feed is only the fallback for when no checkpoint is marked live.
-  const liveHere = liveIndex >= 0 ? stops[liveIndex] : live;
-  const liveLabel = liveIndex >= 0 ? stops[liveIndex].name : `${liveName}, ${liveState}`;
+  // Where the pointer goes. With a phone fix that is the fix itself — the pin
+  // should be where the bike is, not at the town it left an hour ago. A
+  // checkpoint marked "here now" is the fallback, and it is what the radar, the
+  // pin and the label all sit on so they agree with each other.
+  const liveHere = liveIndex >= 0 && !liveIsFix ? stops[liveIndex] : live;
+  const liveLabel =
+    liveIsFix || liveIndex < 0 ? `${liveName}, ${liveState}` : stops[liveIndex].name;
   const livePoint = toPct(liveHere);
 
   return (
@@ -468,7 +501,7 @@ export default function TrackerMap({
       ))}
 
       {/* Radar rings on wherever PB actually is. */}
-      {liveIndex >= 0 && (
+      {(liveIndex >= 0 || liveIsFix) && (
         <>
           <div
             className="shrink-0 aspect-square pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
@@ -486,6 +519,23 @@ export default function TrackerMap({
             aria-hidden="true"
           />
         </>
+      )}
+
+      {/* The ring that decides the status: inside it a stop is "here now",
+          outside it the stop behind is "ridden". Drawn faintly around the
+          checkpoint being entered, so the rule the tracker follows is visible
+          rather than only described. */}
+      {liveIndex >= 0 && (
+        <div
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-300/35 bg-emerald-400/[0.05]"
+          style={{
+            left: `${toPct(stops[liveIndex]).x}%`,
+            top: `${toPct(stops[liveIndex]).y}%`,
+            width: Math.max(46, Math.min(150, arriveKm * 22)),
+            height: Math.max(46, Math.min(150, arriveKm * 22)),
+          }}
+          aria-hidden="true"
+        />
       )}
 
       {/* The checkpoints. */}
@@ -732,10 +782,17 @@ export default function TrackerMap({
                       >
                         {stop.name}
                       </span>
-                        <span className="text-[9px] leading-tight text-zinc-600">
+                        <span
+                          className={cn(
+                            "text-[9px] leading-tight",
+                            isLive && status === "live" ? "text-emerald-300" : "text-zinc-600",
+                          )}
+                        >
                           {isLive && status === "live" && index > 0
                             ? "here now"
-                            : formatKm(totals[index] ?? 0)}
+                            : isDone && typeof travelKm === "number"
+                              ? "ridden"
+                              : formatKm(totals[index] ?? 0)}
                         </span>
                       </button>
                     </li>

@@ -26,7 +26,10 @@ import VectorBasemap from "./VectorBasemap";
 import ThemeToggle from "./ThemeToggle";
 import { Logo } from "./Navbar";
 import { fitViewInset, makeMercatorProjector } from "../utils/mercator";
-import { googleMapsPlaceUrl } from "../utils/liveRoute";
+import { googleMapsPlaceUrl, storedRoadFits } from "../utils/liveRoute";
+import { useRouteGeometry } from "../hooks/useRoadGeometry";
+import { cumulativeKm, formatKm } from "../utils/routeProgress";
+import { CITY_ROLE_COPY, nearbyCities, rideStanding } from "../utils/rideStanding";
 import { externalLinkProps } from "./ui/SocialIcons";
 import { cn } from "../utils/cn";
 
@@ -212,6 +215,37 @@ export default function NearbyPlacesPage() {
 
   const stops = useMemo(() => route.stops ?? [], [route.stops]);
 
+  // The road and the distance along it, measured exactly as the tracker
+  // measures them — the same stored road, the same official length — so the
+  // three cities below are the same three the tracker is between.
+  const storedFits = storedRoadFits(stops, route.routeGeometry, route.routeSignature);
+  const { geometry, fetchedKm } = useRouteGeometry(stops, storedFits ? route.routeGeometry : []);
+  const totals = useMemo(
+    () =>
+      cumulativeKm(stops, geometry, {
+        // The dashboard's own measurement when there is one, the routing
+        // service's when the road was fetched here — the same two numbers the
+        // tracker's totals are built from.
+        totalKm: storedFits ? (route.routeDistanceKm ?? 0) : fetchedKm,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stops, geometry, storedFits, route.routeDistanceKm, fetchedKm],
+  );
+  const standing = useMemo(
+    () => rideStanding(stops, geometry, totals, { lat: location.lat, lng: location.lng }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stops, geometry, totals, location.lat, location.lng],
+  );
+  /**
+   * The three cities this page always keeps on the map.
+   *
+   * Where the rider is coming from, where they are about to reach, and the one
+   * they will enter soon — the three the next few hours happen between. They
+   * follow the ride, so the page is about the stretch ahead rather than about
+   * whichever stop was last saved in a dashboard.
+   */
+  const cities = useMemo(() => nearbyCities(stops, standing, totals), [stops, standing, totals]);
+
   /**
    * Every name in the live tracker, plus wherever PB actually is.
    *
@@ -368,8 +402,15 @@ export default function NearbyPlacesPage() {
   // Everything the active tab found, plus the stop it was all measured from,
   // fitted into the part of the map the list does not cover.
   const points = useMemo(
-    () => [{ lat: origin.lat, lng: origin.lng }, ...items.map((item) => ({ lat: item.lat, lng: item.lng }))],
-    [origin.lat, origin.lng, items],
+    () => [
+      { lat: origin.lat, lng: origin.lng },
+      ...items.map((item) => ({ lat: item.lat, lng: item.lng })),
+      // The three cities are never allowed to fall off the edge: they are the
+      // frame this page is drawn in, so the fit includes them whether or not
+      // the search has anything to show near them.
+      ...cities.map((city) => ({ lat: city.lat, lng: city.lng })),
+    ],
+    [origin.lat, origin.lng, items, cities],
   );
   const view = useMemo(
     () => fitViewInset(points, width, height, insets, { padX: PIN_PAD_X, padY: PIN_PAD_Y }),
@@ -684,6 +725,58 @@ export default function NearbyPlacesPage() {
           </label>
         </div>
 
+        {/* ---------- The three cities this page is about ---------- */}
+        {cities.length > 0 && (
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+            {cities.map((city) => {
+              const isOrigin = originKey === `stop-${city.index}`;
+              return (
+                <button
+                  key={`city-strip-${city.role}-${city.index}`}
+                  type="button"
+                  onClick={() => changeOrigin(`stop-${city.index}`)}
+                  aria-pressed={isOrigin}
+                  title={`Search nearby places around ${city.name}`}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-colors",
+                    isOrigin
+                      ? "border-saffron-400/60 bg-saffron-400/[0.12]"
+                      : "border-white/10 bg-white/[0.03] hover:border-white/25",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid h-2.5 w-2.5 shrink-0 place-items-center rounded-full",
+                      city.role === "from"
+                        ? "bg-emerald-500"
+                        : city.role === "to"
+                          ? "bg-saffron-400"
+                          : "border border-saffron-300/70 bg-ink-950",
+                    )}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[9.5px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                      {CITY_ROLE_COPY[city.role]}
+                    </span>
+                    <span className="block truncate font-display text-[13px] font-semibold text-white">
+                      {city.name}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-mono text-[10px] text-saffron-300">
+                      {city.here ? "here now" : `${city.awayKm < 100 ? city.awayKm.toFixed(0) : Math.round(city.awayKm)} km`}
+                    </span>
+                    <span className="block font-mono text-[9px] text-zinc-600">
+                      {formatKm(city.planKm)} in
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* ---------- Map + the list that lives on it ---------- */}
         <div
           ref={hostRef}
@@ -696,6 +789,64 @@ export default function NearbyPlacesPage() {
             className="absolute inset-0"
             attributionClassName="pointer-events-none absolute bottom-[calc(46%+1.5rem)] left-3 z-20 lg:bottom-3"
           />
+
+          {/* The three cities, always: coming from, about to reach, entering
+              soon. Drawn as labelled plates rather than numbered pins because
+              they answer a different question from the list — "where am I on
+              this ride?" — and tapping one asks the same question of that town
+              by making it the place the search is measured from. */}
+          {cities.map((city) => {
+            const point = projector.toXY({ lat: city.lat, lng: city.lng });
+            const isOrigin = originKey === `stop-${city.index}`;
+            return (
+              <button
+                key={`city-${city.role}-${city.index}`}
+                type="button"
+                onClick={() => changeOrigin(`stop-${city.index}`)}
+                aria-pressed={isOrigin}
+                title={`${CITY_ROLE_COPY[city.role]} · ${city.name} — search nearby places here`}
+                className={cn(
+                  "group absolute z-[15] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 rounded-full transition-transform duration-200 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300",
+                )}
+                style={{ left: `${point.x}%`, top: `${point.y}%` }}
+              >
+                <span
+                  className={cn(
+                    "grid h-5 w-5 place-items-center rounded-full border-2 shadow-lg ring-1 ring-black/50",
+                    city.role === "from"
+                      ? "border-white bg-emerald-500"
+                      : city.role === "to"
+                        ? "border-white bg-saffron-400"
+                        : "border-white bg-ink-950",
+                    isOrigin && "ring-2 ring-saffron-300",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      city.role === "from"
+                        ? "bg-white"
+                        : city.role === "to"
+                          ? "bg-ink-950"
+                          : "bg-saffron-300",
+                    )}
+                  />
+                </span>
+                <span
+                  className={cn(
+                    "max-w-[8.5rem] truncate rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide shadow-sm backdrop-blur",
+                    city.role === "from"
+                      ? "bg-emerald-500/90 text-ink-950"
+                      : city.role === "to"
+                        ? "bg-saffron-400 text-ink-950"
+                        : "bg-ink-950/90 text-saffron-200",
+                  )}
+                >
+                  {city.name}
+                </span>
+              </button>
+            );
+          })}
 
           {/* Where PB is: the same gold pin the live map uses, kept on top. */}
           <div

@@ -137,6 +137,17 @@ async function askHost(
   }
 }
 
+/** Kilometres between two vertices, for measuring along a road. */
+function vertexKm(a: LatLng, b: LatLng): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 /** Squared distance in degrees — plenty for picking the nearest route vertex. */
 function distanceSquared(a: LatLng, b: LatLng): number {
   const dLat = a[0] - b[0];
@@ -186,6 +197,38 @@ export function nearestVertexIndex(geometry: readonly LatLng[], point: RoutePoin
 export interface SplitRoute {
   covered: LatLng[];
   remaining: LatLng[];
+}
+
+/**
+ * Split the road at a distance along it, rather than at a stop.
+ *
+ * The pointer on the tracker now follows the phone, and the phone is between
+ * stops most of the day. Splitting at "the stop marked here now" therefore
+ * moved the line in hundred-kilometre jumps, and drew the road ahead of the
+ * rider as already ridden for as long as the next stop was far away. This
+ * splits it where the rider is, at the kilometre the standing reports.
+ */
+export function splitRouteAtKm(geometry: readonly LatLng[], km: number): SplitRoute {
+  if (geometry.length < 2) return { covered: [], remaining: [] };
+  if (!Number.isFinite(km) || km <= 0) return { covered: [], remaining: [...geometry] };
+
+  let travelled = 0;
+  for (let i = 0; i < geometry.length - 1; i += 1) {
+    const segment = vertexKm(geometry[i], geometry[i + 1]);
+    if (travelled + segment >= km) {
+      const ratio = segment === 0 ? 0 : (km - travelled) / segment;
+      const point: LatLng = [
+        geometry[i][0] + (geometry[i + 1][0] - geometry[i][0]) * ratio,
+        geometry[i][1] + (geometry[i + 1][1] - geometry[i][1]) * ratio,
+      ];
+      return {
+        covered: [...geometry.slice(0, i + 1), point],
+        remaining: [point, ...geometry.slice(i + 1)],
+      };
+    }
+    travelled += segment;
+  }
+  return { covered: [...geometry], remaining: [] };
 }
 
 /**

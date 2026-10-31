@@ -141,6 +141,42 @@ How it behaves:
 - No map key or Google account is involved: the same Node app that serves the
   site receives the fixes and stores the latest one in the database.
 
+## Here now, ridden, and the two-kilometre rule
+
+The live tracker no longer waits for somebody to edit a stop's status in the
+dashboard. It reads the position it is already showing — the phone's OwnTracks
+fix, or the stop the dashboard marked — and decides the statuses itself:
+
+- **Within 2 km of a stop it reads "here now".** Approaching, arriving, parked
+  in the town: all the same answer.
+- **Once the rider is 2 km past it along the road it reads "ridden".** Measured
+  along the route, not as the crow flies, so a hairpin does not mark a town
+  ridden while the bike is still on the other side of it.
+- **Everything else is still to come.**
+
+The map follows the same rule: the pointer sits on the fix rather than on the
+last stop, the solid yellow line ends under the pointer at the kilometre
+ridden, and the faint circle around the stop being entered is the 2 km radius
+itself. The dashboard's own statuses are kept as the fallback for a page with
+no position at all, and are what the owner sees when editing the route.
+
+The smaller "2 km" figure lives in `src/utils/rideStanding.ts`. Raise
+`ARRIVE_KM` and every surface — tracker, map, nearby page — follows.
+
+## Three cities on the nearby page
+
+The nearby page always keeps **three** cities on its map, whatever is being
+searched:
+
+- **Coming from** — the town behind, or the one the rider is standing in.
+- **About to reach** — the next stop on the route.
+- **Entering soon** — the one after that.
+
+They are drawn as labelled plates on the map and as three cards above it, so
+the page says where the ride is between as well as what is around one stop.
+Tapping either one searches around that city, and the three follow the ride as
+it moves rather than staying at whatever was last saved.
+
 ## Building the route in the dashboard
 
 Dashboard → **Live tracker → Stops** now builds the route by name:
