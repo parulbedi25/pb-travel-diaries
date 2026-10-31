@@ -9,25 +9,25 @@ import { haversineKm } from "./routeProgress";
 import type { LiveStop } from "../store/siteContent";
 
 /**
- * The towns a rider actually passes through between two stops.
+ * The towns a rider actually rides through.
  *
- * Pasting a Google Maps link gives the ends of a journey — Nangal, Nubra
- * Valley — and nothing in between, so the tracker shows a 778 km ride as a
- * single hop. The places on the way are already mapped: OpenStreetMap tags
- * settlements, and Geoapify's Places API serves them for a bounding box.
+ * A pasted map link gives the ends of a journey — Nangal, Nubra Valley — and
+ * nothing in between, so a 778 km ride reads as one hop. The places on the way
+ * are already mapped, so the fill asks for them and puts them on the route:
  *
- * Three steps, all here:
+ *  1. Ask the Places API about the road a stretch at a time, for cities, towns
+ *     and villages. A stretch at a time matters: one box around a long ride is
+ *     answered with the first few hundred places, which is never all of them.
+ *  2. Keep the ones on the road — measured against the drawn route, not the
+ *     straight line between its ends.
+ *  3. Keep all of them, in the order the road reaches them. Distance between
+ *     two stops is not a reason to drop one: towns sit 10 km apart in one
+ *     valley and 50 km apart in the next.
  *
- *  1. Ask Geoapify for every city/town in the box around the road.
- *  2. Keep the ones that actually sit on the road — distance to the drawn
- *     route, not to the straight line between its ends.
- *  3. Space them out: a rider wants Mandi and Manali, not eight villages
- *     eleven kilometres apart. Bigger populations win a contested slot.
- *
- * Anything the service cannot answer leaves the route exactly as imported;
- * there is a small offline list of well-known north-Indian towns so the
- * Nangal → Nubra kind of route still gets its stops when the provider is
- * unreachable, or when the site has no key.
+ * If the service cannot answer at all, a small carried list of well-known
+ * north-Indian towns keeps the Nangal → Leh kind of ride populated. That list
+ * is also added to a good answer, so a place the map happens to miss is still
+ * on the route.
  */
 
 export interface MajorStop {
@@ -64,11 +64,20 @@ export interface MajorStopOptions {
 }
 
 const GEOAPIFY_PLACES_URL = "https://api.geoapify.com/v2/places";
+/**
+ * The stops a rider passes, not a sample of them.
+ *
+ * `gapKm` used to be 30, which threw away every town less than 30 km after the
+ * one before it — so a stretch with a town every 12 km kept one and lost four,
+ * and a 50 km empty stretch got nothing at all. Real roads are not spaced
+ * evenly, and the list should not pretend they are: the only thing filtered out
+ * now is the same place mentioned twice. `gapKm` survives as that guard.
+ */
 const DEFAULT_OPTIONS: Required<Omit<MajorStopOptions, "avoid" | "key">> = {
-  radiusKm: 12,
-  max: 12,
-  gapKm: 30,
-  trimKm: 15,
+  radiusKm: 14,
+  max: 120,
+  gapKm: 1.5,
+  trimKm: 3,
 };
 
 /* ------------------------------------------------------------------ *
@@ -95,26 +104,26 @@ function sample(geometry: readonly LatLng[], limit = 500): LatLng[] {
   return out;
 }
 
-/** Straight-line distance from a point to the nearest bit of the road. */
-export function offRoadKm(point: { lat: number; lng: number }, geometry: readonly LatLng[]): number {
-  if (geometry.length < 2) return Number.POSITIVE_INFINITY;
+/** Straight-line distance from a point to the nearest sampled bit of the road. */
+function offRoadKm(point: { lat: number; lng: number }, path: readonly LatLng[]): number {
+  if (path.length < 2) return Number.POSITIVE_INFINITY;
   const p: LatLng = [point.lat, point.lng];
-  return sample(geometry).reduce(
-    (best, vertex) => Math.min(best, haversineKm(p, vertex)),
-    Number.POSITIVE_INFINITY,
-  );
+  let best = Number.POSITIVE_INFINITY;
+  for (const vertex of path) {
+    const d = haversineKm(p, vertex);
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 /** Kilometres from the start of the road to the point nearest this place. */
-export function kmAlongRoute(
+function kmAlongRoute(
   point: { lat: number; lng: number },
-  geometry: readonly LatLng[],
-  cumulative?: readonly number[],
+  path: readonly LatLng[],
+  cumulative: readonly number[],
 ): number {
-  if (geometry.length < 2) return 0;
-  const totals = cumulative ?? cumulativePath(geometry);
-  const index = nearestVertexIndex(geometry, point);
-  return index >= 0 ? totals[index] : 0;
+  const index = nearestVertexIndex(path, point);
+  return index >= 0 ? cumulative[index] : 0;
 }
 
 /* ------------------------------------------------------------------ *
@@ -135,7 +144,11 @@ export function pickMajorStops(
   if (geometry.length < 2) return [];
   const { radiusKm, max, gapKm, trimKm } = { ...DEFAULT_OPTIONS, ...options };
   const avoid = new Set((options.avoid ?? []).map((name) => name.trim().toLowerCase()));
-  const cumulative = cumulativePath(geometry);
+  // One subsample of the road, used for every candidate: measuring each of a
+  // thousand places against the full 4,000-vertex line is the difference
+  // between a fill that lands while the operator waits and one that does not.
+  const path = sample(geometry);
+  const cumulative = cumulativePath(path);
   const total = cumulative[cumulative.length - 1] ?? 0;
 
   const scored = candidates
@@ -145,51 +158,81 @@ export function pickMajorStops(
       lat: c.lat,
       lng: c.lng,
       population: c.population,
-      offRoad: offRoadKmRank(c, geometry),
-      km: kmAlongRoute(c, geometry, cumulative),
+      rank: placeRank(c.place),
+      offRoad: offRoadKmRank(c, path),
+      km: kmAlongRoute(c, path, cumulative),
     }))
     .filter((c) => c.offRoad <= radiusKm)
     .filter((c) => c.km >= trimKm && c.km <= total - trimKm)
     .filter((c) => !avoid.has(c.name.toLowerCase()))
     .sort((a, b) => a.km - b.km);
 
-  // One pick per window along the road, and inside a window the biggest
-  // settlement wins — a town of 30,000 is a stop, the hamlet next to it is not.
+  /**
+   * Every town on the road, in the order it is reached.
+   *
+   * Nothing is skipped for being close to the stop before it: two towns 8 km
+   * apart are two towns, and the rider passes both. What *is* thrown away is a
+   * second name for the same ground — the map lists a town and its own
+   * neighbourhood, or the same village under a local spelling. Two entries
+   * within `gapKm` of each other are one place, and the bigger one keeps the
+   * slot.
+   */
   const chosen: typeof scored = [];
   const seen = new Set<string>();
   for (const place of scored) {
-    if (seen.has(place.name.toLowerCase())) continue;
+    const name = place.name.toLowerCase();
+    if (seen.has(name)) continue;
     const previous = chosen[chosen.length - 1];
-    if (previous && place.km - previous.km < gapKm) {
-      if (place.population > previous.population) {
-        chosen[chosen.length - 1] = place;
-        seen.add(place.name.toLowerCase());
-      }
+    // A city or a town is a stop wherever it falls; a village is only worth a
+    // row when it is not crowding one — otherwise every hamlet on a busy road
+    // doubles the list without adding anywhere new.
+    const minGap = place.rank >= 2 ? gapKm : Math.max(gapKm, VILLAGE_GAP_KM);
+    if (previous && place.km - previous.km < minGap) {
+      // Same ground twice: the larger settlement keeps the row, unless the
+      // name is the same ground spelled differently — then the first wins.
+      if (place.population > previous.population) chosen[chosen.length - 1] = place;
+      seen.add(name);
       continue;
     }
     chosen.push(place);
-    seen.add(place.name.toLowerCase());
+    seen.add(name);
   }
 
-  const clean: MajorStop[] = chosen.map((place) => ({
+  const toStop = (place: (typeof chosen)[number]): MajorStop => ({
     name: place.name,
     lat: place.lat,
     lng: place.lng,
     km: place.km,
     offRoadKm: place.offRoad,
-  }));
+  });
 
-  if (clean.length <= max) return clean;
+  if (chosen.length <= max) return chosen.map(toStop);
 
-  // Too many to be useful: keep them evenly spread rather than only the first
-  // dozen, which would leave the last half of the ride empty.
-  const stride = clean.length / max;
-  return Array.from({ length: max }, (_, i) => clean[Math.floor(i * stride)]);
+  // A very long ride can name more towns than a tracker can show. Keep the
+  // cities and towns first — a village beside a city is the city's stop — then
+  // put what is left back in the order the rider meets it.
+  return [...chosen]
+    .sort((a, b) => b.rank - a.rank || b.population - a.population || a.km - b.km)
+    .slice(0, max)
+    .sort((a, b) => a.km - b.km)
+    .map(toStop);
+}
+
+/** Villages this close to a bigger stop are part of that stop, not a row. */
+const VILLAGE_GAP_KM = 5;
+
+/** How much of a stop a settlement is: a city outranks a village. */
+function placeRank(place: string): number {
+  const kind = place.trim().toLowerCase();
+  if (kind === "city") return 3;
+  if (kind === "town") return 2;
+  if (kind === "village" || kind === "hamlet") return 1;
+  return 0;
 }
 
 /** A place's distance from the road, with towns allowed a little slack. */
-function offRoadKmRank(place: Candidate, geometry: readonly LatLng[]): number {
-  const distance = offRoadKm(place, geometry);
+function offRoadKmRank(place: Candidate, path: readonly LatLng[]): number {
+  const distance = offRoadKm(place, path);
   // A city's marker can sit well away from the highway that serves it.
   return place.place === "city" ? Math.max(0, distance - 4) : distance;
 }
@@ -227,28 +270,59 @@ interface PlaceFeature {
 }
 
 /**
- * Every settlement in the box around the road.
+ * The road cut into stretches, so each is searched on its own.
  *
- * A settlement is a feature in Geoapify's `populated_place` hierarchy, and the
- * population comes from the OpenStreetMap tags it was built from — so the
- * biggest town near a stretch wins a contested suggestion, which is what a
- * rider wants. The category list asks for both cities and towns; whether a
- * feature is one or the other is read off its own raw `place` tag, because the
- * request's categories are not a reliable filter (asking for cities alone still
- * returns villages, and asking for towns still returns cities).
+ * One box around a thousand-kilometre ride covers half a mountain range, and
+ * the Places API answers a box with its first few hundred settlements — the
+ * ones near the middle of a big box, or wherever the index happens to start.
+ * Asking about a box per 120 km instead means every stretch of the road is its
+ * own question with its own answer, and a town forty kilometres off the part of
+ * the ride it belongs to is no longer competing with a city four hundred
+ * kilometres away for the same page of results.
+ *
+ * The windows overlap by a pad on each box, so a place sitting exactly on the
+ * boundary is still found; duplicates are removed by the caller.
  */
-async function geoapifyTowns(
-  geometry: readonly LatLng[],
-  key: string,
+function routeWindows(geometry: readonly LatLng[], windowKm = 120): LatLng[][] {
+  if (geometry.length < 2) return [geometry.slice(0, 1)];
+  const step = Math.max(1, Math.ceil(geometry.length / 600));
+  const points: LatLng[] = [];
+  for (let i = 0; i < geometry.length; i += step) points.push(geometry[i]);
+  const last = geometry[geometry.length - 1];
+  if (points[points.length - 1] !== last) points.push(last);
+
+  const windows: LatLng[][] = [];
+  let current: LatLng[] = [points[0]];
+  let since = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    since += haversineKm(points[i - 1], points[i]);
+    current.push(points[i]);
+    if (since >= windowKm) {
+      windows.push(current);
+      current = [points[i]];
+      since = 0;
+    }
+  }
+  if (current.length > 1) windows.push(current);
+  return windows.length ? windows : [points];
+}
+
+/** How many pages of 500 the API is asked for per window. */
+const PAGES_PER_WINDOW = 2;
+
+/** One page of settlements in one box. */
+async function townsInBox(
+  box: [number, number, number, number],
+  apiKey: string,
+  offset: number,
   timeoutMs: number,
 ): Promise<Candidate[]> {
-  const apiKey = key.trim();
-  if (!apiKey) throw new Error("No Geoapify key");
-  const [south, west, north, east] = bboxOf(geometry);
+  const [south, west, north, east] = box;
   const params = new URLSearchParams({
-    categories: "populated_place.city,populated_place.town",
+    categories: "populated_place.city,populated_place.town,populated_place.village",
     filter: `rect:${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`,
     limit: "500",
+    offset: String(offset),
     lang: "en",
     apiKey,
   });
@@ -270,15 +344,67 @@ async function geoapifyTowns(
       const raw = properties?.datasource?.raw ?? {};
       const rawPlace = typeof raw.place === "string" ? raw.place : "";
       const population = Number.parseInt(String(raw.population ?? ""), 10);
+      const categories = properties?.categories ?? [];
       return {
         name,
         lat,
         lng,
         population: Number.isFinite(population) ? population : 0,
-        place: rawPlace || ((properties?.categories ?? []).includes("populated_place.city") ? "city" : "town"),
+        place:
+          rawPlace ||
+          (categories.includes("populated_place.city")
+            ? "city"
+            : categories.includes("populated_place.village")
+              ? "village"
+              : "town"),
       } satisfies Candidate;
     })
     .filter((candidate): candidate is Candidate => candidate !== null);
+}
+
+/**
+ * Every settlement along the road, asked for stretch by stretch.
+ *
+ * Cities, towns and villages all count: a village on the road is a place the
+ * rider goes through, and leaving it out is what makes a route read as if it
+ * skipped a mountain range. Population and the settlement's own rank decide
+ * which of two nearby names is kept (see pickMajorStops) — not distance alone.
+ *
+ * A window that fails is not fatal while others answer, but a ride where every
+ * window failed throws, so the caller knows to fall back to the carried list
+ * rather than believe a half-answered map.
+ */
+async function geoapifyTowns(
+  geometry: readonly LatLng[],
+  key: string,
+  timeoutMs: number,
+): Promise<Candidate[]> {
+  const apiKey = key.trim();
+  if (!apiKey) throw new Error("No Geoapify key");
+  const windows = routeWindows(geometry);
+
+  const answers = await Promise.allSettled(
+    windows.flatMap((window) => {
+      const box = bboxOf(window);
+      return Array.from({ length: PAGES_PER_WINDOW }, (_, page) =>
+        townsInBox(box, apiKey, page * 500, timeoutMs),
+      );
+    }),
+  );
+
+  const byGround = new Map<string, Candidate>();
+  let answered = 0;
+  for (const answer of answers) {
+    if (answer.status !== "fulfilled") continue;
+    answered += 1;
+    for (const candidate of answer.value) {
+      const where = `${candidate.name.toLowerCase()}|${candidate.lat.toFixed(3)}|${candidate.lng.toFixed(3)}`;
+      const seen = byGround.get(where);
+      if (!seen || candidate.population > seen.population) byGround.set(where, candidate);
+    }
+  }
+  if (!answered) throw new Error("Geoapify did not answer");
+  return [...byGround.values()];
 }
 
 /* ------------------------------------------------------------------ *
@@ -374,7 +500,14 @@ export async function findMajorStops(
   try {
     const towns = await geoapifyTowns(geometry, options.key ?? "", timeoutMs);
     if (towns.length) {
-      return { stops: pickMajorStops(towns, geometry, pickOptions), source: "map" };
+      // The carried list is added to the answer rather than kept as an
+      // alternative to it: the map knows far more places, but it is the map
+      // that is allowed to be incomplete, and a ride that loses Manali because
+      // a tile server had a bad minute is worse than a duplicate name here.
+      return {
+        stops: pickMajorStops([...towns, ...KNOWN_TOWNS], geometry, pickOptions),
+        source: "map",
+      };
     }
   } catch {
     // Fall through to the list we carry ourselves.
@@ -424,13 +557,12 @@ export async function fillRoute(
 
   const stopKm = cumulativeKmOf(list, geometry);
   const legs = list.length - 1;
-  // Room around each stop: a town ten kilometres short of a stop the rider
-  // already has is not a stop of its own.
-  const edge = options.trimKm ?? 12;
+  // Only a town almost on top of a stop is left out — the row would read as a
+  // duplicate. A place twenty kilometres before a stop is a stop of its own.
+  const edge = options.trimKm ?? 2;
 
   const { stops: found } = await findMajorStops(geometry, {
-    max: Math.max(12, legs * 6),
-    gapKm: 30,
+    max: 120,
     radiusKm: 14,
     ...options,
     avoid: [...(options.avoid ?? []), ...list.map((stop) => stop.name)],
@@ -470,7 +602,7 @@ export async function fillRoute(
  * Suggestions that land before the start or after the finish are dropped: a
  * stop cannot come before the first or after the last of a journey.
  */
-export function mergeStopsByDistance(
+function mergeStopsByDistance(
   stops: readonly LiveStop[],
   geometry: readonly LatLng[],
   additions: readonly MajorStop[],
@@ -491,7 +623,7 @@ export function mergeStopsByDistance(
     ...stops.map((stop, index) => ({ stop, km: totals[index] ?? 0, order: index })),
     ...fresh.map((place, index) => ({
       stop: toStop(place),
-      km: place.km ?? kmAlongRoute(place, geometry),
+      km: place.km,
       order: stops.length + index,
     })),
   ].sort((a, b) => (a.km === b.km ? a.order - b.order : a.km - b.km));

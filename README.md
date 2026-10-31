@@ -203,9 +203,13 @@ does: **Your route** is a list of rows, and every row *is* a stop.
   from the start, by road once the road is known.
 - **The towns between the ends** are filled in once per pair of ends and shown
   in green, so your own deletions survive the next edit; *Fill in the towns
-  between* does it again on demand. Untick *Fill in the important towns between
-  my stops* to keep the route exactly as you made it; ticking it again fills it
-  in.
+  between* does it again on demand. Every city, town and village the road goes
+  through is added, in the order the road reaches them — a stop 10 km after the
+  one before it is still a stop, because the next gap may be 50 km. The road is
+  searched a stretch at a time, so a long ride cannot exhaust one answer, and
+  the small carried list of known towns is added to the map's answer so a place
+  the map misses is still on the route. Untick *Add the cities and towns on the
+  way* to keep the route exactly as you made it; ticking it again fills it in.
 - Towns that were added show in **green**; remove any of them (or **Clear all
   stops**) and they turn **red** with an **Undo** button beside them — one at a
   time, or **Put every removed stop back** for all of them. A replaced start or

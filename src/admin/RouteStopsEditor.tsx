@@ -1253,9 +1253,8 @@ export default function RouteStopsEditor({
           Place the stops
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-          Click the map to drop a stop, or drag a pin to move it. The map underneath is the same
-          nameless tiles the tracker uses, pinned to the same projection as the pins, so what you
-          click is what you get.
+          Click the map to drop a stop, or drag a pin to move one. The map underneath is the same
+          one the tracker shows, so a pin lands where you put it.
         </p>
 
         <div
@@ -1665,10 +1664,8 @@ export default function RouteStopsEditor({
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
           {routeGeometry.length
-            ? `${routeGeometry.length} points of real road stored${
-                routeDistanceKm > 0 ? `, measured at ${formatKm(routeDistanceKm)}` : ""
-              }. Refetch after moving a stop so distances follow the road again.`
-            : "No road geometry yet — distances are measured straight between stops. Fetch the road to measure the actual route."}
+            ? `The road is saved, ${formatKm(routeDistanceKm)} long. Press the button again after moving a stop if the distance looks out of date.`
+            : "The road has not been measured yet — distances are being counted in straight lines between stops."}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
@@ -1695,8 +1692,8 @@ export default function RouteStopsEditor({
           )}
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-          The towns between the two ends are filled in from the road in <strong className="font-semibold text-zinc-300">Your route</strong> above, and stay as long as the
-          ends do. A route of just two stops, pasted as a link, has them filled in as it is imported.
+          The towns between the two ends are filled in from the road in <strong className="font-semibold text-zinc-300">Your route</strong> above: every city and town the road
+          goes through, however far apart they happen to be. They stay as long as the ends do.
         </p>
         {roadNote && <p className="mt-2 text-[11px] text-emerald-300">{roadNote}</p>}
         {fetchError && <p className="mt-2 text-[11px] text-amber-200">{fetchError}</p>}

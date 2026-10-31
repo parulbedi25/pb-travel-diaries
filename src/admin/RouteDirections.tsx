@@ -192,10 +192,10 @@ export default function RouteDirections({
             className="mt-0.5 h-3.5 w-3.5 accent-emerald-500"
           />
           <span>
-            Fill in the important towns between my stops
+            Add the cities and towns on the way
             <span className="mt-0.5 block text-[10px] leading-relaxed text-zinc-500">
-              They go in green and can each be removed. Anything you remove stays removed when the
-              route is measured again.
+              Every place the road goes through, whether the next one is 10 km on or 50. They go in
+              green and can each be removed — anything you remove stays removed.
             </span>
           </span>
         </label>
