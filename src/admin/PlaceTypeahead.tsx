@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, MapPin, X } from "lucide-react";
 import { cn } from "../utils/cn";
 import { searchPlaces, type PlaceHit, type PlaceSearchOptions } from "../utils/placeSearch";
@@ -22,6 +23,14 @@ import { inputCls } from "./fieldStyles";
  *  - A suggestion is a *choice*: picking one hands the caller a name, a region
  *    and coordinates, and stops guessing. Typing a name without picking one
  *    still works — the caller geocodes it as before.
+ *
+ * The list is drawn in a portal at the body, positioned under the box by
+ * measurement. Every dashboard section is wrapped in a frame with
+ * `overflow: hidden` — for its rounded corners and its drag handles — and a
+ * list drawn inside the box was being clipped by that frame: the request
+ * happened, the names arrived, and the operator saw nothing. A portal cannot
+ * be clipped by an ancestor, so the suggestions show wherever the box sits,
+ * and flip above it when there is no room below.
  */
 export default function PlaceTypeahead({
   value,
@@ -57,34 +66,70 @@ export default function PlaceTypeahead({
   const answered = useRef("");
   const timer = useRef<number | undefined>(undefined);
   const box = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  /** Where the list is drawn: measured from the box, in viewport pixels. */
+  const [spot, setSpot] = useState<{ left: number; top: number; width: number; above: boolean } | null>(
+    null,
+  );
+
+  /** Put the list under the box — or above it, when the screen runs out. */
+  const place = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    const rect = input.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom;
+    const above = below < 260 && rect.top > below;
+    const width = Math.max(rect.width, 220);
+    setSpot({
+      left: Math.min(rect.left, Math.max(8, window.innerWidth - width - 8)),
+      top: above ? rect.top - 6 : rect.bottom + 6,
+      width,
+      above,
+    });
+  };
 
   // Close when the click lands outside — a list that stays open over the map
   // below it hides the thing the operator is about to click.
   useEffect(() => {
     const onDown = (event: PointerEvent) => {
-      if (box.current?.contains(event.target as Node)) return;
+      const target = event.target as Node | null;
+      if (box.current?.contains(target)) return;
+      // The list lives in a portal, so it is not inside the box: a click on a
+      // suggestion must not be read as a click outside and close the list
+      // before the suggestion's own handler runs.
+      if (target instanceof Element && target.closest("[data-place-list]")) return;
       setOpen(false);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, []);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // A list anchored to a box that is moving is a list in the wrong place:
+  // the dashboard scrolls under it and the section can be dragged. Follow it.
+  useEffect(() => {
+    if (!open) return;
+    const move = () => place();
+    window.addEventListener("scroll", move, true);
+    window.addEventListener("resize", move);
+    return () => {
+      window.removeEventListener("scroll", move, true);
+      window.removeEventListener("resize", move);
+    };
+  }, [open]);
 
-  const key = options.key.trim();
+  useEffect(() => {
+    if (open) place();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hits.length, busy, note]);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const ask = (text: string) => {
     window.clearTimeout(timer.current);
     const term = text.trim();
-    if (term.length < 3) {
+    if (term.length < 2) {
       setHits([]);
       setNote(term ? "Type a little more…" : "");
-      setBusy(false);
-      return;
-    }
-    if (!key) {
-      setHits([]);
-      setNote("No place-search key is set — type the name and press Find.");
       setBusy(false);
       return;
     }
@@ -97,8 +142,14 @@ export default function PlaceTypeahead({
       setBusy(false);
       setHits(found);
       setActive(found.length ? 0 : -1);
-      setNote(found.length ? "" : `Nothing found for “${term}”.`);
-    }, 280);
+      setNote(
+        found.length
+          ? ""
+          : onEnter
+            ? `No suggestions for “${term}” — finish the name and press Enter, and we will look it up.`
+            : `No suggestions for “${term}” — click the map to place it.`,
+      );
+    }, 240);
   };
 
   const choose = (place: PlaceHit) => {
@@ -136,6 +187,7 @@ export default function PlaceTypeahead({
       <div className="relative">
         <MapPin className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
         <input
+          ref={inputRef}
           value={value}
           autoFocus={autoFocus}
           autoComplete="off"
@@ -154,7 +206,7 @@ export default function PlaceTypeahead({
             ask(text);
           }}
           onFocus={() => {
-            if (value.trim().length >= 3) {
+            if (value.trim().length >= 2) {
               setOpen(true);
               if (!hits.length) ask(value);
             }
@@ -203,60 +255,80 @@ export default function PlaceTypeahead({
 
       {hint && !showList && <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">{hint}</p>}
 
-      {showList && (
-        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-white/12 bg-ink-900/95 shadow-2xl backdrop-blur-xl">
-          <ul id={listId} role="listbox" aria-label={`${label} suggestions`} className="max-h-64 overflow-y-auto">
-            {hits.map((place, index) => (
-              <li key={`${place.name}-${place.lat}-${place.lng}`}>
-                <button
-                  id={`${listId}-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={index === active}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => choose(place)}
-                  className={cn(
-                    "flex w-full items-baseline gap-2 px-3 py-2 text-left transition-colors",
-                    index === active ? "bg-saffron-400/15" : "hover:bg-white/[0.06]",
-                  )}
-                >
-                  <span className="truncate text-xs font-semibold text-white">{place.name}</span>
-                  {place.region && (
-                    <span className="truncate text-[10px] text-zinc-500">{place.region}</span>
-                  )}
-                  {place.kind && (
-                    <span className="ml-auto shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-zinc-400">
-                      {place.kind}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {status && (
-            <p
-              className={cn(
-                "border-t border-white/[0.06] px-3 py-1.5 text-[10px]",
-                busy ? "text-zinc-500" : hits.length ? "text-zinc-500" : "text-amber-200/90",
-              )}
+      {/* The list, at the body rather than in the box: a section frame clips
+          its own children, and the suggestions were being drawn outside the
+          frame and cut away. Fixed positioning, measured from the input. */}
+      {showList &&
+        spot &&
+        createPortal(
+          <div
+            data-place-list=""
+            className="fixed z-[80] overflow-hidden rounded-xl border border-white/15 bg-ink-900/97 shadow-2xl shadow-black/60 backdrop-blur-xl"
+            style={{
+              left: `${spot.left}px`,
+              top: `${spot.top}px`,
+              width: `${spot.width}px`,
+              transform: spot.above ? "translateY(-100%)" : undefined,
+            }}
+          >
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label={`${label} suggestions`}
+              className="max-h-64 overflow-y-auto overscroll-contain"
             >
-              {status}
-              {!hits.length && onEnter && !busy && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onEnter();
-                  }}
-                  className="ml-2 rounded-full border border-white/15 px-2 py-0.5 font-semibold text-white transition-colors hover:bg-white/[0.08]"
-                >
-                  Use “{value.trim()}” anyway
-                </button>
-              )}
-            </p>
-          )}
-        </div>
-      )}
+              {hits.map((place, index) => (
+                <li key={`${place.name}-${place.lat}-${place.lng}`}>
+                  <button
+                    id={`${listId}-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === active}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => choose(place)}
+                    className={cn(
+                      "flex w-full items-baseline gap-2 px-3 py-2 text-left transition-colors",
+                      index === active ? "bg-saffron-400/15" : "hover:bg-white/[0.06]",
+                    )}
+                  >
+                    <span className="truncate text-xs font-semibold text-white">{place.name}</span>
+                    {place.region && (
+                      <span className="truncate text-[10px] text-zinc-500">{place.region}</span>
+                    )}
+                    {place.kind && (
+                      <span className="ml-auto shrink-0 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-zinc-400">
+                        {place.kind}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {status && (
+              <p
+                className={cn(
+                  "border-t border-white/[0.06] px-3 py-1.5 text-[10px]",
+                  busy ? "text-zinc-500" : hits.length ? "text-zinc-500" : "text-amber-200/90",
+                )}
+              >
+                {status}
+                {!hits.length && onEnter && !busy && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      onEnter();
+                    }}
+                    className="ml-2 rounded-full border border-white/15 px-2 py-0.5 font-semibold text-white transition-colors hover:bg-white/[0.08]"
+                  >
+                    Use “{value.trim()}” anyway
+                  </button>
+                )}
+              </p>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

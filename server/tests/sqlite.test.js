@@ -58,7 +58,19 @@ test("credential-free local install creates a private real SQLite database and l
 test("owner setup, login, persistence, permissions and disabled sessions work with SQLite", async () => {
   const owner = await call("/api/setup/owner", { username: "owner", password: "local-test-password1" });
   assert.equal(owner.response.status, 201, JSON.stringify(owner.body));
-  cookie = owner.response.headers.get("set-cookie").split(";")[0];
+  // Creating the owner does not sign anybody in: the installer must not hand
+  // out a session, and the next step is the sign-in screen.
+  assert.equal(owner.body.signedIn, false);
+  assert.equal(owner.body.next, "login");
+  assert.equal(owner.response.headers.get("set-cookie"), null);
+  cookie = "";
+  const anonymous = await call("/api/auth/me");
+  assert.equal(anonymous.response.status, 401, "no session was opened by the installer");
+
+  // The account exists all the same, and signing in opens the session.
+  const firstSignIn = await call("/api/auth/login", { username: "owner", password: "local-test-password1" });
+  assert.equal(firstSignIn.response.status, 200, JSON.stringify(firstSignIn.body));
+  cookie = firstSignIn.response.headers.get("set-cookie").split(";")[0];
   assert.equal((await call("/api/auth/me")).body.user.role, "owner");
   const repo = await getRepo();
   const id = await repo.createUser({ username: "reader", role: "reader", passwordHash: "hash" });
@@ -79,8 +91,8 @@ test("owner setup, login, persistence, permissions and disabled sessions work wi
   assert.equal((await call("/api/health")).body.database, "sqlite");
   cookie = "";
   assert.equal((await call("/api/auth/users")).response.status, 401);
-  const login = await call("/api/auth/login", { username: "owner", password: "local-test-password1" });
-  assert.equal(login.response.status, 200);
+  const signInAgain = await call("/api/auth/login", { username: "owner", password: "local-test-password1" });
+  assert.equal(signInAgain.response.status, 200);
 });
 
 test("SQLite operations bind payloads, handle duplicate users and serialize transactions", async () => {

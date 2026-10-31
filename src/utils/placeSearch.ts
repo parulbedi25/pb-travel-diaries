@@ -47,6 +47,9 @@ export interface PlaceSearchOptions {
 }
 
 const AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
+/** Keyless OpenStreetMap geocoders, used when the site has no Geoapify key. */
+const PHOTON_URL = "https://photon.komoot.io/api";
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 /** Longer than this and it is not a place name, it is a pasted paragraph. */
 const MAX_TERM = 120;
@@ -74,6 +77,47 @@ export function autocompleteUrl(term: string, options: PlaceSearchOptions): stri
   if (options.near) params.set("bias", `proximity:${options.near.lng},${options.near.lat}`);
 
   return `${AUTOCOMPLETE_URL}?${params.toString()}`;
+}
+
+/**
+ * The keyless fallback's request: OpenStreetMap places by Photon.
+ *
+ * The dashboard cannot assume the site has a Geoapify key — a fresh install
+ * has none until somebody pastes one into the map settings — and a suggestion
+ * box that says "no key" on a brand-new site is a suggestion box that does not
+ * work. Photon answers partial names, needs no account, and sends CORS
+ * headers, so the same box suggests places either way.
+ */
+export function photonUrl(term: string, options: Omit<PlaceSearchOptions, "key">): string | null {
+  const text = term.trim().replace(/\s+/g, " ").slice(0, MAX_TERM);
+  if (!text) return null;
+  const params = new URLSearchParams({
+    q: text,
+    limit: String(Math.min(Math.max(options.limit ?? 6, 1), 10)),
+    lang: "en",
+  });
+  // Photon takes a point to sort by, and a box to stay inside; the point is
+  // what makes a rider typing "Mandi" get the one in Himachal first.
+  if (options.near) {
+    params.set("lat", String(options.near.lat));
+    params.set("lon", String(options.near.lng));
+  }
+  return `${PHOTON_URL}?${params.toString()}`;
+}
+
+/** The last resort: Nominatim, which always answers but asks to be asked rarely. */
+export function nominatimUrl(term: string, options: Omit<PlaceSearchOptions, "key">): string | null {
+  const text = term.trim().replace(/\s+/g, " ").slice(0, MAX_TERM);
+  if (!text) return null;
+  const params = new URLSearchParams({
+    q: text,
+    format: "jsonv2",
+    limit: String(Math.min(Math.max(options.limit ?? 6, 1), 10)),
+    addressdetails: "1",
+    "accept-language": "en",
+  });
+  if (options.country) params.set("countrycodes", options.country.toLowerCase());
+  return `${NOMINATIM_URL}?${params.toString()}`;
 }
 
 /**
@@ -143,21 +187,144 @@ export function placesFromResponse(json: unknown, limit = 6): PlaceHit[] {
   return out;
 }
 
-/** Ask Geoapify for suggestions. A failure is an empty list, never a throw. */
+/** Photon's `features` as suggestions, with the same shape as the rest. */
+export function placesFromPhoton(json: unknown, limit = 6): PlaceHit[] {
+  const features = (json as { features?: unknown[] } | null)?.features;
+  if (!Array.isArray(features)) return [];
+  const out: PlaceHit[] = [];
+  const seen = new Set<string>();
+  for (const raw of features) {
+    const feature = raw as {
+      geometry?: { coordinates?: unknown[] };
+      properties?: Record<string, unknown>;
+    };
+    const coordinates = feature?.geometry?.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+    const lng = Number(coordinates[0]);
+    const lat = Number(coordinates[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+    const props = feature.properties ?? {};
+    const text = (key: string) => (typeof props[key] === "string" ? (props[key] as string).trim() : "");
+    const name = text("name") || text("city") || text("county") || text("state");
+    if (!name) continue;
+
+    const key = `${name.toLowerCase()}|${lat.toFixed(3)}|${lng.toFixed(3)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const region = [text("state"), text("country")]
+      .filter(Boolean)
+      .join(", ");
+    out.push({
+      name,
+      region,
+      lat: Math.round(lat * 1e6) / 1e6,
+      lng: Math.round(lng * 1e6) / 1e6,
+      kind: text("osm_value") || text("type") || undefined,
+      address: [name, text("city"), text("state"), text("country")]
+        .filter(Boolean)
+        .join(", "),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Nominatim's hits as suggestions. */
+export function placesFromNominatim(json: unknown, limit = 6): PlaceHit[] {
+  if (!Array.isArray(json)) return [];
+  const out: PlaceHit[] = [];
+  const seen = new Set<string>();
+  for (const raw of json) {
+    const row = raw as Record<string, unknown>;
+    const lat = Number(row.lat);
+    const lng = Number(row.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const display = typeof row.display_name === "string" ? row.display_name.trim() : "";
+    const name =
+      (typeof row.name === "string" && row.name.trim()) ||
+      shortPlaceName(display) ||
+      display.split(",")[0]?.trim() ||
+      "";
+    if (!name) continue;
+    const key = `${name.toLowerCase()}|${lat.toFixed(3)}|${lng.toFixed(3)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // `addressdetails=1` gives the state and country as fields, which reads
+    // better than a district plucked out of the display name: "Punjab, India"
+    // tells two Anandpurs apart, "Rupnagar" tells nobody anything.
+    const address = (row.address ?? {}) as Record<string, unknown>;
+    const field = (key: string) =>
+      typeof address[key] === "string" ? (address[key] as string).trim() : "";
+    const region =
+      [field("state"), field("country")].filter(Boolean).join(", ") || (placeRegion(display) ?? "");
+
+    out.push({
+      name,
+      region,
+      lat: Math.round(lat * 1e6) / 1e6,
+      lng: Math.round(lng * 1e6) / 1e6,
+      kind: typeof row.type === "string" ? row.type : undefined,
+      address: display || undefined,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** One request, parsed. Returns null when the service answered nothing usable. */
+async function ask(
+  url: string,
+  parse: (json: unknown, limit: number) => PlaceHit[],
+  limit: number,
+  fetchImpl: typeof fetch,
+): Promise<PlaceHit[] | null> {
+  try {
+    const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+    const found = parse(await response.json(), limit);
+    return found.length ? found : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Suggestions for what has been typed.
+ *
+ * Three services, tried in the order that gives the best answer first: the
+ * site's own Geoapify key when there is one, then Photon, then Nominatim —
+ * both keyless OpenStreetMap geocoders. A site with no key still suggests
+ * places, and a service that is down costs a moment rather than the box.
+ * Nothing here throws: an empty list is the worst this can do.
+ */
 export async function searchPlaces(
   term: string,
   options: PlaceSearchOptions,
   fetchImpl: typeof fetch = fetch,
 ): Promise<PlaceHit[]> {
-  const url = autocompleteUrl(term, options);
-  if (!url) return [];
-  try {
-    const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
-    if (!response.ok) return [];
-    return placesFromResponse(await response.json(), Math.min(options.limit ?? 6, 10));
-  } catch {
-    return [];
+  const limit = Math.min(options.limit ?? 6, 10);
+
+  const geoapify = autocompleteUrl(term, options);
+  if (geoapify) {
+    const found = await ask(geoapify, placesFromResponse, limit, fetchImpl);
+    if (found) return found;
   }
+
+  const photon = photonUrl(term, options);
+  if (photon) {
+    const found = await ask(photon, placesFromPhoton, limit, fetchImpl);
+    if (found) return found;
+  }
+
+  const nominatim = nominatimUrl(term, options);
+  if (nominatim) {
+    const found = await ask(nominatim, placesFromNominatim, limit, fetchImpl);
+    if (found) return found;
+  }
+
+  return [];
 }
 
 /* ------------------------------------------------------------------ *

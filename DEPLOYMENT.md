@@ -196,10 +196,11 @@ setup screen:
 2. **Step 2 — Super admin.** The owner's username, password and optionally
    email. This account can never be deleted and is the only one the installer
    creates.
-3. **Step 3 — Confirmation.** "Database connected successfully", with two
-   buttons: **Open the dashboard** (you are already signed in as the super
-   admin) and **Visit the website**. Signing in later is `#/admin` with the
-   same username and password.
+3. **Step 3 — Sign in again.** The account is created but **not** signed in.
+   "Super admin created — now sign in" offers **Go to sign in**, which opens
+   `#/admin`; type the same username and password there. The first session on
+   the site is therefore opened by the sign-in page, not by the installer —
+   the password has to be proved before any cookie is handed out.
 
 Once step 1 succeeds the setup endpoints lock: a visitor can no longer repoint
 the site at another database. Do this immediately after the first deploy.
