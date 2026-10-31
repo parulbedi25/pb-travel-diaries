@@ -168,7 +168,9 @@ export default function RouteDirections({
           type="button"
           onClick={() => {
             onAdd();
-            setFocusRow({ index: count === 0 ? 0 : Math.max(count - 1, 1), tick: Date.now() });
+            // The row is added at the end, so its index is the length the list
+            // had a moment ago — not one before the last row.
+            setFocusRow({ index: count, tick: Date.now() });
           }}
           className="flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-white/30"
         >
