@@ -208,6 +208,14 @@ export default function TrackerMap({
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * Everything on this map is placed as a percentage of the panel, so the panel
+   * has to be measured before anything is placed. Drawing first at a guessed
+   * 600 x 400 and correcting afterwards is what put the pins beside the road for
+   * the first moments of every visit: the guess decides the zoom, the real box
+   * decides the pixels, and the two disagree until the observer fires.
+   */
+  const measured = size.width > 0 && size.height > 0;
   const width = size.width || 600;
   const height = size.height || 400;
   // The strip along the bottom is this component's own furniture, so it is
@@ -275,24 +283,14 @@ export default function TrackerMap({
     () => fitRouteToBand(frame, width, height, insets, { padX: 34, padY: 26, minBand: MIN_BAND }),
     [frame, width, height, insets.top, insets.bottom],
   );
-  // The map is centred on whatever our overlay puts at the middle of the
-  // panel, which is not the middle of the band.
-  const mapCentre = projector.toLatLng(50, 50);
-  // Re-centring fetches a fresh set of tiles, so wait for the view to settle
-  // rather than pulling new ones on every step of a resize.
-  const [mapView, setMapView] = useState(() => ({
-    lat: mapCentre.lat,
-    lng: mapCentre.lng,
-    zoom: view.zoom,
-  }));
-  useEffect(() => {
-    const timer = window.setTimeout(
-      () => setMapView({ lat: mapCentre.lat, lng: mapCentre.lng, zoom: view.zoom }),
-      500,
-    );
-    return () => window.clearTimeout(timer);
-  }, [mapCentre.lat, mapCentre.lng, view.zoom]);
-
+  /*
+   * The fitted view is the only view. Tiles and pins used to be placed from two
+   * different ones -- the pins followed the fit at once, the tiles followed it
+   * half a second later after a debounce -- so for that half second, and for as
+   * long as a panel kept resizing, the map under the pins was drawn for a
+   * different centre. That is what put every pin beside the street it belongs
+   * to. Both layers read the same view now.
+   */
   // Measured along the same line that is drawn, so the strip and the map
   // cannot disagree about how long the ride is.
   const totals = useMemo(
@@ -430,9 +428,9 @@ export default function TrackerMap({
       {/* The map: OpenStreetMap with no place names on it, pointer-dead so
           the overlay stays true. */}
       <div className="tracker-map map-paper absolute inset-0 overflow-hidden">
-        {count > 0 ? (
+        {count > 0 && measured ? (
           <VectorBasemap
-            view={mapView}
+            view={view}
             width={width}
             height={height}
             className="absolute inset-0"
@@ -447,9 +445,11 @@ export default function TrackerMap({
       {/* A soft edge top and bottom so the overlay plates stay readable. */}
       <div className="tracker-map-veil pointer-events-none absolute inset-0" aria-hidden="true" />
 
-      {count > 0 && <MapCompass />}
+      {count > 0 && measured && <MapCompass />}
 
 
+      {measured && (
+        <>
       {/* PB's route: covered solid, still to come dashed and marching on. */}
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full"
@@ -500,26 +500,29 @@ export default function TrackerMap({
         />
       ))}
 
-      {/* Radar rings on wherever PB actually is. */}
-      {(liveIndex >= 0 || liveIsFix) && (
-        <>
-          <div
-            className="shrink-0 aspect-square pointer-events-none absolute h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.05]"
-            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
-            aria-hidden="true"
-          />
-          <div
-            className="shrink-0 aspect-square pointer-events-none absolute h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.06]"
-            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
-            aria-hidden="true"
-          />
-          <div
-            className="shrink-0 aspect-square pointer-events-none absolute h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.08]"
-            style={{ left: `${livePoint.x}%`, top: `${livePoint.y}%` }}
-            aria-hidden="true"
-          />
-        </>
-      )}
+      {/* Radar rings on wherever PB actually is. Sized against the panel, not
+          in fixed pixels: three 256-pixel circles around a pin on a phone-sized
+          map read as a grey wash over half the route rather than a radar. */}
+      {(liveIndex >= 0 || liveIsFix) &&
+        [0.62, 0.44, 0.3].map((share, ring) => {
+          const diameter = Math.round(Math.min(width, height) * share);
+          return (
+            <div
+              key={`ring-${ring}`}
+              className={cn(
+                "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border",
+                ring === 2 ? "border-white/[0.08]" : "border-white/[0.05]",
+              )}
+              style={{
+                left: `${livePoint.x}%`,
+                top: `${livePoint.y}%`,
+                width: diameter,
+                height: diameter,
+              }}
+              aria-hidden="true"
+            />
+          );
+        })}
 
       {/* The ring that decides the status: inside it a stop is "here now",
           outside it the stop behind is "ridden". Drawn faintly around the
@@ -548,7 +551,14 @@ export default function TrackerMap({
           <div
             key={`${stop.name}-${index}`}
             className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${point.x}%`, top: `${point.y}%` }}
+            style={{
+              left: `${point.x}%`,
+              top: `${point.y}%`,
+              // The pin that is being looked at — chosen, or where PB is —
+              // sits above its neighbours, so a cluster of stops on one town
+              // does not bury the one that answers the question.
+              zIndex: selectedIndex === index ? 30 : isLive ? 20 : 10,
+            }}
           >
             <div className="group relative grid place-items-center">
               {isLive && status === "live" && (
@@ -625,9 +635,16 @@ export default function TrackerMap({
               )}
               {labels && (
                 <span
-                  style={{ top: `${24 + (labelRows[index] ?? 0) * 13}px` }}
+                  style={{
+                    top: `${24 + (labelRows[index] ?? 0) * 13}px`,
+                    // Centred under the pin, and never wider than the panel
+                    // leaves room for.
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    maxWidth: Math.max(72, Math.min(160, width - 24)),
+                  }}
                   className={cn(
-                    "map-label absolute max-w-[9rem] truncate whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
+                    "map-label absolute truncate whitespace-nowrap text-[10px] font-bold uppercase tracking-wide",
                     isStart
                       ? "text-start-label"
                       : isEnd
@@ -663,7 +680,7 @@ export default function TrackerMap({
         />
       ) : null}
 
-      {count > 0 && (
+      {count > 0 && measured && (
         <div
           ref={stripRef}
           className="absolute inset-x-0 bottom-[3.75rem] px-4 sm:bottom-[4.5rem] sm:px-5"
@@ -692,7 +709,14 @@ export default function TrackerMap({
               </div>
             </div>
 
-            <div className="relative">
+            {/* A ride that names every town on the road has more stops than a
+                panel has room for, so the row scrolls sideways instead of
+                squeezing forty names into forty slivers of six pixels. */}
+            <div className="relative -mx-1 overflow-x-auto pb-1 [scrollbar-width:thin]">
+              <div
+                className="relative"
+                style={{ minWidth: Math.max(count * 64, 0) }}
+              >
               <div
                 className="pointer-events-none absolute inset-x-0 top-0 h-3"
                 style={{ marginLeft: `${edge}%`, marginRight: `${edge}%` }}
@@ -711,7 +735,7 @@ export default function TrackerMap({
 
               <ol
                 className="relative grid"
-                style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+                style={{ gridTemplateColumns: `repeat(${count}, minmax(64px, 1fr))` }}
                 aria-label="Stops on this ride"
               >
                 {stops.map((stop, index) => {
@@ -799,9 +823,12 @@ export default function TrackerMap({
                   );
                 })}
               </ol>
+              </div>
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
