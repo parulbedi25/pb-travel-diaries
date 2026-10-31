@@ -42,6 +42,8 @@ export default function PlaceTypeahead({
   label,
   hint,
   autoFocus,
+  hideLabel,
+  focusTick,
 }: {
   value: string;
   onChange: (text: string) => void;
@@ -55,6 +57,10 @@ export default function PlaceTypeahead({
   label: string;
   hint?: string;
   autoFocus?: boolean;
+  /** Keep the label for screen readers only — used by the one-row-per-stop panel. */
+  hideLabel?: boolean;
+  /** Change this number to put the cursor in the box (a row was just added). */
+  focusTick?: number;
 }) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -124,6 +130,13 @@ export default function PlaceTypeahead({
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
+  // A row that has just appeared is a row waiting to be typed into.
+  useEffect(() => {
+    if (!focusTick) return;
+    inputRef.current?.focus();
+    setOpen(false);
+  }, [focusTick]);
+
   const ask = (text: string) => {
     window.clearTimeout(timer.current);
     const term = text.trim();
@@ -181,7 +194,12 @@ export default function PlaceTypeahead({
 
   return (
     <div ref={box} className="relative">
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+      <label
+        className={cn(
+          "mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500",
+          hideLabel && "sr-only",
+        )}
+      >
         {label}
       </label>
       <div className="relative">
