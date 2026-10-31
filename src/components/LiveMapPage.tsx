@@ -3,6 +3,8 @@ import { ArrowLeft, Clock, Compass, MapPin, Mountain, Navigation } from "lucide-
 import { type LiveStatus } from "../hooks/useLiveLocation";
 import { useSiteLiveLocation } from "../hooks/useSiteLiveLocation";
 import VectorBasemap from "./VectorBasemap";
+import MapControls from "./MapControls";
+import { useMapCamera } from "../hooks/useMapCamera";
 import { makeMercatorProjector } from "../utils/mercator";
 import { Logo } from "./Navbar";
 import { cn } from "../utils/cn";
@@ -30,6 +32,9 @@ const STATUS_META: Record<
     border: "border-zinc-500/40",
   },
 };
+
+/** How close the live map starts: a town, its road and the way out of it. */
+const START_ZOOM = 12;
 
 function formatAge(sec: number): string {
   if (sec < 90) return `${sec}s ago`;
@@ -118,16 +123,28 @@ function PositionMap({
 
   const width = size.width || 800;
   const height = size.height || 520;
-  // Close enough to read the road he is on, wide enough to see where that is.
-  const view = { lat, lng, zoom: 12 };
+  /**
+   * Close enough to read the road he is on, wide enough to see where that is —
+   * and the visitor's to change. Until they move it the map follows the ping,
+   * so a fresh fix lands under the same view; the compass button brings it back
+   * to the bike afterwards.
+   */
+  const fit = useMemo(() => ({ lat, lng, zoom: START_ZOOM }), [lat, lng]);
+  const camera = useMapCamera(fit, { width, height, hostRef });
+  const view = camera.view;
   const projector = useMemo(
     () => makeMercatorProjector(view, width, height, 0),
     [view.lat, view.lng, view.zoom, width, height], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  /** The bike's own coordinate, read through the current view. */
   const point = projector.toXY({ lat, lng });
 
   return (
-    <div ref={hostRef} className="map-paper absolute inset-0 z-0 overflow-hidden">
+    <div
+      ref={hostRef}
+      {...camera.bind}
+      className="map-paper absolute inset-0 z-0 cursor-grab select-none overflow-hidden active:cursor-grabbing"
+    >
       <VectorBasemap
         view={view}
         width={width}
@@ -135,6 +152,15 @@ function PositionMap({
         className="absolute inset-0"
         attributionClassName="pointer-events-none absolute right-3 top-3 z-20"
       />
+      <MapControls
+        onZoomIn={camera.zoomIn}
+        onZoomOut={camera.zoomOut}
+        onReset={camera.reset}
+        moved={camera.moved}
+        resetLabel="Back to the bike"
+        className="right-3 top-14 sm:top-16"
+      />
+
       <div
         className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
         style={{ left: `${point.x}%`, top: `${point.y}%` }}
@@ -219,8 +245,8 @@ export default function LiveMapPage() {
         />
 
         {/* ---------- Info Card ---------- */}
-        <div className="absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">
-          <div className="live-location-card w-full max-w-sm rounded-3xl border p-5 sm:p-6">
+        <div className="pointer-events-none absolute bottom-5 left-5 right-5 z-10 mx-auto max-w-7xl sm:left-8 sm:right-auto">
+          <div className="live-location-card pointer-events-auto w-full max-w-sm rounded-3xl border p-5 sm:p-6">
             <p
               className={cn(
                 "flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em]",
@@ -320,7 +346,7 @@ export default function LiveMapPage() {
         </div>
 
         {/* Machine info badge */}
-        <div className="absolute bottom-5 right-14 z-10 hidden lg:block">
+        <div className="pointer-events-none absolute bottom-5 right-14 z-10 hidden lg:block">
           <span className="live-map-badge inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-medium">
             <Compass className="h-3.5 w-3.5 text-saffron-400" />
             تسکین (Taskeen) · Royal Enfield Himalayan 450 · Hanle Black

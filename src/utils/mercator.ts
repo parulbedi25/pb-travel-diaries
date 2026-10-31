@@ -173,6 +173,67 @@ export function fitViewInset(
   return { lat: centreOfPanel.lat, lng: centreOfPanel.lng, zoom };
 }
 
+/* ------------------------------------------------------------------ *
+ * Moving the map by hand
+ * ------------------------------------------------------------------ */
+
+/** The closest and furthest a visitor may zoom. */
+export const MIN_ZOOM = 3;
+export const MAX_ZOOM = 18;
+
+/** Keeps a zoom inside the range the tiles and the projection agree on. */
+export function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return MIN_ZOOM;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+/**
+ * The same view, dragged `dx` / `dy` pixels.
+ *
+ * A drag moves the picture with the finger, so the centre of the map travels
+ * the other way: pull the map right and you are looking further west. Zoom is
+ * untouched, which is what makes a drag feel like paper rather than a scroll.
+ */
+export function panView(view: MapView, dx: number, dy: number): MapView {
+  if (!dx && !dy) return view;
+  const world = TILE * 2 ** view.zoom;
+  const centre = project(view.lat, view.lng, world);
+  const next = unproject(centre.x - dx, centre.y - dy, world);
+  return { lat: next.lat, lng: next.lng, zoom: view.zoom };
+}
+
+/**
+ * Zoom to `zoom` while keeping one point of the map still.
+ *
+ * The wheel is over a place, the pinch is between two fingers: whatever is under
+ * that point before the zoom has to still be under it afterwards, or the map
+ * slides away from what the rider was looking at. Everything here is in
+ * *pixels of the panel* — `anchor` is the point that must not move.
+ */
+export function zoomViewAt(
+  view: MapView,
+  zoom: number,
+  anchor: { x: number; y: number },
+  width: number,
+  height: number,
+): MapView {
+  const next = clampZoom(zoom);
+  if (Math.abs(next - view.zoom) < 1e-6) return view;
+  const w = Math.max(width || 600, 1);
+  const h = Math.max(height || 400, 1);
+
+  // The ground under the anchor, read off the old zoom.
+  const world = TILE * 2 ** view.zoom;
+  const centre = project(view.lat, view.lng, world);
+  const under = unproject(centre.x + (anchor.x - w / 2), centre.y + (anchor.y - h / 2), world);
+
+  // Put that same ground back under the anchor at the new zoom.
+  const nextWorld = TILE * 2 ** next;
+  const spot = project(under.lat, under.lng, nextWorld);
+  const shifted = unproject(spot.x - (anchor.x - w / 2), spot.y - (anchor.y - h / 2), nextWorld);
+  return { lat: shifted.lat, lng: shifted.lng, zoom: next };
+}
+
 export interface Projector {
   /** Percentage across / down the box, for `left` and `top`. */
   toXY: (point: { lat: number; lng: number }) => { x: number; y: number };

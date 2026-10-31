@@ -177,6 +177,30 @@ the page says where the ride is between as well as what is around one stop.
 Tapping either one searches around that city, and the three follow the ride as
 it moves rather than staying at whatever was last saved.
 
+## Moving the maps by hand
+
+The nearby places map and the live map (`#/live-map`) are maps you can navigate,
+not pictures of one. Both work the same way:
+
+- **Drag** anywhere on the map to move it — click and hold on a laptop, one
+  finger on a phone. Two fingers pinch to zoom, about the point between them.
+- **Scroll** over the map to zoom, and **double-click** (or double-tap) to zoom
+  one step, both about the place under the pointer, so the street you are
+  looking at stays under it.
+- **The buttons on the map** — `+`, `−` and a compass — do the same without a
+  gesture: a 36-pixel target each, a name and a focus ring, so a keyboard or a
+  phone in the sun is not left out. The compass is lit once you have moved the
+  map and puts it back where the page had it.
+- Until you move it, a map frames itself: the nearby page fits the stop being
+  searched around, what was found there and the three cities of the ride;
+  `#/live-map` sits on the bike. A new tab, a new stop or a fresh ping re-frames
+  it by itself, which means a map you have moved is yours until you say
+  otherwise.
+- The list that lives on the nearby map, and the cards on the live map, keep
+  their own presses: a drag that starts on them scrolls or taps them, and does
+  not move the map. Picking a place that is behind the list or off the edge of
+  a map you have panned brings it to the middle, at street zoom.
+
 ## Building the route in the dashboard
 
 Dashboard → **Live tracker → Stops** builds the route the way a directions panel

@@ -23,6 +23,8 @@ import {
   type Amenity,
 } from "../hooks/useNearbyAmenities";
 import VectorBasemap from "./VectorBasemap";
+import MapControls from "./MapControls";
+import { useMapCamera } from "../hooks/useMapCamera";
 import ThemeToggle from "./ThemeToggle";
 import { Logo } from "./Navbar";
 import { fitViewInset, makeMercatorProjector } from "../utils/mercator";
@@ -412,11 +414,30 @@ export default function NearbyPlacesPage() {
     ],
     [origin.lat, origin.lng, items, cities],
   );
-  const view = useMemo(
+  /**
+   * Where the page itself puts the map: the stop being searched around, what
+   * was found, and the three cities of the ride, fitted into whatever the list
+   * leaves uncovered.
+   */
+  const fitView = useMemo(
     () => fitViewInset(points, width, height, insets, { padX: PIN_PAD_X, padY: PIN_PAD_Y }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [points, width, height, insets.top, insets.right, insets.bottom, insets.left],
   );
+
+  /**
+   * The map is the visitor's to move: drag it, pinch it, scroll it, or use the
+   * buttons on it. Until they do, it keeps following the fit above — so
+   * choosing another town or another tab re-frames the page by itself, and the
+   * compass button puts it back afterwards.
+   */
+  const camera = useMapCamera(fitView, {
+    width,
+    height,
+    resetKey: `${origin.key}|${tab}`,
+    hostRef,
+  });
+  const view = camera.view;
   const projector = useMemo(
     () => makeMercatorProjector(view, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -444,7 +465,32 @@ export default function NearbyPlacesPage() {
   }, [selectedItem, projector, width, height, insets]);
 
   const mapsUrlFor = (item: PinItem) => googleMapsPlaceUrl({ lat: item.lat, lng: item.lng });
-  const select = (key: string) => setSelected(selected === key ? null : key);
+
+  /**
+   * Choosing a place brings it into view.
+   *
+   * A row in the list can name a petrol pump that is behind the list, or off
+   * the edge of a map somebody has panned; picking it and then hunting for its
+   * number is the opposite of "see exactly which one it is". So a place that is
+   * not comfortably inside the part of the map the list leaves uncovered is
+   * moved to the middle, at a zoom that shows the streets around it. A place
+   * already in view is left exactly where it is.
+   */
+  const select = (key: string) => {
+    const item = items.find((entry) => entry.key === key);
+    if (item && selected !== key) {
+      const point = projector.toXY(item);
+      const px = (point.x / 100) * width;
+      const py = (point.y / 100) * height;
+      const inside =
+        px > insets.left + 24 &&
+        px < width - insets.right - 24 &&
+        py > insets.top + 24 &&
+        py < height - insets.bottom - 24;
+      if (!inside) camera.centerOn({ lat: item.lat, lng: item.lng }, 14);
+    }
+    setSelected(selected === key ? null : key);
+  };
 
   /** Changing what the page is about always starts a clean view. */
   const changeOrigin = (key: string) => {
@@ -780,7 +826,8 @@ export default function NearbyPlacesPage() {
         {/* ---------- Map + the list that lives on it ---------- */}
         <div
           ref={hostRef}
-          className="map-paper relative mt-5 h-[58svh] max-h-[760px] min-h-[360px] overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 sm:h-[70vh] sm:min-h-[540px]"
+          {...camera.bind}
+          className="map-paper relative mt-5 h-[58svh] max-h-[760px] min-h-[360px] cursor-grab select-none overflow-hidden rounded-[2rem] border border-white/10 bg-ink-900 shadow-2xl shadow-black/50 active:cursor-grabbing sm:h-[70vh] sm:min-h-[540px]"
         >
           <VectorBasemap
             view={view}
@@ -788,6 +835,15 @@ export default function NearbyPlacesPage() {
             height={height}
             className="absolute inset-0"
             attributionClassName="pointer-events-none absolute bottom-[calc(46%+1.5rem)] left-3 z-20 lg:bottom-3"
+          />
+
+          <MapControls
+            onZoomIn={camera.zoomIn}
+            onZoomOut={camera.zoomOut}
+            onReset={camera.reset}
+            moved={camera.moved}
+            resetLabel="Back to the whole town"
+            className="left-3 top-3"
           />
 
           {/* The three cities, always: coming from, about to reach, entering
@@ -914,7 +970,8 @@ export default function NearbyPlacesPage() {
             <div
               role="dialog"
               aria-label={selectedItem.title}
-              className="absolute z-30 w-[15.5rem] overflow-hidden rounded-2xl border border-white/10 bg-ink-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl"
+              data-map-no-pan
+              className="absolute z-30 w-[15.5rem] cursor-auto touch-auto overflow-hidden rounded-2xl border border-white/10 bg-ink-950/95 shadow-2xl shadow-black/60 backdrop-blur-xl"
               style={{
                 left: `${bubble.left}px`,
                 top: `${bubble.top}px`,
@@ -998,7 +1055,8 @@ export default function NearbyPlacesPage() {
               sheet along the bottom where there is not. */}
           <div
             ref={panelRef}
-            className="absolute inset-x-3 bottom-3 z-20 flex h-[46%] flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/60 backdrop-blur-xl lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:h-auto lg:w-[350px] xl:w-[380px]"
+            data-map-no-pan
+            className="absolute inset-x-3 bottom-3 z-20 flex h-[46%] cursor-auto touch-auto flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-950/90 shadow-2xl shadow-black/60 backdrop-blur-xl lg:inset-x-auto lg:bottom-4 lg:right-4 lg:top-4 lg:h-auto lg:w-[350px] xl:w-[380px]"
           >
             {/* The tabs: one question at a time, each with its own pins. */}
             <div
