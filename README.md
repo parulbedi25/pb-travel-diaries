@@ -181,12 +181,18 @@ it moves rather than staying at whatever was last saved.
 
 Dashboard → **Live tracker → Stops** now builds the route by name:
 
-- Type a **start** and a **destination**. Suggestions appear under the box as
-  you type (Geoapify places, biased to the route you already have) — pick one,
-  or press Enter to look the typed name up.
-- **Build the route** fills in the important towns on the actual road between
-  the two ends, in one save, with the distance measured from the same road.
-  Untick *Add the important towns in between* to keep only your own stops.
+- Type a **start** and a **destination**. Suggestions appear under the box from
+  the second character — Geoapify when the site has a key, and OpenStreetMap
+  (Photon, then Nominatim) when it does not, biased to the route you already
+  have. Pick one, or press Enter to look the typed name up. The list is drawn
+  in a portal above the section, so no dashboard frame can clip it.
+- **The towns in between are added however the ends were set** — picked from a
+  suggestion, typed and Entered, pasted as a map link, or placed as two pins.
+  As soon as a route has two ends, the towns on the actual road between them
+  are filled in and listed in green. It happens once per pair of ends, so your
+  own deletions are not undone by the next edit. **Build the route** does the
+  same for both boxes at once. Untick *Add the important towns in between* to
+  keep the route exactly as you made it; ticking it again fills it in.
 - A stop typed in **A stop in between** lands between the two stops it sits
   closest to on the road, not at the end, so the numbering stays the journey.
 - Towns that were added show in **green**; remove any of them (or **Clear all
@@ -194,6 +200,17 @@ Dashboard → **Live tracker → Stops** now builds the route by name:
   time, or **Put every removed stop back** for all of them. A replaced start or
   destination is undoable the same way.
 - Stop order is still draggable, and arrows move a stop earlier or later.
+
+## First-run setup signs nobody in
+
+The installer creates the super admin and stops there. Step 3 says **Super
+admin created — now sign in** and sends you to `#/admin`, where the username
+and password are typed again. No session cookie is issued by the setup screen,
+so the first session on a new site is opened by the sign-in page like every
+session after it — a password typed once into a fresh install is a password
+nobody has proved they know. `/api/setup/owner` answers
+`{"signedIn": false, "next": "login"}` and sets no cookie; `#/admin` shows the
+sign-in screen until you sign in.
 
 ## Setup database location
 

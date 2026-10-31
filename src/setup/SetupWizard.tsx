@@ -241,8 +241,9 @@ export default function SetupWizard({
     }
     setBusy(true);
     try {
-      // The app creates the owner and signs that account in as it does, so
-      // there is nowhere to hand over to: the reload opens the dashboard.
+      // The account is created and deliberately *not* signed in: step three is
+      // the sign-in screen, and the password is typed again there. That is the
+      // one place a session is opened on this site.
       const { user } = await siteApi.setupOwner({
         username: owner.username.trim(),
         password: owner.password,
@@ -815,26 +816,27 @@ export default function SetupWizard({
                 <CheckCircle2 className="h-8 w-8" />
               </span>
               <h2 className="mt-5 font-display text-2xl font-semibold text-white">
-                Database connected successfully
+                Super admin created — now sign in
               </h2>
               <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
-                Every table was created and your super admin account
+                Every table was created and the account
                 {ownerUsername ? (
                   <>
                     {" "}
                     <span className="font-semibold text-white">{ownerUsername}</span>
                   </>
                 ) : null}{" "}
-                is signed in. The website is ready — write your first post in the dashboard, or
-                look at the site the way a reader sees it.
+                is ready. For safety it is <span className="font-semibold text-white">not signed
+                in</span> yet: the next screen asks for the same username and password, so the
+                first session on this site is opened by the sign-in page and not by the installer.
               </p>
 
               <ul className="mx-auto mt-6 max-w-md space-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left text-[12px] leading-relaxed text-zinc-400">
                 <li className="flex gap-2">
                   <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" />
                   <span>
-                    Sign in later at <span className="font-semibold text-white">#/admin</span> with
-                    the same username and password.
+                    Sign in at <span className="font-semibold text-white">#/admin</span> with the
+                    username and password you just chose.
                   </span>
                 </li>
                 <li className="flex gap-2">
@@ -862,7 +864,7 @@ export default function SetupWizard({
                   }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-saffron-400 px-6 py-3 font-display text-sm font-semibold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95"
                 >
-                  Open the dashboard <ArrowRight className="h-4 w-4" />
+                  Go to sign in <ArrowRight className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
@@ -886,7 +888,7 @@ export default function SetupWizard({
               : "The app creates the tables itself — importing server/schema.sql is not needed."
             : step === 2
               ? "Afterwards, people can create their own read-only accounts from the sign-up page, or you can add accounts in the dashboard."
-              : "This screen is shown once. From now on the site opens straight to the dashboard when you are signed in."}
+              : "This screen is shown once. Sign in with the account above — the dashboard opens after that."}
         </p>
       </div>
     </div>

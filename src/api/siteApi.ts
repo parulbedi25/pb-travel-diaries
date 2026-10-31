@@ -493,14 +493,18 @@ export const siteApi = {
   /**
    * Create the owner account.
    *
-   * The app signs that account in as it creates it — there is no handover to
-   * anywhere else, because there is nowhere else.
+   * The account is created without a session: the caller sends the person to
+   * the sign-in screen and they type the password again, which is how a
+   * brand-new site proves the password is known before it hands out a cookie.
    */
   async setupOwner(input: {
     username: string;
     password: string;
     email?: string;
   }): Promise<{ user: Account }> {
-    return api.post<{ user: Account }>("/api/setup/owner", input);
+    return api.post<{ user: Account; signedIn: boolean; next: "login" }>(
+      "/api/setup/owner",
+      input,
+    );
   },
 };

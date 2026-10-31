@@ -19,7 +19,6 @@ import {
   normaliseUsername,
   passwordProblem,
   recordEvent,
-  startSession,
   usernameProblem,
 } from "../lib/auth.js";
 import {
@@ -155,7 +154,17 @@ setupRouter.post("/setup/database", async (req, res, next) => {
   }
 });
 
-/** Step 2: the one-time owner account. */
+/**
+ * Step 2: the one-time owner account.
+ *
+ * The account is created and **not** signed in. The person who made it has to
+ * present the username and password again on the next screen, which is the
+ * point: a password typed once into a fresh install is a password nobody has
+ * proved they know. It also means the first session on a brand-new site is
+ * created by the sign-in endpoint like every session after it — one place that
+ * sets a cookie, one place that checks a password — rather than by a setup
+ * screen that could be reached before the site was even installed.
+ */
 setupRouter.post("/setup/owner", async (req, res, next) => {
   try {
     if (isMemory()) {
@@ -193,10 +202,13 @@ setupRouter.post("/setup/owner", async (req, res, next) => {
       event: "signup",
       detail: "Owner account created by the setup screen",
     });
-    await startSession(req, res, user);
 
     res.status(201).json({
       user: { id: user.id, username: user.username, email: user.email, role: user.role },
+      // Worth saying out loud in the answer as well as in the cookie jar: no
+      // session was opened, so the next step is the sign-in screen.
+      signedIn: false,
+      next: "login",
     });
   } catch (error) {
     next(error);

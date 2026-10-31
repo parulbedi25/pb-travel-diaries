@@ -121,9 +121,11 @@ afterwards.
 
 ### After setup
 
-The app signs the owner in as it creates the account, so the wizard ends by
-reloading into the site, already signed in. No handover page, no second address,
-no countdown.
+The wizard creates the owner account and does **not** sign it in. It ends with
+**Super admin created — now sign in**, which opens `#/admin`; the same username
+and password are typed there. That is deliberate: the installer never issues a
+session cookie, so the first session on the site is opened by the sign-in page
+after a password has been checked.
 
 ### You do not need a database to export
 

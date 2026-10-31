@@ -34,7 +34,7 @@ import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from 
 import { lookupQueries, placeRegion, shortPlaceName } from "../utils/placeNames";
 import { expandShortLinkInBrowser } from "../utils/unshorten";
 import { cascadeHereNow, cascadeRidden } from "../utils/liveRoute";
-import { type PlaceHit } from "../utils/placeSearch";
+import { searchPlaces, type PlaceHit } from "../utils/placeSearch";
 import {
   insertStop,
   removeAllStops,
@@ -174,6 +174,12 @@ async function geocode(
   for (const attempt of lookupQueries(query)) {
     const found = await geocodeOne(attempt, key);
     if (found) return found;
+    // The exact-search endpoint needs a key; the suggestion services do not.
+    // A site that has not pasted a Geoapify key yet can still place a name
+    // typed by hand, which is the difference between a usable installer and a
+    // route builder that says "could not find" to every town in India.
+    const [fallback] = await searchPlaces(attempt, { key, limit: 1 });
+    if (fallback) return { lat: round(fallback.lat), lng: round(fallback.lng) };
   }
   return null;
 }
@@ -191,7 +197,7 @@ async function reverseLookup(
   key: string,
 ): Promise<{ name: string; state?: string } | null> {
   const apiKey = key.trim();
-  if (!apiKey) return null;
+  if (!apiKey) return reverseFromOsm(lat, lng);
   const params = new URLSearchParams({ lat: String(lat), lon: String(lng), lang: "en", limit: "1", format: "json", apiKey });
   let response: Response;
   try {
@@ -212,6 +218,37 @@ async function reverseLookup(
   if (!name) return null;
   const state = first?.state ?? first?.county;
   return state ? { name, state } : { name };
+}
+
+/**
+ * A coordinate's name from OpenStreetMap, for a site with no key.
+ *
+ * Photon has a reverse endpoint beside its search one, and it needs no
+ * account, so a pasted link whose end is a pair of numbers still arrives with
+ * a town's name on it on a brand-new install.
+ */
+async function reverseFromOsm(
+  lat: number,
+  lng: number,
+): Promise<{ name: string; state?: string } | null> {
+  try {
+    const response = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=en`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      features?: { properties?: Record<string, unknown> }[];
+    };
+    const props = json.features?.[0]?.properties ?? {};
+    const text = (field: string) =>
+      typeof props[field] === "string" ? (props[field] as string).trim() : "";
+    const name = text("name") || text("city") || text("county") || text("state");
+    if (!name) return null;
+    const state = text("state") || text("county");
+    return state ? { name, state } : { name };
+  } catch {
+    return null;
+  }
 }
 
 /** The services this can name in the selector. */
@@ -299,6 +336,9 @@ export default function RouteStopsEditor({
   const [addTowns, setAddTowns] = useState(true);
   const [building, setBuilding] = useState(false);
   const [buildNote, setBuildNote] = useState("");
+  const [filling, setFilling] = useState(false);
+  /** The two ends the towns between them have already been filled in for. */
+  const filledFor = useRef("");
   const [buildError, setBuildError] = useState("");
   /**
    * What the server said when asked whether it can reach the maps at all.
@@ -617,13 +657,27 @@ export default function RouteStopsEditor({
       stopFromPlace(place, role, status),
       which,
     );
-    applyStops(next);
     recordChanges([
       ...(removed
         ? [{ name: removed.stop.name, kind: "removed" as const, ...removed }]
         : []),
       { name: place.name, kind: "added" },
     ]);
+    if (next.length < 2) {
+      applyStops(next);
+      return;
+    }
+    // Two ends are a ride, not a ruler: the towns on the road between them are
+    // added here, whichever way the two ends were chosen.
+    setBuildNote(`Looking for the towns between ${next[0].name} and ${next[next.length - 1].name}…`);
+    if (addTowns) {
+      // The stops go in at once; the fill measures the road for the route it
+      // ends up with, so there is one measurement rather than two racing ones.
+      commitRoute({ stops: next, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" });
+      void fillBetweenEnds(next);
+    } else {
+      applyStops(next);
+    }
   };
 
   /**
@@ -820,6 +874,9 @@ export default function RouteStopsEditor({
         ...added.map((name) => ({ name, kind: "added" as const })),
         ...townNames.map((name) => ({ name, kind: "added" as const })),
       ]);
+      filledFor.current = `${base[0].lat.toFixed(4)},${base[0].lng.toFixed(4)}>${base[
+        base.length - 1
+      ].lat.toFixed(4)},${base[base.length - 1].lng.toFixed(4)}`;
       setBuildNote(
         townNames.length
           ? `Route built: ${start.name} → ${end.name}, with ${townNames.length} towns in between (${townNames.join(
@@ -1198,6 +1255,84 @@ export default function RouteStopsEditor({
     });
   };
 
+  /**
+   * The towns between the two ends, added however the ends were set.
+   *
+   * Whether the ends arrived from a suggestion, a typed name, a pasted map
+   * link or a pair of pins, a route of two points is a ruler between them and
+   * not a ride. So any edit that leaves the route with two or more stops fills
+   * in the towns it passes through — once per pair of ends, so the owner's own
+   * deletions are not undone on the next edit — and lists each one in green,
+   * where it can be removed again.
+   *
+   * The toggle in the builder is the escape hatch: with "Add the important
+   * towns in between" off, nothing is filled in and the route stays exactly
+   * what the owner made.
+   */
+  const fillBetweenEnds = useCallback(
+    async (base: LiveStop[], say = true) => {
+      if (!addTowns || base.length < 2) return base;
+      const start = base[0];
+      const end = base[base.length - 1];
+      const key = `${start.lat.toFixed(4)},${start.lng.toFixed(4)}>${end.lat.toFixed(4)},${end.lng.toFixed(4)}`;
+      if (filledFor.current === key) return base;
+      filledFor.current = key;
+      if (filling) return base;
+      setFilling(true);
+      try {
+        // The towns already on the route are not "found again": they are the
+        // stops the owner put there, and `fillRoute` skips them by name.
+        const filled = await fillRoute(base, { key: geoapifyKey });
+        if (!filled.added.length) {
+          if (filled.road.ok) {
+            commitRoute({
+              stops: base,
+              routeGeometry: filled.road.geometry,
+              routeDistanceKm: filled.road.distanceKm,
+              routeSignature: routeSignature(base),
+            });
+          }
+          if (say) {
+            setBuildNote(
+              base.length === 2
+                ? `No towns to add between ${start.name} and ${end.name} — the road is ${formatKm(
+                    filled.road.ok ? filled.road.distanceKm : 0,
+                  )}.`
+                : "",
+            );
+          }
+          return base;
+        }
+        commitRoute(
+          filled.road.ok
+            ? {
+                stops: filled.stops,
+                routeGeometry: filled.road.geometry,
+                routeDistanceKm: filled.road.distanceKm,
+                routeSignature: routeSignature(filled.stops),
+              }
+            : { stops: filled.stops, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" },
+        );
+        recordChanges(filled.added.map((name) => ({ name, kind: "added" as const })));
+        if (say) {
+          setBuildNote(
+            `${filled.added.length} town${filled.added.length === 1 ? "" : "s"} added between ${
+              start.name
+            } and ${end.name}: ${filled.added.join(", ")}. Each is in green — remove any you do not want.`,
+          );
+        }
+        return filled.stops;
+      } catch {
+        if (say) setBuildError("Could not look for the towns between those two points just now.");
+        return base;
+      } finally {
+        setFilling(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one fill per pair of ends
+    [addTowns, geoapifyKey, filling, recordChanges],
+  );
+
   const handleImport = async (mode: "add" | "replace") => {
     if (!parsedLink.ok || importing) return;
     setImporting(true);
@@ -1259,7 +1394,13 @@ export default function RouteStopsEditor({
       // reports the real distance from the first visit rather than a straight
       // line through the mountains.
       const imported = [...existing, ...fresh];
-      const filled = await fillRoute(imported);
+      const measured = await fillRoute(imported);
+      // The switch in the builder decides whether towns are filled in, for a
+      // paste as much as for a typed pair: with it off the link's own points
+      // are the route, and only the road is measured.
+      const filled = addTowns
+        ? measured
+        : { stops: imported, added: [] as string[], road: measured.road };
 
       // What this paste changed, named: the stops it threw away (red) and the
       // ones it brought in (green) — the link's own points and the towns filled
@@ -1576,7 +1717,16 @@ export default function RouteStopsEditor({
               <input
                 type="checkbox"
                 checked={addTowns}
-                onChange={(event) => setAddTowns(event.target.checked)}
+                onChange={(event) => {
+                  const on = event.target.checked;
+                  setAddTowns(on);
+                  // Switched back on with a route already drawn: fill it in now
+                  // rather than waiting for the next edit.
+                  if (on && stops.length >= 2) {
+                    filledFor.current = "";
+                    void fillBetweenEnds(stops);
+                  }
+                }}
                 className="h-3.5 w-3.5 accent-emerald-500"
               />
               Add the important towns in between
