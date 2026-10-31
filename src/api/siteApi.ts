@@ -30,15 +30,37 @@ export interface LiveFix {
   speedKmh: number | null;
 }
 
+/** One fix as the dashboard sees it: the map's fields plus the phone's own. */
+export type LiveFixDetail = LiveFix & { battery: number | null; device: string };
+
+/** What `/api/live` answers. `fix` is the point currently on the map, which is
+ * not always the newest one — see `cadenceMinutes`. */
+export interface LiveNow {
+  fix: LiveFix | null;
+  /** How often the pin may move, in minutes. 0 means every fix. */
+  cadenceMinutes?: number;
+  /** How old the point may be before the site falls back to the dashboard stop. */
+  ttlMs?: number;
+  /** When the pin is allowed to move next, or null while the map is live. */
+  nextUpdateAt?: string | null;
+}
+
 /** What the dashboard learns about the phone feed. Everything but the fix is
  * the same for every link: the token and where to post. */
 export interface LiveSetup {
   token: string;
   path: string;
   ttlMs: number;
-  fix:
-    | (LiveFix & { battery: number | null; device: string })
-    | null;
+  /** The rhythm the owner chose, in minutes. 0 is live. */
+  cadenceMinutes: number;
+  /** The rhythms the panel offers, in minutes. */
+  choices?: number[];
+  maxCadenceMinutes?: number;
+  nextUpdateAt?: string | null;
+  /** The point the map is showing. */
+  shown?: LiveFixDetail | null;
+  /** The newest point the phone sent — what the map jumps to next. */
+  fix: LiveFixDetail | null;
 }
 
 /** What the first-run setup screen needs to know. */
@@ -259,13 +281,20 @@ export const siteApi = {
   /* ── live location, from the phone ───────────────────────────────────── */
 
   /** The newest fix from OwnTracks, or null when the phone has not reported. */
-  live: () => api.get<{ fix: LiveFix | null }>("/api/live"),
+  live: () => api.get<LiveNow>("/api/live"),
 
   /** The URL and token to paste into the phone. Owner only. */
   liveSetup: () => api.get<LiveSetup>("/api/live/setup"),
 
   /** A new token: the URL already in the phone stops working. */
   newLiveToken: () => api.post<{ token: string; path: string }>("/api/live/setup/token", {}),
+
+  /** How often the pin may move: 0 is live, anything else is whole minutes. */
+  setLiveCadence: (minutes: number) =>
+    api.post<Pick<LiveSetup, "cadenceMinutes" | "ttlMs" | "nextUpdateAt">>(
+      "/api/live/setup/cadence",
+      { minutes },
+    ),
 
   /** Forget the last fix, so the site goes back to the dashboard's stop. */
   clearLiveFix: () => api.delete<{ fix: null }>("/api/live/fix"),

@@ -278,12 +278,22 @@ come from the rider's own phone instead of a hand-moved stop.
 | `POST /api/live/owntracks?token=…` | the phone, holding the token | stores the newest fix, answers `[]` as OwnTracks expects |
 | `GET /api/live` | anybody | the newest position, its time, accuracy, altitude and speed |
 | `GET /api/live/setup` | owner | the token, the path, and the last fix |
+| `POST /api/live/setup/cadence` | owner | how often the pin may move: `0` live, else minutes |
 | `POST /api/live/setup/token` | owner | a new token; the old URL stops working |
 | `DELETE /api/live/fix` | owner | forget the fix, back to the dashboard's stop |
 
 The token is a credential: it is never logged (query values are redacted), never
-sent to a visitor, and shown only to the owner. A fix is live for an hour; after
-that the stop marked **Here now** takes over again. Only a latitude, longitude,
+sent to a visitor, and shown only to the owner. A point is live for an hour plus
+whatever rhythm was chosen; after that the stop marked **Here now** takes over
+again.
+
+**The pin's rhythm.** `POST /api/live/setup/cadence` with `{"minutes": 0}` follows
+every fix; `{"minutes": 30}` lets the pin move at most every half hour, to the
+newest fix waiting for it (the first fix is always shown, so a rhythm always
+starts). Fixes keep arriving meanwhile — the rhythm paces the map, it does not
+throttle the phone. `live.fix` holds the newest point and `live.shown` the one on
+the map, which is how the dashboard can say "the phone is here, the pin moves in
+eleven minutes". Only a latitude, longitude,
 time, accuracy, altitude and speed leave the server — the phone's device id and
 battery level stay in the dashboard.
 
