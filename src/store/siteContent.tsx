@@ -604,6 +604,105 @@ export function resolveOrigin(data?: Partial<HeroData> | null): Origin {
   return { lat, lng, place, note, label: `${lat}, ${lng} — ${place}` };
 }
 
+/** One face in the hero plate's row of travellers. */
+export interface CrewFace {
+  /** The two letters drawn in the circle, e.g. "PB". */
+  initials: string;
+  /** The name they stand for, for the tooltip. Empty when letters were typed. */
+  name: string;
+}
+
+/** The most faces the row draws before it stops being a row. */
+export const CREW_FACES_MAX = 6;
+
+/** Honorifics that are not part of anybody's name. */
+const NAME_TITLES = new Set([
+  "dr",
+  "mr",
+  "mrs",
+  "ms",
+  "miss",
+  "shri",
+  "shree",
+  "sri",
+  "smt",
+  "er",
+  "capt",
+  "prof",
+]);
+
+/** The owner's name when a saved hero has not been given one yet. */
+export const RIDER_NAME_FALLBACK = "Parul Bedi";
+
+/**
+ * The letters a name stands for: the first of the first name and the first of
+ * the surname, so "Parul Bedi" gives **PB**.
+ *
+ * A single word is read as the letters themselves when it is short enough to
+ * be written in a circle ("AM" stays **AM**), and otherwise as a name with no
+ * surname ("Parul" gives **PA**). Anything that is not a letter — a dot after
+ * an initial, a title, a decorative dash — is dropped, so the circle always
+ * holds two clean capitals whatever the owner types.
+ */
+export function initialsOf(value: string): string {
+  // Letters and the marks that hang off them, nothing else: a Devanagari vowel
+  // sign is a combining mark, not a letter, and dropping it would split a name
+  // into its pieces. A dot after an initial, a comma or a dash still goes.
+  const words = String(value ?? "")
+    .replace(/[^\p{L}\p{M}\s]/gu, " ")
+    .split(/\s+/u)
+    .filter(Boolean)
+    .filter((word) => !NAME_TITLES.has(word.toLowerCase()));
+  if (!words.length) return "";
+  if (words.length === 1) {
+    const word = words[0];
+    return (word.length <= 2 ? word : word.slice(0, 2)).toUpperCase();
+  }
+  const first = [...words[0]][0] ?? "";
+  const last = [...words[words.length - 1]][0] ?? "";
+  return (first + last).toUpperCase();
+}
+
+/**
+ * Who the plate says is already on the road.
+ *
+ * Nobody invented: each face is a name the owner typed in the dashboard, and
+ * when they have named no one the row is their own initials, derived from the
+ * name in the field above. The names are dropped once the letters are built —
+ * they are only there for the tooltip.
+ */
+export function resolveCrew(data?: Partial<HeroData> | null): CrewFace[] {
+  const named = String(data?.crew ?? "")
+    .split(/[\n,]/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  // The rider is on the road too, so the row starts with them: the plate says
+  // who is riding, and that is never a crowd the owner is not part of.
+  const rider = String(data?.riderName ?? "").trim() || RIDER_NAME_FALLBACK;
+  const faces: CrewFace[] = [];
+  const seen = new Set<string>();
+  const riderInitials = initialsOf(rider);
+  if (riderInitials) {
+    faces.push({ initials: riderInitials, name: rider });
+    seen.add(`${riderInitials}|${rider.toLowerCase()}`);
+  }
+
+  for (const line of named) {
+    const initials = initialsOf(line);
+    const key = `${initials}|${line.toLowerCase()}`;
+    if (!initials || seen.has(key)) continue;
+    seen.add(key);
+    // Two letters and nothing else is a pair of initials, not a name: a
+    // tooltip reading "AM" over a circle reading "AM" says nothing.
+    faces.push({ initials, name: line.length <= 2 ? "" : line });
+    if (faces.length === CREW_FACES_MAX) return faces;
+  }
+
+  if (faces.length) return faces;
+  return [{ initials: "PB", name: rider }];
+}
+
 export interface SiteContent {
   v: 1;
   /** Internal one-time migrations applied to browser-saved dashboard content. */
@@ -656,6 +755,21 @@ export interface HeroData {
   originLng: string;
   originPlace: string;
   originNote: string;
+  /**
+   * The rider's own name — the face row in the plate takes its letters from it.
+   *
+   * "Parul Bedi" gives **PB**, and it is the only face the row needs unless
+   * the owner names the people riding along.
+   */
+  riderName: string;
+  /**
+   * Who else is on the road, one per line.
+   *
+   * A line may be a full name ("Aman Mehta" shows as **AM**) or just the two
+   * letters. Empty means the rider rides alone and the row shows their own
+   * initials — there is no list of made-up travellers in the code.
+   */
+  crew: string;
   epTitle: string;
   epMeta: string;
   statTop: string;
@@ -1095,6 +1209,10 @@ const HERO: HeroData = {
   cta2Href: "#showreel",
   ratingText: "4.9 from 6,200+ travelers",
   tribeText: "480K+ tribe members",
+  // The face row in the plate is built from these two, not from a list in the
+  // component: the rider's own initials unless the owner names who rides along.
+  riderName: "Parul Bedi",
+  crew: "",
   chipLocation: "Khardung La · 17,582 ft",
   // Nangal Dam, Punjab — the first stop of every route, and the place the
   // tracker's "live" dot starts from when no feed has reported in yet.

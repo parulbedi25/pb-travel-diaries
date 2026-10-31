@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Play, Star, MapPin, TrendingUp, BadgeCheck, Navigation, Crosshair } from "lucide-react";
-import { resolveOrigin, type HeroData } from "../store/siteContent";
+import { resolveCrew, resolveOrigin, type HeroData } from "../store/siteContent";
 import { EASE, Reveal } from "./ui/motion";
 import Photo from "./ui/Photo";
 
@@ -26,7 +26,7 @@ const item = {
  *   ┌──────────────────────────────────────────────────────────┐
  *   │ ⊙•  31.3832° N   76.3766° E     NANGAL DAM · PUNJAB · …  │
  *   │ ────────────────────────────────────────────────────────  │
- *   │ (AM)(RK)(IS)(KB)  4.9 from 6,200+ travelers  |  480K+ …  │
+ *   │ (PB)(AM)  4.9 from 6,200+ travelers  |  480K+ travelers   │
  *   └──────────────────────────────────────────────────────────┘
  *
  * There is no slash or rule between the two coordinates: `° N` and `° E`
@@ -36,9 +36,16 @@ const item = {
  *
  * Every value comes from the hero's own fields, so an owner who moves the pin
  * changes four values in the dashboard rather than hunting for a literal.
+ *
+ * The faces are the rider's own initials, taken from the name in the dashboard
+ * ("Parul Bedi" → **PB**), plus anyone the owner names as riding along
+ * ("Aman Mehta" → **AM**). They used to be four pairs of letters typed into
+ * this file, which nobody could change from the dashboard and which claimed
+ * people who were never on the road.
  */
 function OriginPlate({ data }: { data: HeroData }) {
   const origin = resolveOrigin(data);
+  const crew = resolveCrew(data);
   const [ratingLead, ...ratingRest] = data.ratingText.split(" ");
   const [tribeLead, ...tribeRest] = data.tribeText.split(" ");
 
@@ -107,14 +114,23 @@ function OriginPlate({ data }: { data: HeroData }) {
 
       {/* ── row two: who is already on the road ── */}
       <div className="relative flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.08] px-4 py-2.5 sm:px-5">
-        <div className="flex shrink-0 items-center">
-          {["AM", "RK", "IS", "KB"].map((n, i) => (
+        <div
+          className="flex shrink-0 items-center"
+          role="img"
+          aria-label={`On the road: ${crew.map((face) => face.name || face.initials).join(", ")}`}
+        >
+          {crew.map((face, i) => (
             <span
-              key={n}
+              key={`${face.initials}-${i}`}
+              title={face.name || undefined}
               className="shrink-0 aspect-square grid h-7 w-7 place-items-center rounded-full border-2 border-ink-950 bg-saffron-400 text-[9px] font-bold text-on-gold transition-transform duration-300 hover:scale-110"
-              style={{ marginLeft: i === 0 ? 0 : -9, zIndex: 4 - i }}
+              style={{
+                marginLeft: i === 0 ? 0 : -9,
+                zIndex: crew.length - i,
+              }}
+              aria-hidden
             >
-              {n}
+              {face.initials}
             </span>
           ))}
         </div>

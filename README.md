@@ -247,6 +247,31 @@ does: **Your route** is a list of rows, and every row *is* a stop.
   time, or **Put every removed stop back** for all of them. A replaced start or
   destination is undoable the same way.
 
+## The initials under the Nangal coordinates
+
+The plate under the hero's buttons carries the origin pin's readings on its top
+row and, on its second row, a small stack of circles, the rating and the tribe
+line. Those circles used to be four pairs of letters written into the component
+— **AM RK IS KB** — which no dashboard field could change and which named four
+people who were never on the road.
+
+They are now built from names you control, in **Dashboard → Hero**:
+
+- **Your name — the face in the plate** (`riderName`, default *Parul Bedi*). The
+  circle takes the first letter of the name and the first letter of the surname:
+  `Parul Bedi` → **PB**, `Simran Kaur` → **SK**. A title (*Dr.*, *Mr.*, *Ms.*,
+  *Shri*…) is ignored, a middle name is skipped, and a single word gives its
+  first two letters.
+- **Also on the road — one per line** (`crew`). Each line is another circle. A
+  full name gives its initials (`Aman Mehta` → **AM**), or you can type the two
+  letters straight. Commas work as line breaks, repeats and blank lines are
+  dropped, and the row stops at six circles. Leave it empty and the plate shows
+  your own initials alone.
+
+For a hero whose saved data predates these fields the site falls back to
+**PB**, so an older site never renders a blank circle. Hovering a circle shows
+the name behind it, and a screen reader hears the names, not the letters.
+
 ## First-run setup signs nobody in
 
 The installer creates the super admin and stops there. Step 3 says **Super
