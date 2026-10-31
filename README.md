@@ -179,27 +179,37 @@ it moves rather than staying at whatever was last saved.
 
 ## Building the route in the dashboard
 
-Dashboard → **Live tracker → Stops** now builds the route by name:
+Dashboard → **Live tracker → Stops** builds the route the way a directions panel
+does: **Your route** is a list of rows, and every row *is* a stop.
 
-- Type a **start** and a **destination**. Suggestions appear under the box from
-  the second character — Geoapify when the site has a key, and OpenStreetMap
+- The first row is the **start**, the last is the **destination**, and any row
+  between them is a stop on the way. Type into a row and suggestions appear from
+  the second character — Geoapify when the site has a key, OpenStreetMap
   (Photon, then Nominatim) when it does not, biased to the route you already
-  have. Pick one, or press Enter to look the typed name up. The list is drawn
-  in a portal above the section, so no dashboard frame can clip it.
-- **The towns in between are added however the ends were set** — picked from a
-  suggestion, typed and Entered, pasted as a map link, or placed as two pins.
-  As soon as a route has two ends, the towns on the actual road between them
-  are filled in and listed in green. It happens once per pair of ends, so your
-  own deletions are not undone by the next edit. **Build the route** does the
-  same for both boxes at once. Untick *Add the important towns in between* to
-  keep the route exactly as you made it; ticking it again fills it in.
-- A stop typed in **A stop in between** lands between the two stops it sits
-  closest to on the road, not at the end, so the numbering stays the journey.
+  have. Pick one, or press Enter to look the typed name up. The list is drawn in
+  a portal, so no dashboard frame can clip it.
+- **Choosing a place replaces that row; it never adds a second one.** A new
+  start or destination takes the old one's place, and the towns the fill had put
+  on the old stretch go with it — the list under the box is the ride you just
+  described, not the old one plus a new name at the top. A stop already marked
+  *here now* stays marked when its name is corrected.
+- **Add a stop** puts a blank row just before the destination, halfway along the
+  leg it lands on: type its name, or drag its pin on the map above. Drag a row
+  by its grip (or use the arrows) to change the order, and remove one with the
+  bin beside it.
+- **The road and the distance are measured again after every edit** — a place
+  picked, a row dragged, added or removed, a pin moved. The panel says
+  *Recalculating the road…* while it measures, and each row shows its kilometres
+  from the start, by road once the road is known.
+- **The towns between the ends** are filled in once per pair of ends and shown
+  in green, so your own deletions survive the next edit; *Fill in the towns
+  between* does it again on demand. Untick *Fill in the important towns between
+  my stops* to keep the route exactly as you made it; ticking it again fills it
+  in.
 - Towns that were added show in **green**; remove any of them (or **Clear all
   stops**) and they turn **red** with an **Undo** button beside them — one at a
   time, or **Put every removed stop back** for all of them. A replaced start or
   destination is undoable the same way.
-- Stop order is still draggable, and arrows move a stop earlier or later.
 
 ## First-run setup signs nobody in
 

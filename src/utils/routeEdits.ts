@@ -9,15 +9,40 @@
  *
  * Two rules run through all of it:
  *
- *  - **The ends stay the ends.** Setting a start never reorders the middle of
- *    the route; setting a destination replaces the last stop rather than
- *    appending a second destination.
+ *  - **The row is the stop.** A place typed into row *n* replaces stop *n* —
+ *    same index, same status, same place in the route. Nothing is appended
+ *    under a list that already has a destination, because that was the bug the
+ *    operator saw: a new start in the box, the old start and its towns still
+ *    sitting underneath it.
  *  - **A removal is a note, not a hole.** Removing a stop returns the list
  *    *and* the stop with the place it came from, which is everything an undo
  *    needs. A red name with no payload would only be a complaint.
  */
 import type { LiveStop } from "../store/siteContent";
 import { insertAlong } from "./placeSearch";
+
+/**
+ * The note that marks a town the editor filled in from the road.
+ *
+ * A stop somebody typed is theirs, and survives every edit. A stop the fill
+ * added lies between two ends and means nothing once one of them changes.
+ * Marking it with a note is what lets a new start or destination throw the
+ * derived towns away and fill the new stretch in, rather than leaving a row of
+ * towns from the previous ride under a start they never belonged to.
+ */
+export const TOWN_NOTE = "Filled in from the road";
+
+/**
+ * Was this stop put here by the fill rather than by a person?
+ *
+ * Notes are the only field a stop has for this, and the older note written by
+ * the first version of the fill is still out there in saved routes, so both
+ * markers count.
+ */
+export function isDerivedTown(stop: LiveStop): boolean {
+  const note = (stop.note ?? "").trim();
+  return note.startsWith(TOWN_NOTE) || note.startsWith("Between your points");
+}
 
 /** A stop that left the route, and the index it left from. */
 export interface StopRemoval {
@@ -32,32 +57,90 @@ export interface StopEdit {
 }
 
 /**
- * Set the start or the destination.
+ * Replace one stop in place, keeping the status it had.
  *
- * An empty route becomes a single stop. A one-stop route gains a second. On
- * any longer route the chosen stop replaces that end and keeps the status the
- * owner had given it — moving the start to a new town does not un-ride the
- * road behind it.
+ * This is what typing a new place into a row of the directions panel does. The
+ * index is the row, the row is the stop: a stop already ridden does not become
+ * "still to come" because its name was corrected, and the route keeps its
+ * order.
  */
-export function replaceEndpoint(
+export function replaceStopAt(
   stops: readonly LiveStop[],
+  index: number,
   stop: LiveStop,
-  which: "start" | "end",
 ): StopEdit {
-  if (!stops.length) return { stops: [{ ...stop }] };
-  if (which === "end" && stops.length === 1) return { stops: [...stops.map((s) => ({ ...s })), { ...stop }] };
-
-  const index = which === "start" ? 0 : stops.length - 1;
+  if (index < 0 || index >= stops.length) return { stops: stops.map((item) => ({ ...item })) };
   const replaced = stops[index];
-  const next = stops.map((existing, i) =>
-    i === index ? { ...stop, status: replaced.status } : { ...existing },
+  const next = stops.map((item, i) =>
+    i === index ? { ...stop, status: replaced.status } : { ...item },
   );
-  // Replacing an end with the very same place is not a removal.
   const same =
     replaced.name.trim().toLowerCase() === stop.name.trim().toLowerCase() &&
     Math.abs(replaced.lat - stop.lat) < 0.01 &&
     Math.abs(replaced.lng - stop.lng) < 0.01;
   return { stops: next, removed: same ? undefined : { stop: replaced, index } };
+}
+
+/**
+ * Drop the towns the editor filled in, keeping the stops a person chose.
+ *
+ * A filled-in town is derived: it belongs to the pair of ends the fill measured
+ * between, and means nothing once one of those ends changes. Typing a new start
+ * on a route of Nangal → … → Leh should give the towns of *that* ride, not the
+ * towns of the old one left lying under a start they never belonged to. A stop
+ * somebody typed — even one that sits between the same two ends — is theirs and
+ * stays.
+ */
+export function dropDerivedStops(
+  stops: readonly LiveStop[],
+  isDerived: (stop: LiveStop) => boolean,
+  keep = -1,
+): LiveStop[] {
+  return stops.filter((stop, index) => index === keep || !isDerived(stop));
+}
+
+/**
+ * Insert a stop at an exact index, for a row that was just added.
+ *
+ * `insertStop` places by geography, which is right for a stop typed by name and
+ * wrong for an empty row: a row appears where the operator asked for it, before
+ * the destination.
+ */
+export function insertStopAt(
+  stops: readonly LiveStop[],
+  index: number,
+  stop: LiveStop,
+): LiveStop[] {
+  const next = stops.map((item) => ({ ...item }));
+  const at = Math.min(Math.max(Math.trunc(index) || 0, 0), next.length);
+  next.splice(at, 0, { ...stop });
+  return next;
+}
+
+/**
+ * A placeholder stop halfway between the rows it is being inserted between.
+ *
+ * An empty row needs a position to be a stop at all — the pin has to sit
+ * somewhere on the map — and the middle of the leg it lands on is the one place
+ * that is never absurd: not at a pole, not on top of a stop that already
+ * exists.
+ */
+export function midpointStop(
+  stops: readonly LiveStop[],
+  at: number,
+  name: string,
+): LiveStop {
+  const before = stops[at - 1];
+  const after = stops[at];
+  const lat = before && after ? (before.lat + after.lat) / 2 : before ? before.lat + 0.05 : 31;
+  const lng = before && after ? (before.lng + after.lng) / 2 : before ? before.lng + 0.05 : 76.5;
+  return {
+    name,
+    note: "",
+    status: "next",
+    lat: Math.round(lat * 1e4) / 1e4,
+    lng: Math.round(lng * 1e4) / 1e4,
+  };
 }
 
 /**

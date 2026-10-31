@@ -2,15 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronRight,
   Link2,
   Undo2,
   Loader2,
   MapPinned,
   Plus,
   RotateCcw,
-  Sparkles,
   Route as RouteIcon,
-  Search,
   Trash2,
   ZoomIn,
   ZoomOut,
@@ -30,20 +29,25 @@ import { routeSignature } from "../utils/liveRoute";
 import { fitViewExact, makeMercatorProjector } from "../utils/mercator";
 import VectorBasemap from "../components/VectorBasemap";
 import { cumulativeKm, formatKm } from "../utils/routeProgress";
-import { fillRoute, findMajorStops, mergeStopsByDistance, type MajorStop } from "../utils/majorStops";
+import { fillRoute } from "../utils/majorStops";
 import { lookupQueries, placeRegion, shortPlaceName } from "../utils/placeNames";
 import { expandShortLinkInBrowser } from "../utils/unshorten";
 import { cascadeHereNow, cascadeRidden } from "../utils/liveRoute";
 import { searchPlaces, type PlaceHit } from "../utils/placeSearch";
 import {
+  dropDerivedStops,
+  isDerivedTown,
+  TOWN_NOTE,
   insertStop,
+  insertStopAt,
+  midpointStop,
   removeAllStops,
   removeStopAt,
-  replaceEndpoint,
+  replaceStopAt,
   restoreStops,
   restoreStop,
 } from "../utils/routeEdits";
-import PlaceTypeahead from "./PlaceTypeahead";
+import RouteDirections from "./RouteDirections";
 import { cn } from "../utils/cn";
 import { inputCls } from "./fieldStyles";
 
@@ -115,15 +119,21 @@ const roleOf = (index: number, total: number): Role =>
 
 const round = (n: number) => Math.round(n * 1e4) / 1e4;
 
-/** "between Nangal and Manali" — where a stop landed, in words. */
-function describePosition(stops: LiveStop[], place: { name: string; lat: number; lng: number }): string {
-  const index = stops.findIndex(
-    (stop) => stop.name === place.name && Math.abs(stop.lat - place.lat) < 0.01,
-  );
-  if (index < 0) return "on the route";
-  if (index === 0) return "as the start";
-  if (index === stops.length - 1) return "as the destination";
-  return `between ${stops[index - 1].name} and ${stops[index + 1].name}`;
+/** A chosen place as a stop, with the role written on its note. */
+function stopFromPlace(
+  place: PlaceHit,
+  role: Role,
+  status: LiveStop["status"] = "next",
+): LiveStop {
+  const stop: LiveStop = {
+    name: place.name.trim() || `${place.lat.toFixed(3)}, ${place.lng.toFixed(3)}`,
+    note: role === "mid" ? "" : `${ROLE_COPY[role]} · picked by name`,
+    status,
+    lat: round(place.lat),
+    lng: round(place.lng),
+  };
+  if (place.region) stop.state = place.region;
+  return stop;
 }
 
 /* ------------------------------------------------------------------ *
@@ -296,16 +306,10 @@ export default function RouteStopsEditor({
   const geoapifyKey = resolveMapSettings(content.map).geoapifyKey;
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [query, setQuery] = useState("");
-  const [looking, setLooking] = useState(false);
-  const [lookError, setLookError] = useState("");
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const [stopBusy, setStopBusy] = useState(false);
   /** What the last automatic road measurement said. */
   const [roadNote, setRoadNote] = useState("");
-  const [stopNote, setStopNote] = useState("");
-  const [stopError, setStopError] = useState("");
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoomStep, setZoomStep] = useState(0);
   const [link, setLink] = useState("");
@@ -327,14 +331,9 @@ export default function RouteStopsEditor({
   const [expanded, setExpanded] = useState<{ link: string; url: string; via?: string } | null>(
     null,
   );
-  /* The route builder: a start, a destination, and towns filled in between. */
-  const [startText, setStartText] = useState("");
-  const [endText, setEndText] = useState("");
-  const [midText, setMidText] = useState("");
-  const [startPicked, setStartPicked] = useState<PlaceHit | null>(null);
-  const [endPicked, setEndPicked] = useState<PlaceHit | null>(null);
+  /* The directions panel: the stops are the rows, and the towns between the
+     two ends are filled in from the road. */
   const [addTowns, setAddTowns] = useState(true);
-  const [building, setBuilding] = useState(false);
   const [buildNote, setBuildNote] = useState("");
   const [filling, setFilling] = useState(false);
   /** The two ends the towns between them have already been filled in for. */
@@ -356,19 +355,6 @@ export default function RouteStopsEditor({
   const replaceRef = useRef<HTMLButtonElement | null>(null);
   const [resolving, setResolving] = useState(false);
   const [expandError, setExpandError] = useState("");
-
-  /**
-   * The two boxes follow the route's own ends, until somebody types in them.
-   *
-   * The start and destination are already stated by the list; the boxes are a
-   * second way to say the same thing, so they show what the list says whenever
-   * they are empty rather than starting blank on a route that has two ends.
-   */
-  useEffect(() => {
-    if (!stops.length) return;
-    setStartText((current) => (current.trim() ? current : stops[0].name));
-    setEndText((current) => (current.trim() ? current : stops[stops.length - 1].name));
-  }, [stops]);
 
   // The projection has to match the map underneath pixel for pixel, so the
   // box is measured rather than assumed.
@@ -509,7 +495,7 @@ export default function RouteStopsEditor({
       ),
     );
     recordChanges(removed.map((change) => ({ name: change.stop.name, kind: "added" as const })));
-    setStopNote(`Put ${removed.length} stop${removed.length === 1 ? "" : "s"} back.`);
+    setBuildNote(`Put ${removed.length} stop${removed.length === 1 ? "" : "s"} back.`);
   }, [changes, stops]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Take every stop off the route at once, each one undoable. */
@@ -524,7 +510,7 @@ export default function RouteStopsEditor({
         ...removal,
       })),
     );
-    setStopNote(`Removed all ${stops.length} stops. Each one can be put back below.`);
+    setBuildNote(`Removed all ${stops.length} stops. Each one can be put back below.`);
   }, [stops]); // eslint-disable-line react-hooks/exhaustive-deps -- one snapshot per click
 
   const patch = useCallback(
@@ -584,6 +570,23 @@ export default function RouteStopsEditor({
       const [item] = reordered.splice(from, 1);
       reordered.splice(to, 0, item);
       // The order is the route: moving a stop moves the road with it.
+      //
+      // Dragging an *end* somewhere else is the one reorder that changes the
+      // ride itself — the towns the fill put between the old pair of ends are
+      // towns of a stretch that no longer starts or stops there, so they go and
+      // the new stretch is filled in. Moving a stop in the middle keeps them:
+      // it is the same ride, in a different order.
+      const endsMoved =
+        reordered[0].name !== stops[0].name ||
+        reordered[reordered.length - 1].name !== stops[stops.length - 1].name;
+      if (endsMoved && addTowns && reordered.length >= 2) {
+        const kept = dropDerivedStops(reordered, isDerivedTown);
+        filledFor.current = "";
+        setBuildError("");
+        commitRoute({ stops: kept, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" });
+        void fillBetweenEnds(kept);
+        return;
+      }
       applyStops(reordered);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyStops belongs to this render on purpose
@@ -617,301 +620,6 @@ export default function RouteStopsEditor({
       Math.min(100, Math.max(0, y)),
     );
     patch(index, { lat: round(point.lat), lng: round(point.lng) });
-  };
-
-  /** A suggestion turned into a stop, with the role written on its note. */
-  const stopFromPlace = (place: PlaceHit, role: Role, status: LiveStop["status"] = "next"): LiveStop => {
-    const stop: LiveStop = {
-      name: place.name.trim() || `${place.lat.toFixed(3)}, ${place.lng.toFixed(3)}`,
-      note: `${ROLE_COPY[role]} · picked by name`,
-      status,
-      lat: round(place.lat),
-      lng: round(place.lng),
-    };
-    if (place.region) stop.state = place.region;
-    return stop;
-  };
-
-  /**
-   * A start or destination chosen from the list.
-   *
-   * Choosing a start on an empty route makes it the route; on a route that
-   * already has one, it replaces that stop (so the ends can be changed without
-   * rebuilding everything) while keeping the status the owner had given it.
-   */
-  const chooseEndpoint = (which: "start" | "end", place: PlaceHit) => {
-    if (which === "start") {
-      setStartText(place.name);
-      setStartPicked(place);
-    } else {
-      setEndText(place.name);
-      setEndPicked(place);
-    }
-    const index = which === "start" ? 0 : Math.max(stops.length - 1, 0);
-    const role: Role = which === "start" ? "start" : "end";
-    // An empty route takes the first stop as "here now": there is nothing to
-    // ride behind it.
-    const status = stops.length ? stops[index].status : "live";
-    const { stops: next, removed } = replaceEndpoint(
-      stops,
-      stopFromPlace(place, role, status),
-      which,
-    );
-    recordChanges([
-      ...(removed
-        ? [{ name: removed.stop.name, kind: "removed" as const, ...removed }]
-        : []),
-      { name: place.name, kind: "added" },
-    ]);
-    if (next.length < 2) {
-      applyStops(next);
-      return;
-    }
-    // Two ends are a ride, not a ruler: the towns on the road between them are
-    // added here, whichever way the two ends were chosen.
-    setBuildNote(`Looking for the towns between ${next[0].name} and ${next[next.length - 1].name}…`);
-    if (addTowns) {
-      // The stops go in at once; the fill measures the road for the route it
-      // ends up with, so there is one measurement rather than two racing ones.
-      commitRoute({ stops: next, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" });
-      void fillBetweenEnds(next);
-    } else {
-      applyStops(next);
-    }
-  };
-
-  /**
-   * A stop typed between the ends.
-   *
-   * It is dropped into the leg of the route it sits nearest to — "Mandi" goes
-   * between Nangal and Manali even though it was typed last — and it is marked
-   * green in the change list, so an unwanted town is one click from gone.
-   */
-  const chooseMidStop = (place: PlaceHit) => {
-    // A stop dropped in the middle never takes over "here now": where the rider
-    // is, is a statement the owner made, not something an edit should move.
-    const { stops: next } = insertStop(stops, stopFromPlace(place, "mid"));
-    applyStops(next);
-    recordChanges([{ name: place.name, kind: "added" }]);
-    setStopNote(`${place.name} added ${describePosition(next, place)}.`);
-  };
-
-  /**
-   * Place an end that was typed but never picked from the list.
-   *
-   * The suggestions are the easy path; typing a name and pressing Enter is the
-   * other one, and it must not do nothing — the name is looked up and, if it
-   * resolves, becomes the start or the destination exactly as a suggestion
-   * would.
-   */
-  const applyTypedEndpoint = async (which: "start" | "end") => {
-    const typed = (which === "start" ? startText : endText).trim();
-    if (!typed) return;
-    const picked = which === "start" ? startPicked : endPicked;
-    if (picked) {
-      chooseEndpoint(which, picked);
-      return;
-    }
-    setBuildError("");
-    const found = await geocode(typed, geoapifyKey);
-    if (!found) {
-      setBuildError(
-        `Could not find “${typed}”. Pick it from the suggestions, or type the coordinates on the stop itself.`,
-      );
-      return;
-    }
-    chooseEndpoint(which, { name: typed, region: "", ...found });
-  };
-
-  /** A stop typed between the ends and never picked from the list. */
-  const applyTypedMid = async () => {
-    const typed = midText.trim();
-    if (!typed) return;
-    setBuildError("");
-    const found = await geocode(typed, geoapifyKey);
-    if (!found) {
-      setBuildError(`Could not find “${typed}”. Pick it from the suggestions instead.`);
-      return;
-    }
-    chooseMidStop({ name: typed, region: "", ...found });
-    setMidText("");
-  };
-
-  /**
-   * Build the route from the two ends, with the towns in between filled in.
-   *
-   * This is the "OK" of the builder: resolve the names, set the ends, and — if
-   * asked — put the important towns of the actual road between them, all in one
-   * write so the stops, the road and its distance agree. Every town it adds is
-   * listed in green, and each is individually removable afterwards.
-   */
-  const buildRoute = async () => {
-    if (building) return;
-    const startName = startText.trim();
-    const endName = endText.trim();
-    if (!startName || !endName) {
-      setBuildError("Type or pick both a start and a destination.");
-      return;
-    }
-    setBuilding(true);
-    setBuildError("");
-    setBuildNote("");
-
-    try {
-      const resolve = async (
-        picked: PlaceHit | null,
-        text: string,
-      ): Promise<{ name: string; region: string; lat: number; lng: number } | null> => {
-        if (picked) return picked;
-        const found = await geocode(text, geoapifyKey);
-        return found ? { name: text, region: "", ...found } : null;
-      };
-
-      const start = await resolve(startPicked, startName);
-      const end = await resolve(endPicked, endName);
-      if (!start || !end) {
-        setBuildError(
-          `Could not find ${!start ? `“${startName}”` : `“${endName}”`}. Pick it from the suggestions, or add it by clicking the map.`,
-        );
-        return;
-      }
-
-      // The ends become the ends; anything already between them stays as it is.
-      const first = stops[0];
-      const last = stops[stops.length - 1];
-      const sameAs = (stop: LiveStop | undefined, place: { name: string; lat: number; lng: number }) =>
-        Boolean(stop) && stop!.name.trim().toLowerCase() === place.name.trim().toLowerCase() &&
-        Math.abs(stop!.lat - place.lat) < 0.01 && Math.abs(stop!.lng - place.lng) < 0.01;
-
-      let base: LiveStop[];
-      if (!stops.length) {
-        base = [
-          stopFromPlace(start as PlaceHit, "start", "live"),
-          stopFromPlace(end as PlaceHit, "end"),
-        ];
-      } else if (stops.length === 1) {
-        base = [
-          sameAs(first, start) ? first : { ...stopFromPlace(start as PlaceHit, "start", first.status) },
-          stopFromPlace(end as PlaceHit, "end"),
-        ];
-      } else {
-        base = stops.map((stop, index) => {
-          if (index === 0 && !sameAs(first, start)) {
-            return { ...stopFromPlace(start as PlaceHit, "start", stop.status) };
-          }
-          if (index === stops.length - 1 && !sameAs(last, end)) {
-            return { ...stopFromPlace(end as PlaceHit, "end", stop.status) };
-          }
-          return stop;
-        });
-      }
-
-      // An end this replaces is still a stop somebody chose: it goes in the red
-      // list with the rest, so the old route can be put back.
-      const replaced: RouteChange[] = [];
-      if (first && !sameAs(first, start)) {
-        replaced.push({ name: first.name, kind: "removed", stop: first, index: 0 });
-      }
-      if (last && last !== first && !sameAs(last, end)) {
-        replaced.push({ name: last.name, kind: "removed", stop: last, index: stops.length - 1 });
-      }
-
-      const added: string[] = [];
-      if (!stops.some((stop) => stop.name.trim().toLowerCase() === start.name.trim().toLowerCase())) {
-        added.push(start.name);
-      }
-      if (!stops.some((stop) => stop.name.trim().toLowerCase() === end.name.trim().toLowerCase())) {
-        added.push(end.name);
-      }
-
-      if (!addTowns || base.length < 2) {
-        applyStops(base);
-        recordChanges([
-          ...replaced,
-          ...added.map((name) => ({ name, kind: "added" as const })),
-        ]);
-        setBuildNote(`${base.length} stops on the route. Add towns on the way whenever you want them.`);
-        return;
-      }
-
-      const road = await fetchRoadGeometry(base);
-      if (!road.ok) {
-        applyStops(base);
-        recordChanges([
-          ...replaced,
-          ...added.map((name) => ({ name, kind: "added" as const })),
-        ]);
-        setBuildError(`${road.message} The two ends are on the route; the towns were not filled in.`);
-        return;
-      }
-
-      const { stops: found } = await findMajorStops(road.geometry, {
-        key: geoapifyKey,
-        avoid: base.map((stop) => stop.name),
-        max: 12,
-        gapKm: 30,
-        radiusKm: 14,
-      });
-      const merged = mergeStopsByDistance(base, road.geometry, found, (place: MajorStop) => ({
-        name: place.name,
-        note: "Between your points · filled in from the road",
-        status: "next",
-        lat: round(place.lat),
-        lng: round(place.lng),
-      }));
-      commitRoute({
-        stops: merged,
-        routeGeometry: road.geometry,
-        routeDistanceKm: road.distanceKm,
-        routeSignature: routeSignature(merged),
-      });
-      const townNames = merged
-        .slice(1, -1)
-        .map((stop) => stop.name)
-        .filter((name) => !base.some((stop) => stop.name.toLowerCase() === name.toLowerCase()));
-      recordChanges([
-        ...replaced,
-        ...added.map((name) => ({ name, kind: "added" as const })),
-        ...townNames.map((name) => ({ name, kind: "added" as const })),
-      ]);
-      filledFor.current = `${base[0].lat.toFixed(4)},${base[0].lng.toFixed(4)}>${base[
-        base.length - 1
-      ].lat.toFixed(4)},${base[base.length - 1].lng.toFixed(4)}`;
-      setBuildNote(
-        townNames.length
-          ? `Route built: ${start.name} → ${end.name}, with ${townNames.length} towns in between (${townNames.join(
-              ", ",
-            )}) — all in green, and each one removable.`
-          : `Route built: ${start.name} → ${end.name}. No towns to add on this stretch.`,
-      );
-    } catch {
-      setBuildError("Could not build the route just now. Try again in a moment.");
-    } finally {
-      setBuilding(false);
-    }
-  };
-
-  const handleFind = async () => {
-    const name = query.trim();
-    if (!name) return;
-    setLooking(true);
-    setLookError("");
-    try {
-      const found = await geocode(name, geoapifyKey);
-      if (!found) {
-        setLookError(`Could not find “${name}”. Add it by clicking the grid or typing coordinates.`);
-        return;
-      }
-      applyStops(
-        insertStop(stops, { name, note: "", status: "next", lat: found.lat, lng: found.lng }).stops,
-      );
-      recordChanges([{ name, kind: "added" }]);
-      setQuery("");
-    } catch {
-      setLookError("The place lookup could not be reached. Click the grid or type coordinates.");
-    } finally {
-      setLooking(false);
-    }
   };
 
   // A short share link hides the route behind a redirect the browser cannot
@@ -1107,69 +815,6 @@ export default function RouteStopsEditor({
   };
 
   /**
-   * Add the major stops of the route already on screen, without disturbing the
-   * ones the rider put there: each suggestion is dropped in at its own place
-   * along the road.
-   */
-  const handleAddMajorStops = async () => {
-    if (stops.length < 2 || stopBusy) return;
-    setStopBusy(true);
-    setStopNote("");
-    setStopError("");
-    try {
-      let geometry = routeGeometry;
-      // The distance that belongs to that geometry: the stored one when the
-      // road came from the dashboard, the measurement when it was just fetched.
-      let roadKm = routeDistanceKm;
-      if (geometry.length < 2) {
-        const road = await fetchRoadGeometry(stops);
-        if (!road.ok) {
-          setStopError(road.message);
-          return;
-        }
-        geometry = road.geometry;
-        roadKm = road.distanceKm;
-      }
-      const { stops: found, source } = await findMajorStops(geometry, {
-        key: geoapifyKey,
-        avoid: stops.map((stop) => stop.name),
-        max: 12,
-        gapKm: 30,
-        radiusKm: 14,
-      });
-      if (!found.length) {
-        setStopNote("No towns found on this stretch — the stops below are already it.");
-        return;
-      }
-      const merged = mergeStopsByDistance(stops, geometry, found, (place: MajorStop) => ({
-        name: place.name,
-        note: "",
-        status: "next",
-        lat: round(place.lat),
-        lng: round(place.lng),
-      }));
-      // The road already runs through these places, so it is stored with them,
-      // under the signature of the stops it now belongs to.
-      commitRoute({
-        stops: merged,
-        routeGeometry: geometry,
-        routeDistanceKm: roadKm,
-        routeSignature: routeSignature(merged),
-      });
-      recordChanges(found.map((place) => ({ name: place.name, kind: "added" as const })));
-      setStopNote(
-        `Added ${found.length} major stop${found.length === 1 ? "" : "s"} along the road: ${found
-          .map((place) => place.name)
-          .join(", ")}.${source === "offline" ? " (Offline list — the map service was busy.)" : ""}`,
-      );
-    } catch {
-      setStopError("Could not look up the towns on this route.");
-    } finally {
-      setStopBusy(false);
-    }
-  };
-
-  /**
    * Write the route back in one go.
    *
    * Falls back to the three single-field callbacks when the host has no
@@ -1256,82 +901,184 @@ export default function RouteStopsEditor({
   };
 
   /**
-   * The towns between the two ends, added however the ends were set.
+   * The towns between the two ends, filled in from the road.
    *
-   * Whether the ends arrived from a suggestion, a typed name, a pasted map
-   * link or a pair of pins, a route of two points is a ruler between them and
-   * not a ride. So any edit that leaves the route with two or more stops fills
-   * in the towns it passes through — once per pair of ends, so the owner's own
-   * deletions are not undone on the next edit — and lists each one in green,
-   * where it can be removed again.
+   * A row of two places is a ruler between them, not a ride: the towns the
+   * road passes through are missing from every map link and from every pair of
+   * points somebody types. So when the route has two ends, the fill puts them
+   * in — once per pair of ends, so the owner's own deletions survive the next
+   * edit — and marks each one as derived, which is what lets a new start or
+   * destination replace them instead of piling a second set on top.
    *
-   * The toggle in the builder is the escape hatch: with "Add the important
-   * towns in between" off, nothing is filled in and the route stays exactly
-   * what the owner made.
+   * The switch in the panel is the escape hatch: with it off, the route stays
+   * exactly what the owner typed.
    */
-  const fillBetweenEnds = useCallback(
-    async (base: LiveStop[], say = true) => {
-      if (!addTowns || base.length < 2) return base;
-      const start = base[0];
-      const end = base[base.length - 1];
-      const key = `${start.lat.toFixed(4)},${start.lng.toFixed(4)}>${end.lat.toFixed(4)},${end.lng.toFixed(4)}`;
-      if (filledFor.current === key) return base;
-      filledFor.current = key;
-      if (filling) return base;
-      setFilling(true);
-      try {
-        // The towns already on the route are not "found again": they are the
-        // stops the owner put there, and `fillRoute` skips them by name.
-        const filled = await fillRoute(base, { key: geoapifyKey });
-        if (!filled.added.length) {
-          if (filled.road.ok) {
-            commitRoute({
-              stops: base,
-              routeGeometry: filled.road.geometry,
-              routeDistanceKm: filled.road.distanceKm,
-              routeSignature: routeSignature(base),
-            });
-          }
-          if (say) {
-            setBuildNote(
-              base.length === 2
-                ? `No towns to add between ${start.name} and ${end.name} — the road is ${formatKm(
-                    filled.road.ok ? filled.road.distanceKm : 0,
-                  )}.`
-                : "",
-            );
-          }
-          return base;
-        }
-        commitRoute(
-          filled.road.ok
-            ? {
-                stops: filled.stops,
-                routeGeometry: filled.road.geometry,
-                routeDistanceKm: filled.road.distanceKm,
-                routeSignature: routeSignature(filled.stops),
-              }
-            : { stops: filled.stops, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" },
-        );
-        recordChanges(filled.added.map((name) => ({ name, kind: "added" as const })));
-        if (say) {
-          setBuildNote(
-            `${filled.added.length} town${filled.added.length === 1 ? "" : "s"} added between ${
-              start.name
-            } and ${end.name}: ${filled.added.join(", ")}. Each is in green — remove any you do not want.`,
-          );
-        }
-        return filled.stops;
-      } catch {
-        if (say) setBuildError("Could not look for the towns between those two points just now.");
-        return base;
-      } finally {
-        setFilling(false);
+  const fillBetweenEnds = async (base: LiveStop[], say = true): Promise<LiveStop[]> => {
+    if (!addTowns || base.length < 2) return base;
+    const start = base[0];
+    const end = base[base.length - 1];
+    const key = `${start.lat.toFixed(4)},${start.lng.toFixed(4)}>${end.lat.toFixed(4)},${end.lng.toFixed(4)}`;
+    // The same stretch twice, or a fill already under way: there is nothing to
+    // look for, but the caller has already handed over a list whose road is out
+    // of date, so it still has to be measured — that is `applyStops`' job.
+    if (filledFor.current === key || filling) {
+      applyStops(base);
+      return base;
+    }
+    filledFor.current = key;
+    // A slow answer must not land on a newer route: an end changed again while
+    // the towns were being looked up takes the ticket, and this answer is about
+    // a ride that no longer exists.
+    const token = (roadToken.current += 1);
+    setFilling(true);
+    setFetching(true);
+    try {
+      // The towns already on the route are not "found again": they are the
+      // stops the owner put there, and `fillRoute` skips them by name.
+      const filled = await fillRoute(base, { key: geoapifyKey });
+      if (token !== roadToken.current) return base;
+      const known = new Set(base.map((stop) => `${stop.name.toLowerCase()}|${stop.lat.toFixed(3)}`));
+      const merged = filled.stops.map((stop) =>
+        known.has(`${stop.name.toLowerCase()}|${stop.lat.toFixed(3)}`) || isDerivedTown(stop)
+          ? stop
+          : { ...stop, note: TOWN_NOTE },
+      );
+
+      if (filled.road.ok) {
+        commitRoute({
+          stops: merged,
+          routeGeometry: filled.road.geometry,
+          routeDistanceKm: filled.road.distanceKm,
+          routeSignature: routeSignature(merged),
+        });
+      } else {
+        // The fill could not measure the road; the route still has to land on
+        // screen, and `applyStops` will try the measurement itself.
+        applyStops(merged);
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one fill per pair of ends
-    [addTowns, geoapifyKey, filling, recordChanges],
-  );
+
+      if (filled.added.length) {
+        recordChanges(filled.added.map((name) => ({ name, kind: "added" as const })));
+      }
+      if (say) {
+        setBuildNote(
+          filled.added.length
+            ? `${filled.added.length} town${filled.added.length === 1 ? "" : "s"} on the way: ${filled.added.join(
+                ", ",
+              )}. They are green — remove any you do not want and they stay removed.`
+            : `No towns to add between ${start.name} and ${end.name}${
+                filled.road.ok ? ` — the road is ${formatKm(filled.road.distanceKm)}` : ""
+              }.`,
+        );
+      }
+      return merged;
+    } catch {
+      if (token !== roadToken.current) return base;
+      if (say) setBuildError("Could not look for the towns between those two points just now.");
+      applyStops(base);
+      return base;
+    } finally {
+      // Always release the button: an answer that lost its ticket must not leave
+      // "Finding towns…" spinning for the rest of the session.
+      setFilling(false);
+      if (token === roadToken.current) setFetching(false);
+    }
+  };
+
+  /**
+   * A place chosen for one row of the directions panel.
+   *
+   * The row *is* the stop, so this is a replacement, not an addition: the same
+   * index keeps its status (a stop already ridden does not become "still to
+   * come" because its name was corrected), and the road is measured again.
+   *
+   * Changing one of the two ends changes what "between" means, so the towns
+   * the fill had put on the old stretch are dropped and the new stretch is
+   * filled in. Changing a stop in the middle keeps everything: the owner is
+   * describing the same ride in more detail.
+   */
+  const placeAt = (index: number, place: PlaceHit) => {
+    const current = stops[index];
+    if (!current) return;
+    const stop = stopFromPlace(place, roleOf(index, stops.length), current.status);
+    const isEnd = index === 0 || index === stops.length - 1;
+    // Changing an end changes what "between" means: the towns the fill put on
+    // the old stretch go, the stops somebody chose stay, and the new stretch is
+    // filled in below.
+    let next = replaceStopAt(stops, index, stop).stops;
+    if (isEnd && addTowns) next = dropDerivedStops(next, isDerivedTown, index);
+
+    setBuildError("");
+    // A real stop this replaced is worth a red line and an Undo; a placeholder
+    // row ("Stop 7") or a town the fill put there is not — nobody wants a undo
+    // chip for a row they had not named yet.
+    const worthUndo =
+      current.name.trim().toLowerCase() !== stop.name.trim().toLowerCase() &&
+      !/^stop \d+$/i.test(current.name.trim()) &&
+      !isDerivedTown(current);
+    recordChanges([
+      ...(worthUndo
+        ? [{ name: current.name, kind: "removed" as const, stop: current, index }]
+        : []),
+      { name: stop.name, kind: "added" as const },
+    ]);
+
+    if (next.length < 2 || !addTowns) {
+      applyStops(next);
+      return;
+    }
+    setBuildNote(`Looking for the towns between ${next[0].name} and ${next[next.length - 1].name}…`);
+    // An end was chosen, so this stretch is new even when it is the same place
+    // as before: the towns go back on and the road is measured — once, by the
+    // fill, so the stops and the line agree.
+    filledFor.current = "";
+    commitRoute({ stops: next, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" });
+    void fillBetweenEnds(next);
+  };
+
+  /** A name typed into a row and Entered, rather than picked from the list. */
+  const placeTextAt = async (index: number, name: string) => {
+    setBuildError("");
+    const found = await geocode(name, geoapifyKey);
+    if (!found) {
+      setBuildError(`Could not find “${name}”. Pick one of the places under the box instead.`);
+      return;
+    }
+    placeAt(index, { name, region: "", ...found });
+  };
+
+  /**
+   * A blank stop, in the row the panel is about to show.
+   *
+   * It goes before the destination — that is where a stop on the way belongs —
+   * and it starts at the middle of the leg it lands on, so the pin is somewhere
+   * sensible to drag rather than at the equator. Typing a name into its row
+   * replaces it.
+   */
+  const addWaypoint = () => {
+    // Before the destination — that is where a stop on the way belongs.
+    const at = stops.length >= 2 ? stops.length - 1 : stops.length;
+    const stop = midpointStop(stops, at, `Stop ${stops.length + 1}`);
+    applyStops(insertStopAt(stops, at, stop));
+    setBuildError("");
+    setBuildNote(
+      "New row added — type a place in it, or drag its pin on the map. Its name and coordinates below update as you go.",
+    );
+  };
+
+  /** The button: put back the towns the fill knows about, for the ends on screen. */
+  const fillTownsNow = () => {
+    const base = dropDerivedStops(stops, isDerivedTown);
+    if (base.length < 2) {
+      setBuildError("Add a start and a destination first.");
+      return;
+    }
+    setBuildError("");
+    filledFor.current = "";
+    setBuildNote("Looking for the towns between your stops…");
+    commitRoute({ stops: base, routeGeometry: [], routeDistanceKm: 0, routeSignature: "" });
+    void fillBetweenEnds(base, true);
+  };
 
   const handleImport = async (mode: "add" | "replace") => {
     if (!parsedLink.ok || importing) return;
@@ -1609,143 +1356,33 @@ export default function RouteStopsEditor({
           })}
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <div className="min-w-0 flex-1">
-            <PlaceTypeahead
-              value={query}
-              onChange={(text) => {
-                setQuery(text);
-                setLookError("");
-              }}
-              onPick={(place) => {
-                chooseMidStop(place);
-                setQuery("");
-              }}
-              onEnter={() => void handleFind()}
-              options={{ key: geoapifyKey, country: "in", limit: 6, near: stops[stops.length - 1] }}
-              label="Add a stop by name"
-              hint="Start typing and the places appear underneath — pick one, or press Find."
-              placeholder="Anandpur Sahib…"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleFind()}
-            disabled={looking || !query.trim()}
-            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
-          >
-            {looking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-            Find
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const last = stops[stops.length - 1];
-              addStop(last ? last.lat + 0.05 : 31, last ? last.lng + 0.05 : 76.5);
-            }}
-            className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add stop
-          </button>
-        </div>
-        {lookError && <p className="mt-2 text-[11px] text-amber-200">{lookError}</p>}
       </div>
 
-      {/* ── Start, destination, and the towns between ── */}
-      <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
-        <p className="flex items-center gap-2 text-xs font-bold text-white">
-          <Sparkles className="h-4 w-4 text-saffron-300" aria-hidden="true" />
-          Start and destination
-        </p>
-        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-          Type either end — the places appear as you type. Press{" "}
-          <span className="text-zinc-300">Build the route</span> and the important towns on the road
-          between them are added for you, in green. Any town you do not want, remove it; it goes red
-          and can be put back.
-        </p>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <PlaceTypeahead
-            value={startText}
-            onChange={(text) => {
-              setStartText(text);
-              setStartPicked(null);
-              setBuildError("");
-            }}
-            onPick={(place) => chooseEndpoint("start", place)}
-            onEnter={() => void applyTypedEndpoint("start")}
-            options={{ key: geoapifyKey, country: "in", limit: 6 }}
-            label="Start"
-            placeholder="Nangal…"
-          />
-          <PlaceTypeahead
-            value={endText}
-            onChange={(text) => {
-              setEndText(text);
-              setEndPicked(null);
-              setBuildError("");
-            }}
-            onPick={(place) => chooseEndpoint("end", place)}
-            onEnter={() => void applyTypedEndpoint("end")}
-            options={{
-              key: geoapifyKey,
-              country: "in",
-              limit: 6,
-              near: stops.length ? stops[0] : undefined,
-            }}
-            label="Destination"
-            placeholder="Leh…"
-          />
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <PlaceTypeahead
-            value={midText}
-            onChange={(text) => setMidText(text)}
-            onPick={(place) => {
-              chooseMidStop(place);
-              setMidText("");
-            }}
-            onEnter={() => void applyTypedMid()}
-            options={{ key: geoapifyKey, country: "in", limit: 6, near: stops[stops.length - 1] }}
-            label="A stop in between"
-            hint="It lands between the two stops it sits closest to on the road — not always at the end."
-            placeholder="Mandi…"
-          />
-          <div className="flex flex-col justify-end gap-2">
-            <label className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 text-[11px] text-zinc-300">
-              <input
-                type="checkbox"
-                checked={addTowns}
-                onChange={(event) => {
-                  const on = event.target.checked;
-                  setAddTowns(on);
-                  // Switched back on with a route already drawn: fill it in now
-                  // rather than waiting for the next edit.
-                  if (on && stops.length >= 2) {
-                    filledFor.current = "";
-                    void fillBetweenEnds(stops);
-                  }
-                }}
-                className="h-3.5 w-3.5 accent-emerald-500"
-              />
-              Add the important towns in between
-            </label>
-            <button
-              type="button"
-              onClick={() => void buildRoute()}
-              disabled={building || !startText.trim() || !endText.trim()}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-saffron-400 px-4 py-2.5 text-xs font-bold text-on-gold shadow-lg shadow-saffron-400/25 transition-all duration-300 hover:brightness-110 active:scale-95 disabled:opacity-40"
-            >
-              {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {building ? "Building the route…" : "Build the route"}
-            </button>
-          </div>
-        </div>
-
-        {buildError && <p className="mt-2 text-[11px] text-amber-200">{buildError}</p>}
-        {buildNote && <p className="mt-2 text-[11px] leading-relaxed text-emerald-300">{buildNote}</p>}
-      </div>
+      {/* ── The route, one row per stop ── */}
+      <RouteDirections
+        stops={stops}
+        searchKey={geoapifyKey}
+        totals={totals}
+        totalKm={totals[totals.length - 1] ?? 0}
+        byRoad={routeGeometry.length > 1}
+        measuring={fetching}
+        addTowns={addTowns}
+        onToggleTowns={(on) => {
+          setAddTowns(on);
+          // Switched back on with a route already drawn: fill it in now rather
+          // than waiting for the next edit.
+          if (on && stops.length >= 2) fillTownsNow();
+        }}
+        onPlace={(index, place) => placeAt(index, place)}
+        onPlaceText={(index, name) => void placeTextAt(index, name)}
+        onAdd={() => addWaypoint()}
+        onRemove={(index) => removeStop(index)}
+        onReorder={(from, to) => move(from, to)}
+        onFillTowns={() => fillTownsNow()}
+        fillBusy={filling}
+        note={buildNote}
+        error={buildError}
+      />
 
       {/* ── From a map link ── */}
       <div className="rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
@@ -2043,15 +1680,6 @@ export default function RouteStopsEditor({
             {fetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RouteIcon className="h-3.5 w-3.5" />}
             {routeGeometry.length ? "Refetch road route" : "Fetch road route"}
           </button>
-          <button
-            type="button"
-            onClick={() => void handleAddMajorStops()}
-            disabled={stopBusy || stops.length < 2}
-            className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold text-white transition-all duration-300 hover:border-white/25 disabled:opacity-40"
-          >
-            {stopBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapPinned className="h-3.5 w-3.5" />}
-            Add major stops on the way
-          </button>
           {stops.length > 0 && (
             <button
               type="button"
@@ -2067,17 +1695,33 @@ export default function RouteStopsEditor({
           )}
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-          The towns between the first and last stop — Mandi, Kullu, Manali, Keylong, Leh — chosen from
-          the map for the road you have drawn. A linked route of just two stops gets them filled in
-          for you when it is imported.
+          The towns between the two ends are filled in from the road in <strong className="font-semibold text-zinc-300">Your route</strong> above, and stay as long as the
+          ends do. A route of just two stops, pasted as a link, has them filled in as it is imported.
         </p>
         {roadNote && <p className="mt-2 text-[11px] text-emerald-300">{roadNote}</p>}
         {fetchError && <p className="mt-2 text-[11px] text-amber-200">{fetchError}</p>}
-        {stopError && <p className="mt-2 text-[11px] text-amber-200">{stopError}</p>}
-        {stopNote && <p className="mt-2 text-[11px] text-emerald-300">{stopNote}</p>}
       </div>
 
-      {/* ── Each stop ── */}
+      {/* ── Each stop in detail ──
+          Folded away by default: the panel above is where the route is built,
+          and a page of one card per stop pushed everything else off the screen
+          on a ride of ten. Everything that made a card worth having — the
+          status, the coordinates, the altitude, the note — is still here, one
+          click down. */}
+      {stops.length > 0 && (
+        <details className="group rounded-2xl border border-white/[0.08] bg-ink-950/50 p-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-bold text-white">
+            <ChevronRight className="h-4 w-4 shrink-0 text-saffron-300 transition-transform group-open:rotate-90" aria-hidden="true" />
+            Each stop in detail
+            <span className="font-normal text-zinc-500">
+              — status, coordinates, altitude, note
+            </span>
+          </summary>
+          <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+            You do not need any of this to build a route: type in the rows above. It is here for the
+            ride's own details — which stop is ridden, how high it is, what to say about it.
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
       {stops.map((stop, index) => {
         const role = roleOf(index, stops.length);
         return (
@@ -2229,6 +1873,9 @@ export default function RouteStopsEditor({
           </div>
         );
       })}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
