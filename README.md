@@ -141,6 +141,24 @@ How it behaves:
 - No map key or Google account is involved: the same Node app that serves the
   site receives the fixes and stores the latest one in the database.
 
+## Building the route in the dashboard
+
+Dashboard → **Live tracker → Stops** now builds the route by name:
+
+- Type a **start** and a **destination**. Suggestions appear under the box as
+  you type (Geoapify places, biased to the route you already have) — pick one,
+  or press Enter to look the typed name up.
+- **Build the route** fills in the important towns on the actual road between
+  the two ends, in one save, with the distance measured from the same road.
+  Untick *Add the important towns in between* to keep only your own stops.
+- A stop typed in **A stop in between** lands between the two stops it sits
+  closest to on the road, not at the end, so the numbering stays the journey.
+- Towns that were added show in **green**; remove any of them (or **Clear all
+  stops**) and they turn **red** with an **Undo** button beside them — one at a
+  time, or **Put every removed stop back** for all of them. A replaced start or
+  destination is undoable the same way.
+- Stop order is still draggable, and arrows move a stop earlier or later.
+
 ## Setup database location
 
 Choose **Local database (SQLite)** for one-click persistent setup with the name
